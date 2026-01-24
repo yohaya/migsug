@@ -1,0 +1,146 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    name: Build and Commit Binaries
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+
+      - name: Download dependencies
+        run: |
+          go mod download
+          go mod tidy
+
+      - name: Run tests
+        run: go test -v ./...
+
+      - name: Increment version (main branch only)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          bash scripts/increment-version.sh patch
+          NEW_VERSION=$(cat VERSION)
+          echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+          echo "Version incremented to: $NEW_VERSION"
+
+      - name: Get version
+        run: |
+          VERSION=$(cat VERSION)
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "Building version: $VERSION"
+
+      - name: Build binaries for all platforms
+        run: |
+          # Make scripts executable
+          chmod +x scripts/*.sh
+
+          # Create bin directory
+          mkdir -p bin
+
+          # Build for Linux (Proxmox)
+          bash scripts/build-with-version.sh linux amd64
+          bash scripts/build-with-version.sh linux arm64
+
+          # Build for macOS
+          bash scripts/build-with-version.sh darwin amd64
+          bash scripts/build-with-version.sh darwin arm64
+
+          # Build for Windows
+          bash scripts/build-with-version.sh windows amd64
+
+          # Create checksums
+          cd bin
+          sha256sum * > checksums.txt
+          cd ..
+
+          echo "Build complete!"
+          ls -lh bin/
+
+      - name: Configure Git
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+
+      - name: Commit binaries and version (main branch only)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          # Update gitignore to NOT ignore bin directory (so binaries are tracked)
+          sed -i '/^bin\//d' .gitignore || true
+
+          git add bin/
+          git add VERSION
+          git add .gitignore
+
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore: Build binaries for version ${VERSION} [skip ci]"
+            git push
+          fi
+
+      - name: Create GitHub Release (main branch only)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ env.VERSION }}
+          name: Release v${{ env.VERSION }}
+          body: |
+            ## Release v${{ env.VERSION }}
+
+            Automated release with compiled binaries.
+
+            ### Downloads
+            - **Linux (amd64)**: `migsug-linux-amd64` - For Proxmox hosts
+            - **Linux (arm64)**: `migsug-linux-arm64` - For ARM-based systems
+            - **macOS (amd64)**: `migsug-darwin-amd64` - For Intel Macs
+            - **macOS (arm64)**: `migsug-darwin-arm64` - For Apple Silicon Macs
+            - **Windows (amd64)**: `migsug-windows-amd64.exe` - For Windows
+
+            ### Installation
+            ```bash
+            # Linux/Proxmox
+            wget https://github.com/${{ github.repository }}/releases/download/v${{ env.VERSION }}/migsug-linux-amd64
+            chmod +x migsug-linux-amd64
+            sudo mv migsug-linux-amd64 /usr/local/bin/migsug
+
+            # Or just clone the repo (binaries included)
+            git clone https://github.com/${{ github.repository }}.git
+            cd migsug
+            chmod +x bin/migsug-linux-amd64
+            ```
+
+            ### Changes
+            See commit history for detailed changes.
+          files: |
+            bin/*
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: binaries-${{ env.VERSION }}
+          path: bin/*
+          retention-days: 30

@@ -1,0 +1,220 @@
+package components
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/charmbracelet/lipgloss"
+	"github.com/yourusername/migsug/internal/analyzer"
+	"github.com/yourusername/migsug/internal/proxmox"
+)
+
+var (
+	headerStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
+	selectedStyle = lipgloss.NewStyle().Background(lipgloss.Color("240")).Foreground(lipgloss.Color("15"))
+	normalStyle   = lipgloss.NewStyle()
+	offlineStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+)
+
+// RenderNodeTable creates a table of nodes with resource usage
+func RenderNodeTable(nodes []proxmox.Node, selectedIdx int) string {
+	var sb strings.Builder
+
+	// Header
+	header := fmt.Sprintf("%-15s %-8s %-5s %-10s %-12s %-12s",
+		"Name", "Status", "VMs", "CPU", "RAM", "Storage")
+	sb.WriteString(headerStyle.Render(header) + "\n")
+	sb.WriteString(strings.Repeat("─", 70) + "\n")
+
+	// Rows
+	for i, node := range nodes {
+		style := normalStyle
+		if i == selectedIdx {
+			style = selectedStyle
+		}
+		if node.Status != "online" {
+			style = offlineStyle
+		}
+
+		row := fmt.Sprintf("%-15s %-8s %-5d %-10s %-12s %-12s",
+			node.Name,
+			node.Status,
+			len(node.VMs),
+			fmt.Sprintf("%.1f%%", node.GetCPUPercent()),
+			fmt.Sprintf("%.1f%%", node.GetMemPercent()),
+			fmt.Sprintf("%.1f%%", node.GetDiskPercent()),
+		)
+
+		if i == selectedIdx {
+			sb.WriteString("→ ")
+		} else {
+			sb.WriteString("  ")
+		}
+
+		sb.WriteString(style.Render(row) + "\n")
+	}
+
+	return sb.String()
+}
+
+// RenderVMTable creates a table of VMs with resource usage
+func RenderVMTable(vms []proxmox.VM, selectedIndices map[int]bool, cursorIdx int) string {
+	var sb strings.Builder
+
+	// Header
+	header := fmt.Sprintf("%-5s %-20s %-6s %-8s %-8s %-10s %-10s",
+		"VMID", "Name", "Status", "vCPU", "CPU%", "RAM", "Storage")
+	sb.WriteString(headerStyle.Render(header) + "\n")
+	sb.WriteString(strings.Repeat("─", 80) + "\n")
+
+	// Rows
+	for i, vm := range vms {
+		style := normalStyle
+		if i == cursorIdx {
+			style = selectedStyle
+		}
+		if vm.Status != "running" {
+			style = offlineStyle
+		}
+
+		checkbox := " "
+		if selectedIndices[vm.VMID] {
+			checkbox = "✓"
+		}
+
+		row := fmt.Sprintf("[%s] %-5d %-20s %-6s %-8d %-8.1f %-10s %-10s",
+			checkbox,
+			vm.VMID,
+			truncate(vm.Name, 20),
+			vm.Status,
+			vm.CPUCores,
+			vm.CPUUsage,
+			FormatBytes(vm.UsedMem),
+			FormatBytes(vm.UsedDisk),
+		)
+
+		if i == cursorIdx {
+			sb.WriteString("→ ")
+		} else {
+			sb.WriteString("  ")
+		}
+
+		sb.WriteString(style.Render(row) + "\n")
+	}
+
+	return sb.String()
+}
+
+// RenderSuggestionTable creates a table of migration suggestions
+func RenderSuggestionTable(suggestions []analyzer.MigrationSuggestion) string {
+	var sb strings.Builder
+
+	// Header
+	header := fmt.Sprintf("%-5s %-20s %-12s %-12s %-8s %-10s %-10s",
+		"VMID", "Name", "From", "To", "vCPU", "RAM", "Storage")
+	sb.WriteString(headerStyle.Render(header) + "\n")
+	sb.WriteString(strings.Repeat("─", 90) + "\n")
+
+	// Rows
+	for _, sug := range suggestions {
+		style := normalStyle
+		if sug.TargetNode == "NONE" {
+			style = offlineStyle
+		}
+
+		row := fmt.Sprintf("%-5d %-20s %-12s %-12s %-8d %-10s %-10s",
+			sug.VMID,
+			truncate(sug.VMName, 20),
+			truncate(sug.SourceNode, 12),
+			truncate(sug.TargetNode, 12),
+			sug.VCPUs,
+			FormatBytes(sug.RAM),
+			FormatBytes(sug.Storage),
+		)
+
+		sb.WriteString("  " + style.Render(row) + "\n")
+
+		// Add reason as subtitle
+		if sug.Reason != "" {
+			reasonStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Italic(true)
+			sb.WriteString("    " + reasonStyle.Render("└─ "+truncate(sug.Reason, 80)) + "\n")
+		}
+	}
+
+	return sb.String()
+}
+
+// RenderNodeStateComparison shows before/after comparison for a node
+func RenderNodeStateComparison(nodeName string, before, after analyzer.NodeState) string {
+	var sb strings.Builder
+
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5"))
+	sb.WriteString(titleStyle.Render(fmt.Sprintf("Node: %s", nodeName)) + "\n\n")
+
+	// Before column
+	sb.WriteString(headerStyle.Render("BEFORE") + strings.Repeat(" ", 25))
+	sb.WriteString(headerStyle.Render("AFTER") + "\n")
+	sb.WriteString(strings.Repeat("─", 60) + "\n")
+
+	// VMs
+	sb.WriteString(fmt.Sprintf("VMs:     %-5d", before.VMCount))
+	sb.WriteString(strings.Repeat(" ", 20))
+	sb.WriteString(fmt.Sprintf("%-5d", after.VMCount))
+	diff := after.VMCount - before.VMCount
+	sb.WriteString(renderDiff(diff))
+	sb.WriteString("\n")
+
+	// CPU
+	sb.WriteString(fmt.Sprintf("CPU:     %-5.1f%%", before.CPUPercent))
+	sb.WriteString(strings.Repeat(" ", 19))
+	sb.WriteString(fmt.Sprintf("%-5.1f%%", after.CPUPercent))
+	cpuDiff := after.CPUPercent - before.CPUPercent
+	sb.WriteString(renderPercentDiff(cpuDiff))
+	sb.WriteString("\n")
+
+	// RAM
+	sb.WriteString(fmt.Sprintf("RAM:     %-5.1f%%", before.RAMPercent))
+	sb.WriteString(strings.Repeat(" ", 19))
+	sb.WriteString(fmt.Sprintf("%-5.1f%%", after.RAMPercent))
+	ramDiff := after.RAMPercent - before.RAMPercent
+	sb.WriteString(renderPercentDiff(ramDiff))
+	sb.WriteString("\n")
+
+	// Storage
+	sb.WriteString(fmt.Sprintf("Storage: %-5.1f%%", before.StoragePercent))
+	sb.WriteString(strings.Repeat(" ", 19))
+	sb.WriteString(fmt.Sprintf("%-5.1f%%", after.StoragePercent))
+	storageDiff := after.StoragePercent - before.StoragePercent
+	sb.WriteString(renderPercentDiff(storageDiff))
+	sb.WriteString("\n")
+
+	return sb.String()
+}
+
+func renderDiff(diff int) string {
+	if diff > 0 {
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Render(fmt.Sprintf(" (+%d)", diff))
+	} else if diff < 0 {
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Render(fmt.Sprintf(" (%d)", diff))
+	}
+	return ""
+}
+
+func renderPercentDiff(diff float64) string {
+	if diff > 0.1 {
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Render(fmt.Sprintf(" (+%.1f%%)", diff))
+	} else if diff < -0.1 {
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Render(fmt.Sprintf(" (%.1f%%)", diff))
+	}
+	return ""
+}
+
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	if maxLen <= 3 {
+		return s[:maxLen]
+	}
+	return s[:maxLen-3] + "..."
+}

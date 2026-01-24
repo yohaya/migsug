@@ -10,3 +10,26 @@
 # Environment
 .env
 .env.local
+
+# Go
+# Note: bin/ is tracked for compiled binaries
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.sum
+vendor/
+
+# Build artifacts (except those in bin/)
+/migsug
+migsug-*
+!bin/
+
+# Logs
+*.log
+
+# Coverage
+coverage.out
+coverage.html
