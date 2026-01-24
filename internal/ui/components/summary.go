@@ -9,21 +9,21 @@ import (
 
 var (
 	boxStyle = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("6")).
-		Padding(1, 2).
-		Width(40)
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("6")).
+			Padding(1, 2).
+			Width(40)
 
 	titleStyle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("6"))
+			Bold(true).
+			Foreground(lipgloss.Color("6"))
 
 	labelStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("8"))
+			Foreground(lipgloss.Color("8"))
 
 	valueStyle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("15"))
+			Bold(true).
+			Foreground(lipgloss.Color("15"))
 )
 
 // RenderClusterSummary creates a summary box for the cluster
