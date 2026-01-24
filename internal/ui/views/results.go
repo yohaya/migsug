@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/yourusername/migsug/internal/analyzer"
+	"github.com/yourusername/migsug/internal/proxmox"
 	"github.com/yourusername/migsug/internal/ui/components"
 )
 
@@ -100,6 +101,3 @@ func RenderVMSelection(vms []proxmox.VM, selectedVMs map[int]bool, cursorIdx int
 
 	return sb.String()
 }
-
-// Need to import proxmox for the VM type
-import "github.com/yourusername/migsug/internal/proxmox"
