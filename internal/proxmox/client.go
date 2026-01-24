@@ -30,7 +30,7 @@ func NewClient(baseURL, authToken string) *Client {
 	}
 
 	return &Client{
-		BaseURL:    strings.TrimSuffix(baseURL, "/"),
+		BaseURL: strings.TrimSuffix(baseURL, "/"),
 		HTTPClient: &http.Client{
 			Timeout:   30 * time.Second,
 			Transport: transport,
@@ -72,7 +72,7 @@ func (c *Client) Authenticate() error {
 
 	var result struct {
 		Data struct {
-			Ticket            string `json:"ticket"`
+			Ticket              string `json:"ticket"`
 			CSRFPreventionToken string `json:"CSRFPreventionToken"`
 		} `json:"data"`
 	}

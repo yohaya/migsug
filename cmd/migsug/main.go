@@ -13,13 +13,13 @@ import (
 )
 
 var (
-	apiToken  = flag.String("api-token", "", "Proxmox API token (format: user@realm!tokenid=secret)")
-	apiHost   = flag.String("api-host", "https://localhost:8006", "Proxmox API host URL")
-	username  = flag.String("username", "", "Proxmox username (alternative to API token)")
-	password  = flag.String("password", "", "Proxmox password (alternative to API token)")
+	apiToken   = flag.String("api-token", "", "Proxmox API token (format: user@realm!tokenid=secret)")
+	apiHost    = flag.String("api-host", "https://localhost:8006", "Proxmox API host URL")
+	username   = flag.String("username", "", "Proxmox username (alternative to API token)")
+	password   = flag.String("password", "", "Proxmox password (alternative to API token)")
 	sourceNode = flag.String("source", "", "Source node to migrate from (optional, can select in UI)")
-	debug     = flag.Bool("debug", false, "Enable debug logging")
-	version   = flag.Bool("version", false, "Show version information")
+	debug      = flag.Bool("debug", false, "Enable debug logging")
+	version    = flag.Bool("version", false, "Show version information")
 )
 
 // Version is set at build time via -ldflags
