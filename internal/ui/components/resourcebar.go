@@ -8,10 +8,10 @@ import (
 )
 
 var (
-	barStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
+	barStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
 	emptyBarStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	criticalStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
-	warningStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
+	warningStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 )
 
 // RenderResourceBar creates a visual progress bar for resource usage
