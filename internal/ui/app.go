@@ -45,19 +45,19 @@ type Model struct {
 	result *analyzer.AnalysisResult
 
 	// UI state
-	width       int
-	height      int
-	showHelp    bool
-	loading     bool
-	loadingMsg  string
+	width      int
+	height     int
+	showHelp   bool
+	loading    bool
+	loadingMsg string
 }
 
 // NewModel creates a new application model
 func NewModel(cluster *proxmox.Cluster, client *proxmox.Client) Model {
 	return Model{
-		cluster:       cluster,
-		client:        client,
-		currentView:   ViewDashboard,
+		cluster:         cluster,
+		client:          client,
+		currentView:     ViewDashboard,
 		selectedNodeIdx: 0,
 		criteriaState: views.CriteriaState{
 			SelectedMode: analyzer.ModeVMCount,
