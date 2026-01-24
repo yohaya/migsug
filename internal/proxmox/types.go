@@ -4,16 +4,16 @@ import "fmt"
 
 // Node represents a Proxmox node in the cluster
 type Node struct {
-	Name       string
-	Status     string
-	CPUCores   int
-	CPUUsage   float64 // Percentage 0-100
-	MaxMem     int64   // bytes
-	UsedMem    int64   // bytes
-	MaxDisk    int64   // bytes
-	UsedDisk   int64   // bytes
-	VMs        []VM
-	Uptime     int64 // seconds
+	Name     string
+	Status   string
+	CPUCores int
+	CPUUsage float64 // Percentage 0-100
+	MaxMem   int64   // bytes
+	UsedMem  int64   // bytes
+	MaxDisk  int64   // bytes
+	UsedDisk int64   // bytes
+	VMs      []VM
+	Uptime   int64 // seconds
 }
 
 // VM represents a virtual machine

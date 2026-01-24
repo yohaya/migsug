@@ -170,16 +170,16 @@ func GetClusterSummary(cluster *Cluster) map[string]interface{} {
 	}
 
 	return map[string]interface{}{
-		"total_nodes":      len(cluster.Nodes),
-		"online_nodes":     onlineNodes,
-		"total_vms":        cluster.TotalVMs,
-		"avg_cpu_percent":  avgCPU,
-		"mem_percent":      memPercent,
-		"storage_percent":  storagePercent,
-		"total_memory":     totalMemMax,
-		"used_memory":      totalMemUsage,
-		"total_storage":    totalStorageMax,
-		"used_storage":     totalStorageUsage,
+		"total_nodes":     len(cluster.Nodes),
+		"online_nodes":    onlineNodes,
+		"total_vms":       cluster.TotalVMs,
+		"avg_cpu_percent": avgCPU,
+		"mem_percent":     memPercent,
+		"storage_percent": storagePercent,
+		"total_memory":    totalMemMax,
+		"used_memory":     totalMemUsage,
+		"total_storage":   totalStorageMax,
+		"used_storage":    totalStorageUsage,
 	}
 }
 
