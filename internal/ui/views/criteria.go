@@ -10,18 +10,18 @@ import (
 
 var (
 	selectedOptionStyle = lipgloss.NewStyle().
-		Background(lipgloss.Color("6")).
-		Foreground(lipgloss.Color("0")).
-		Bold(true).
-		Padding(0, 1)
+				Background(lipgloss.Color("6")).
+				Foreground(lipgloss.Color("0")).
+				Bold(true).
+				Padding(0, 1)
 
 	optionStyle = lipgloss.NewStyle().
-		Padding(0, 1)
+			Padding(0, 1)
 
 	inputStyle = lipgloss.NewStyle().
-		Border(lipgloss.NormalBorder()).
-		BorderForeground(lipgloss.Color("6")).
-		Padding(0, 1)
+			Border(lipgloss.NormalBorder()).
+			BorderForeground(lipgloss.Color("6")).
+			Padding(0, 1)
 )
 
 // CriteriaState holds the state for criteria input
