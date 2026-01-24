@@ -18,18 +18,18 @@ type Node struct {
 
 // VM represents a virtual machine
 type VM struct {
-	VMID      int
-	Name      string
-	Node      string
-	Status    string
-	Type      string  // qemu or lxc
-	CPUCores  int     // allocated vCPUs
-	CPUUsage  float64 // actual usage percentage 0-100
-	MaxMem    int64   // allocated RAM in bytes
-	UsedMem   int64   // actual RAM usage in bytes
-	MaxDisk   int64   // allocated disk in bytes
-	UsedDisk  int64   // actual disk usage in bytes
-	Uptime    int64   // seconds
+	VMID     int
+	Name     string
+	Node     string
+	Status   string
+	Type     string  // qemu or lxc
+	CPUCores int     // allocated vCPUs
+	CPUUsage float64 // actual usage percentage 0-100
+	MaxMem   int64   // allocated RAM in bytes
+	UsedMem  int64   // actual RAM usage in bytes
+	MaxDisk  int64   // allocated disk in bytes
+	UsedDisk int64   // actual disk usage in bytes
+	Uptime   int64   // seconds
 }
 
 // Cluster represents the entire Proxmox cluster
@@ -60,10 +60,10 @@ type ClusterResource struct {
 
 // NodeStatus represents detailed node status
 type NodeStatus struct {
-	Uptime      int64   `json:"uptime"`
-	CPUInfo     CPUInfo `json:"cpuinfo"`
-	Memory      Memory  `json:"memory"`
-	RootFS      RootFS  `json:"rootfs"`
+	Uptime      int64     `json:"uptime"`
+	CPUInfo     CPUInfo   `json:"cpuinfo"`
+	Memory      Memory    `json:"memory"`
+	RootFS      RootFS    `json:"rootfs"`
 	LoadAverage []float64 `json:"loadavg"`
 }
 
