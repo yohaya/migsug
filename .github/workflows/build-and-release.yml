@@ -144,7 +144,11 @@ jobs:
             bin/darwin-amd64/migsug
             bin/darwin-arm64/migsug
             bin/windows-amd64/migsug.exe
-            bin/*/checksums.txt
+            bin/linux-amd64/checksums.txt
+            bin/linux-arm64/checksums.txt
+            bin/darwin-amd64/checksums.txt
+            bin/darwin-arm64/checksums.txt
+            bin/windows-amd64/checksums.txt
           draft: false
           prerelease: false
         env:
