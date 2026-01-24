@@ -1,8 +1,8 @@
 # GitHub Actions Workflow Status
 
-## Current Status: FAILING
+## Current Status: FIXING
 
-The workflows have been failing due to Go code formatting issues (gofmt).
+Working on GitHub Release upload issue.
 
 ## Issues Fixed So Far:
 1. ✅ Syntax error - import statement in wrong location (results.go)
@@ -19,7 +19,13 @@ The workflows have been failing due to Go code formatting issues (gofmt).
 12. ✅ Field alignment in types.go NodeStatus struct
 13. ✅ Field alignment in types.go Node struct
 14. ✅ Map key alignment in resources.go
+15. ✅ Field alignment in main.go var block
+16. ✅ Struct literal alignment in client.go
+17. ✅ Anonymous struct alignment in client.go
+18. ✅ GitHub Actions write permissions
 
-## Still Failing
-
-Checking the latest error...
+## Current Issue Being Fixed:
+19. 🔧 **GitHub Release asset upload failure** - Multiple checksums.txt files with same name
+   - **Root cause**: All 5 checksum files were named `checksums.txt`, causing duplicate name conflicts in GitHub Release
+   - **Fix**: Renamed checksums to platform-specific names (e.g., `checksums-linux-amd64.txt`)
+   - **Status**: Code updated, testing in progress

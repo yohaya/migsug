@@ -70,11 +70,14 @@ jobs:
           # Build for Windows
           bash scripts/build-with-version.sh windows amd64
 
-          # Create checksums for each platform
+          # Create checksums for each platform with unique names
           cd bin
           for dir in */; do
-            if [ -d "$dir" ] && [ "$dir" != "README.md" ]; then
-              (cd "$dir" && sha256sum * > checksums.txt)
+            if [ -d "$dir" ]; then
+              # Extract platform name (remove trailing slash)
+              platform="${dir%/}"
+              # Create checksum file with platform-specific name
+              (cd "$dir" && sha256sum migsug* > "checksums-${platform}.txt")
             fi
           done
           cd ..
@@ -144,11 +147,11 @@ jobs:
             bin/darwin-amd64/migsug
             bin/darwin-arm64/migsug
             bin/windows-amd64/migsug.exe
-            bin/linux-amd64/checksums.txt
-            bin/linux-arm64/checksums.txt
-            bin/darwin-amd64/checksums.txt
-            bin/darwin-arm64/checksums.txt
-            bin/windows-amd64/checksums.txt
+            bin/linux-amd64/checksums-linux-amd64.txt
+            bin/linux-arm64/checksums-linux-arm64.txt
+            bin/darwin-amd64/checksums-darwin-amd64.txt
+            bin/darwin-arm64/checksums-darwin-arm64.txt
+            bin/windows-amd64/checksums-windows-amd64.txt
           draft: false
           prerelease: false
         env:

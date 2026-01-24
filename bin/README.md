@@ -7,20 +7,20 @@ This directory contains pre-compiled binaries for various platforms, automatical
 ```
 bin/
 ├── linux-amd64/
-│   ├── migsug          # Linux 64-bit Intel/AMD (for Proxmox)
-│   └── checksums.txt
+│   ├── migsug                        # Linux 64-bit Intel/AMD (for Proxmox)
+│   └── checksums-linux-amd64.txt
 ├── linux-arm64/
-│   ├── migsug          # Linux 64-bit ARM
-│   └── checksums.txt
+│   ├── migsug                        # Linux 64-bit ARM
+│   └── checksums-linux-arm64.txt
 ├── darwin-amd64/
-│   ├── migsug          # macOS Intel
-│   └── checksums.txt
+│   ├── migsug                        # macOS Intel
+│   └── checksums-darwin-amd64.txt
 ├── darwin-arm64/
-│   ├── migsug          # macOS Apple Silicon (M1/M2/M3)
-│   └── checksums.txt
+│   ├── migsug                        # macOS Apple Silicon (M1/M2/M3)
+│   └── checksums-darwin-arm64.txt
 └── windows-amd64/
-    ├── migsug.exe      # Windows 64-bit
-    └── checksums.txt
+    ├── migsug.exe                    # Windows 64-bit
+    └── checksums-windows-amd64.txt
 ```
 
 ## Quick Start
@@ -68,12 +68,16 @@ See main README.md for full documentation and usage examples.
 
 ## Verification
 
-Each platform directory includes a `checksums.txt` file with SHA256 checksums.
+Each platform directory includes a platform-specific checksums file with SHA256 checksums.
 
 ```bash
-# Verify integrity
+# Verify integrity (Linux/macOS)
 cd bin/linux-amd64
-sha256sum -c checksums.txt
+sha256sum -c checksums-linux-amd64.txt
+
+# Windows (PowerShell)
+cd bin/windows-amd64
+Get-FileHash migsug.exe -Algorithm SHA256
 ```
 
 ## Build Info
