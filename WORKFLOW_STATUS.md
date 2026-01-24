@@ -25,7 +25,12 @@ Working on GitHub Release upload issue.
 18. ✅ GitHub Actions write permissions
 
 ## Current Issue Being Fixed:
-19. 🔧 **GitHub Release asset upload failure** - Multiple checksums.txt files with same name
-   - **Root cause**: All 5 checksum files were named `checksums.txt`, causing duplicate name conflicts in GitHub Release
-   - **Fix**: Renamed checksums to platform-specific names (e.g., `checksums-linux-amd64.txt`)
+19. 🔧 **GitHub Release asset upload failure** - Multiple files with same name
+   - **Root cause**: GitHub releases don't allow multiple assets with the same name
+     - First issue: All 5 checksum files were named `checksums.txt` ✅ FIXED
+     - Second issue: Multiple binaries named `migsug` (4 platforms) ⚠️ FIXING
+   - **Fix**: Create release directory with uniquely named files
+     - Binaries: `migsug-linux-amd64`, `migsug-darwin-arm64`, etc.
+     - Repository bin/ dirs still use simple names (migsug) for easy git clone usage
+     - GitHub releases get unique names to avoid conflicts
    - **Status**: Code updated, testing in progress

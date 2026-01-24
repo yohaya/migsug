@@ -109,6 +109,29 @@ jobs:
             git push
           fi
 
+      - name: Prepare release assets (main branch only)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          # Create release directory with uniquely named files
+          mkdir -p release
+
+          # Copy binaries with platform-specific names for GitHub release
+          cp bin/linux-amd64/migsug release/migsug-linux-amd64
+          cp bin/linux-arm64/migsug release/migsug-linux-arm64
+          cp bin/darwin-amd64/migsug release/migsug-darwin-amd64
+          cp bin/darwin-arm64/migsug release/migsug-darwin-arm64
+          cp bin/windows-amd64/migsug.exe release/migsug-windows-amd64.exe
+
+          # Copy checksum files
+          cp bin/linux-amd64/checksums-linux-amd64.txt release/
+          cp bin/linux-arm64/checksums-linux-arm64.txt release/
+          cp bin/darwin-amd64/checksums-darwin-amd64.txt release/
+          cp bin/darwin-arm64/checksums-darwin-arm64.txt release/
+          cp bin/windows-amd64/checksums-windows-amd64.txt release/
+
+          echo "Release assets prepared:"
+          ls -lh release/
+
       - name: Create GitHub Release (main branch only)
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         uses: softprops/action-gh-release@v1
@@ -121,37 +144,49 @@ jobs:
             Automated release with compiled binaries.
 
             ### Downloads
-            - **Linux (amd64)**: `bin/linux-amd64/migsug` - For Proxmox hosts
-            - **Linux (arm64)**: `bin/linux-arm64/migsug` - For ARM-based systems
-            - **macOS (amd64)**: `bin/darwin-amd64/migsug` - For Intel Macs
-            - **macOS (arm64)**: `bin/darwin-arm64/migsug` - For Apple Silicon Macs
-            - **Windows (amd64)**: `bin/windows-amd64/migsug.exe` - For Windows
+            Download the binary for your platform:
+            - **Linux (amd64)**: `migsug-linux-amd64` - For Proxmox hosts (most common)
+            - **Linux (arm64)**: `migsug-linux-arm64` - For ARM-based systems
+            - **macOS (amd64)**: `migsug-darwin-amd64` - For Intel Macs
+            - **macOS (arm64)**: `migsug-darwin-arm64` - For Apple Silicon Macs (M1/M2/M3)
+            - **Windows (amd64)**: `migsug-windows-amd64.exe` - For Windows
 
-            ### Installation
+            ### Installation from Release
             ```bash
-            # Clone the repo (binaries included)
+            # Download and install (Linux example)
+            wget https://github.com/${{ github.repository }}/releases/download/v${{ env.VERSION }}/migsug-linux-amd64
+            chmod +x migsug-linux-amd64
+            sudo mv migsug-linux-amd64 /usr/local/bin/migsug
+
+            # Run
+            migsug --api-token=YOUR_TOKEN
+            ```
+
+            ### Or Clone Repository
+            ```bash
+            # Binaries are also committed to the repository
             git clone https://github.com/${{ github.repository }}.git
             cd migsug
             chmod +x bin/linux-amd64/migsug
-            sudo cp bin/linux-amd64/migsug /usr/local/bin/migsug
-
-            # Or run directly
             ./bin/linux-amd64/migsug --api-token=YOUR_TOKEN
             ```
+
+            ### Verification
+            Each platform includes a checksum file for integrity verification.
 
             ### Changes
             See commit history for detailed changes.
           files: |
-            bin/linux-amd64/migsug
-            bin/linux-arm64/migsug
-            bin/darwin-amd64/migsug
-            bin/darwin-arm64/migsug
-            bin/windows-amd64/migsug.exe
-            bin/linux-amd64/checksums-linux-amd64.txt
-            bin/linux-arm64/checksums-linux-arm64.txt
-            bin/darwin-amd64/checksums-darwin-amd64.txt
-            bin/darwin-arm64/checksums-darwin-arm64.txt
-            bin/windows-amd64/checksums-windows-amd64.txt
+            release/migsug-linux-amd64
+            release/migsug-linux-arm64
+            release/migsug-darwin-amd64
+            release/migsug-darwin-arm64
+            release/migsug-windows-amd64.exe
+            release/checksums-linux-amd64.txt
+            release/checksums-linux-arm64.txt
+            release/checksums-darwin-amd64.txt
+            release/checksums-darwin-arm64.txt
+            release/checksums-windows-amd64.txt
           draft: false
           prerelease: false
         env:
