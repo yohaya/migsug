@@ -55,7 +55,7 @@ make deps
 make build-linux
 
 # Copy to Proxmox host
-scp bin/migsug-linux-amd64 root@proxmox:/usr/local/bin/migsug
+scp bin/linux-amd64/migsug root@proxmox:/usr/local/bin/migsug
 ssh root@proxmox "chmod +x /usr/local/bin/migsug"
 ```
 
@@ -383,8 +383,8 @@ After cloning the repository, binaries are immediately available in `bin/`:
 ```bash
 git clone https://github.com/yohaya/migsug.git
 cd migsug
-chmod +x bin/migsug-linux-amd64
-./bin/migsug-linux-amd64 --version
+chmod +x bin/linux-amd64/migsug
+./bin/linux-amd64/migsug --version
 ```
 
 ### Version Management

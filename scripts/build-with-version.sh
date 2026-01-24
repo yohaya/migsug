@@ -17,11 +17,18 @@ echo "Build time: ${BUILD_TIME}"
 PLATFORM=${1:-$(go env GOOS)}
 ARCH=${2:-$(go env GOARCH)}
 
-OUTPUT="bin/migsug-${PLATFORM}-${ARCH}"
+# Create platform directory
+PLATFORM_DIR="bin/${PLATFORM}-${ARCH}"
+mkdir -p "$PLATFORM_DIR"
+
+# Set output filename
+OUTPUT="${PLATFORM_DIR}/migsug"
 if [ "$PLATFORM" = "windows" ]; then
-    OUTPUT="${OUTPUT}.exe"
+    OUTPUT="${PLATFORM_DIR}/migsug.exe"
 fi
 
+echo "Building for ${PLATFORM}/${ARCH}..."
 GOOS=$PLATFORM GOARCH=$ARCH go build -ldflags "$LDFLAGS" -o "$OUTPUT" cmd/migsug/main.go
 
 echo "Build complete: $OUTPUT"
+ls -lh "$OUTPUT"

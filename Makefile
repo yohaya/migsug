@@ -8,7 +8,7 @@ build:
 	@echo "Building migsug..."
 	@chmod +x scripts/build-with-version.sh
 	@bash scripts/build-with-version.sh
-	@echo "Build complete: bin/migsug-*"
+	@echo "Build complete: bin/*/migsug"
 
 # Build for Linux (Proxmox)
 build-linux:
@@ -16,14 +16,14 @@ build-linux:
 	@chmod +x scripts/build-with-version.sh
 	@bash scripts/build-with-version.sh linux amd64
 	@bash scripts/build-with-version.sh linux arm64
-	@echo "Build complete: bin/migsug-linux-*"
+	@echo "Build complete: bin/linux-*/migsug"
 
 # Build for Windows
 build-windows:
 	@echo "Building for Windows (amd64)..."
 	@chmod +x scripts/build-with-version.sh
 	@bash scripts/build-with-version.sh windows amd64
-	@echo "Build complete: bin/migsug-windows-amd64.exe"
+	@echo "Build complete: bin/windows-amd64/migsug.exe"
 
 # Build for macOS
 build-darwin:
@@ -31,7 +31,7 @@ build-darwin:
 	@chmod +x scripts/build-with-version.sh
 	@bash scripts/build-with-version.sh darwin amd64
 	@bash scripts/build-with-version.sh darwin arm64
-	@echo "Build complete: bin/migsug-darwin-*"
+	@echo "Build complete: bin/darwin-*/migsug"
 
 # Build for all platforms
 build-all: build-linux build-windows build-darwin
@@ -64,7 +64,7 @@ clean:
 # Install to system (requires sudo)
 install: build-linux
 	@echo "Installing to /usr/local/bin..."
-	sudo cp bin/migsug-linux-amd64 /usr/local/bin/migsug
+	sudo cp bin/linux-amd64/migsug /usr/local/bin/migsug
 	sudo chmod +x /usr/local/bin/migsug
 	@echo "Installation complete"
 
@@ -111,4 +111,4 @@ help:
 	@echo "Examples:"
 	@echo "  make build"
 	@echo "  make run ARGS='--api-token=root@pam!token=secret'"
-	@echo "  make build-linux && scp bin/migsug-linux-amd64 root@proxmox:/usr/local/bin/migsug"
+	@echo "  make build-linux && scp bin/linux-amd64/migsug root@proxmox:/usr/local/bin/migsug"

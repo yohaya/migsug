@@ -170,7 +170,7 @@ migsug/
 3. **Build the app**: `make build`
 4. **Test with mock data** (create test cases)
 5. **Connect to Proxmox** (when ready)
-6. **Deploy to Proxmox host**: `make build-linux && scp bin/migsug-linux-amd64 root@proxmox:/usr/local/bin/migsug`
+6. **Deploy to Proxmox host**: `make build-linux && scp bin/linux-amd64/migsug root@proxmox:/usr/local/bin/migsug`
 
 ## Troubleshooting
 

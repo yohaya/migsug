@@ -88,8 +88,8 @@ Test that users can clone and run immediately:
 cd /tmp
 git clone https://github.com/yohaya/migsug.git
 cd migsug
-chmod +x bin/migsug-linux-amd64
-./bin/migsug-linux-amd64 --version
+chmod +x bin/linux-amd64/migsug
+./bin/linux-amd64/migsug --version
 
 # Should show:
 # migsug version 1.0.1
@@ -107,7 +107,7 @@ git clone https://github.com/yohaya/migsug.git
 cd migsug
 
 # Copy to Proxmox
-scp bin/migsug-linux-amd64 root@your-proxmox-host:/usr/local/bin/migsug
+scp bin/linux-amd64/migsug root@your-proxmox-host:/usr/local/bin/migsug
 ssh root@your-proxmox-host "chmod +x /usr/local/bin/migsug"
 
 # Run on Proxmox
@@ -160,8 +160,8 @@ ssh root@your-proxmox-host "migsug --api-token=root@pam!token=secret"
 ```bash
 git clone https://github.com/yohaya/migsug.git
 cd migsug
-chmod +x bin/migsug-linux-amd64
-./bin/migsug-linux-amd64 --api-token=YOUR_TOKEN
+chmod +x bin/linux-amd64/migsug
+./bin/linux-amd64/migsug --api-token=YOUR_TOKEN
 ```
 
 ### Download from Release
@@ -173,7 +173,7 @@ chmod +x migsug-linux-amd64
 
 ### Install System-Wide
 ```bash
-sudo cp bin/migsug-linux-amd64 /usr/local/bin/migsug
+sudo cp bin/linux-amd64/migsug /usr/local/bin/migsug
 migsug --api-token=YOUR_TOKEN
 ```
 

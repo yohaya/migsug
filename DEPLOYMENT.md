@@ -48,8 +48,8 @@ Binaries are distributed in THREE ways:
    ```bash
    git clone https://github.com/yohaya/migsug.git
    cd migsug
-   chmod +x bin/migsug-linux-amd64
-   ./bin/migsug-linux-amd64 --version
+   chmod +x bin/linux-amd64/migsug
+   ./bin/linux-amd64/migsug --version
    ```
 
 2. **GitHub Releases** (Recommended)
@@ -121,8 +121,8 @@ migsug/
 4. **Users can immediately use**
    ```bash
    git pull origin main
-   chmod +x bin/migsug-linux-amd64
-   ./bin/migsug-linux-amd64 --version
+   chmod +x bin/linux-amd64/migsug
+   ./bin/linux-amd64/migsug --version
    # Shows: migsug version 1.0.1
    #        Build time: 2026-01-24T21:30:00Z
    #        Git commit: abc1234
@@ -159,8 +159,8 @@ git push
 # On Proxmox host
 git clone https://github.com/yohaya/migsug.git
 cd migsug
-chmod +x bin/migsug-linux-amd64
-./bin/migsug-linux-amd64 --api-token=root@pam!token=secret
+chmod +x bin/linux-amd64/migsug
+./bin/linux-amd64/migsug --api-token=root@pam!token=secret
 ```
 
 ### Scenario 2: Download from Release
@@ -177,7 +177,7 @@ migsug --api-token=root@pam!token=secret
 git clone https://github.com/yohaya/migsug.git
 cd migsug
 make build-linux
-sudo cp bin/migsug-linux-amd64 /usr/local/bin/migsug
+sudo cp bin/linux-amd64/migsug /usr/local/bin/migsug
 ```
 
 ## Monitoring CI/CD
@@ -207,8 +207,8 @@ sudo cp bin/migsug-linux-amd64 /usr/local/bin/migsug
 ```bash
 cd migsug
 git pull origin main
-chmod +x bin/migsug-linux-amd64
-./bin/migsug-linux-amd64 --version  # Check new version
+chmod +x bin/linux-amd64/migsug
+./bin/linux-amd64/migsug --version  # Check new version
 ```
 
 ### For Developers

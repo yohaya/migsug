@@ -53,8 +53,8 @@ jobs:
           # Make scripts executable
           chmod +x scripts/*.sh
 
-          # Create bin directory
-          mkdir -p bin
+          # Create bin directory structure
+          mkdir -p bin/{linux-amd64,linux-arm64,darwin-amd64,darwin-arm64,windows-amd64}
 
           # Build for Linux (Proxmox)
           bash scripts/build-with-version.sh linux amd64
@@ -67,13 +67,18 @@ jobs:
           # Build for Windows
           bash scripts/build-with-version.sh windows amd64
 
-          # Create checksums
+          # Create checksums for each platform
           cd bin
-          sha256sum * > checksums.txt
+          for dir in */; do
+            if [ -d "$dir" ] && [ "$dir" != "README.md" ]; then
+              (cd "$dir" && sha256sum * > checksums.txt)
+            fi
+          done
           cd ..
 
           echo "Build complete!"
-          ls -lh bin/
+          echo "Directory structure:"
+          ls -lh bin/*/
 
       - name: Configure Git
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -110,29 +115,33 @@ jobs:
             Automated release with compiled binaries.
 
             ### Downloads
-            - **Linux (amd64)**: `migsug-linux-amd64` - For Proxmox hosts
-            - **Linux (arm64)**: `migsug-linux-arm64` - For ARM-based systems
-            - **macOS (amd64)**: `migsug-darwin-amd64` - For Intel Macs
-            - **macOS (arm64)**: `migsug-darwin-arm64` - For Apple Silicon Macs
-            - **Windows (amd64)**: `migsug-windows-amd64.exe` - For Windows
+            - **Linux (amd64)**: `bin/linux-amd64/migsug` - For Proxmox hosts
+            - **Linux (arm64)**: `bin/linux-arm64/migsug` - For ARM-based systems
+            - **macOS (amd64)**: `bin/darwin-amd64/migsug` - For Intel Macs
+            - **macOS (arm64)**: `bin/darwin-arm64/migsug` - For Apple Silicon Macs
+            - **Windows (amd64)**: `bin/windows-amd64/migsug.exe` - For Windows
 
             ### Installation
             ```bash
-            # Linux/Proxmox
-            wget https://github.com/${{ github.repository }}/releases/download/v${{ env.VERSION }}/migsug-linux-amd64
-            chmod +x migsug-linux-amd64
-            sudo mv migsug-linux-amd64 /usr/local/bin/migsug
-
-            # Or just clone the repo (binaries included)
+            # Clone the repo (binaries included)
             git clone https://github.com/${{ github.repository }}.git
             cd migsug
-            chmod +x bin/migsug-linux-amd64
+            chmod +x bin/linux-amd64/migsug
+            sudo cp bin/linux-amd64/migsug /usr/local/bin/migsug
+
+            # Or run directly
+            ./bin/linux-amd64/migsug --api-token=YOUR_TOKEN
             ```
 
             ### Changes
             See commit history for detailed changes.
           files: |
-            bin/*
+            bin/linux-amd64/migsug
+            bin/linux-arm64/migsug
+            bin/darwin-amd64/migsug
+            bin/darwin-arm64/migsug
+            bin/windows-amd64/migsug.exe
+            bin/*/checksums.txt
           draft: false
           prerelease: false
         env:
