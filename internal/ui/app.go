@@ -3,11 +3,11 @@ package ui
 import (
 	"fmt"
 	"strconv"
-	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yourusername/migsug/internal/analyzer"
 	"github.com/yourusername/migsug/internal/proxmox"
+	"github.com/yourusername/migsug/internal/ui/components"
 	"github.com/yourusername/migsug/internal/ui/views"
 )
 
@@ -303,7 +303,7 @@ func (m Model) handleErrorKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // View renders the current view
 func (m Model) View() string {
 	if m.showHelp {
-		return views.RenderHelp()
+		return components.RenderHelp()
 	}
 
 	if m.loading {
