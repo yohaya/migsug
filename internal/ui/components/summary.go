@@ -54,6 +54,46 @@ func RenderClusterSummary(cluster *proxmox.Cluster) string {
 	return boxStyle.Render(content)
 }
 
+// RenderClusterSummaryWide creates a full-width cluster summary
+func RenderClusterSummaryWide(cluster *proxmox.Cluster, width int) string {
+	summary := proxmox.GetClusterSummary(cluster)
+
+	// Calculate column widths
+	col1Width := 20
+	col2Width := 25
+	col3Width := 25
+	col4Width := width - col1Width - col2Width - col3Width - 10
+	if col4Width < 20 {
+		col4Width = 20
+	}
+
+	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	valueStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
+
+	// Build single-line summary
+	var line1, line2 string
+
+	// Line 1: Nodes and VMs
+	line1 = labelStyle.Render("Nodes: ") +
+		valueStyle.Render(fmt.Sprintf("%-*s", col1Width-7, fmt.Sprintf("%d/%d online",
+			summary["online_nodes"], summary["total_nodes"])))
+	line1 += labelStyle.Render("  VMs: ") +
+		valueStyle.Render(fmt.Sprintf("%-*s", col2Width-7, fmt.Sprintf("%d total", summary["total_vms"])))
+
+	// Line 2: Resource usage
+	line2 = labelStyle.Render("CPU: ") +
+		valueStyle.Render(fmt.Sprintf("%-*s", col1Width-5, fmt.Sprintf("%.1f%% avg", summary["avg_cpu_percent"])))
+	line2 += labelStyle.Render("  RAM: ") +
+		valueStyle.Render(fmt.Sprintf("%-*s", col2Width-7, fmt.Sprintf("%.1f%% (%s/%s)",
+			summary["mem_percent"],
+			FormatBytes(summary["used_memory"].(int64)),
+			FormatBytes(summary["total_memory"].(int64)))))
+	line2 += labelStyle.Render("  Storage: ") +
+		valueStyle.Render(fmt.Sprintf("%.1f%%", summary["storage_percent"]))
+
+	return line1 + "\n" + line2 + "\n"
+}
+
 // RenderNodeSummary creates a summary box for a specific node
 func RenderNodeSummary(node *proxmox.Node) string {
 	content := titleStyle.Render(fmt.Sprintf("Node: %s", node.Name)) + "\n\n"

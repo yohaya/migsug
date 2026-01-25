@@ -8,33 +8,38 @@ import (
 	"github.com/yourusername/migsug/internal/ui/components"
 )
 
-var titleStyle = lipgloss.NewStyle().
-	Bold(true).
-	Foreground(lipgloss.Color("5")).
-	Padding(1, 0)
-
 // RenderDashboard renders the main dashboard view
 func RenderDashboard(cluster *proxmox.Cluster, selectedIdx int, width int) string {
 	var sb strings.Builder
 
-	// Title
-	sb.WriteString(titleStyle.Render("🖥️  Proxmox VM Migration Suggester") + "\n\n")
+	// Ensure minimum width
+	if width < 60 {
+		width = 80
+	}
 
-	// Cluster summary
-	sb.WriteString(components.RenderClusterSummary(cluster))
-	sb.WriteString("\n\n")
+	// Title with full width
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5"))
+	sb.WriteString(titleStyle.Render("Proxmox VM Migration Suggester") + "\n")
+	sb.WriteString(strings.Repeat("=", width) + "\n\n")
+
+	// Cluster summary with width
+	sb.WriteString(components.RenderClusterSummaryWide(cluster, width))
+	sb.WriteString("\n")
 
 	// Instructions
 	instructionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	sb.WriteString(instructionStyle.Render("Select source node to migrate from:") + "\n\n")
 
-	// Node table
-	sb.WriteString(components.RenderNodeTable(cluster.Nodes, selectedIdx))
+	// Node table with width
+	sb.WriteString(components.RenderNodeTableWide(cluster.Nodes, selectedIdx, width))
 	sb.WriteString("\n")
+
+	// Full-width separator
+	sb.WriteString(strings.Repeat("-", width) + "\n")
 
 	// Help text
 	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	sb.WriteString(helpStyle.Render("↑/↓: Navigate  Enter: Select  q: Quit  ?: Help"))
+	sb.WriteString(helpStyle.Render("Up/Down: Navigate | Enter: Select node | q: Quit | ?: Help"))
 
 	return sb.String()
 }

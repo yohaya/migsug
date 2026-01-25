@@ -77,6 +77,128 @@ func RenderNodeTable(nodes []proxmox.Node, selectedIdx int) string {
 	return sb.String()
 }
 
+// RenderNodeTableWide creates a full-width table of nodes with resource bars
+func RenderNodeTableWide(nodes []proxmox.Node, selectedIdx int, width int) string {
+	var sb strings.Builder
+
+	// Calculate column widths based on terminal width
+	// Reserve space for: selector(2) + name + status + VMs + CPU + RAM + Storage + spacing
+	minTableWidth := 80
+	if width < minTableWidth {
+		width = minTableWidth
+	}
+
+	// Column widths
+	colName := 15
+	colStatus := 8
+	colVMs := 5
+	colCPU := 8
+	colRAM := 8
+	colStorage := 8
+	colCPUBar := (width - colName - colStatus - colVMs - colCPU - colRAM - colStorage - 20) / 3
+	if colCPUBar < 10 {
+		colCPUBar = 10
+	}
+	colRAMBar := colCPUBar
+	colStorageBar := colCPUBar
+
+	// Header
+	header := fmt.Sprintf("  %-*s %-*s %*s %*s %-*s %*s %-*s %*s %-*s",
+		colName, "Name",
+		colStatus, "Status",
+		colVMs, "VMs",
+		colCPU, "CPU",
+		colCPUBar, "",
+		colRAM, "RAM",
+		colRAMBar, "",
+		colStorage, "Disk",
+		colStorageBar, "")
+	sb.WriteString(headerStyle.Render(header) + "\n")
+	sb.WriteString("  " + strings.Repeat("-", width-4) + "\n")
+
+	// Rows
+	for i, node := range nodes {
+		style := normalStyle
+		if i == selectedIdx {
+			style = selectedStyle
+		}
+		if node.Status != "online" {
+			style = offlineStyle
+		}
+
+		// Format percentages
+		cpuPct := node.GetCPUPercent()
+		ramPct := node.GetMemPercent()
+		diskPct := node.GetDiskPercent()
+
+		cpuStr := fmt.Sprintf("%5.1f%%", cpuPct)
+		ramStr := fmt.Sprintf("%5.1f%%", ramPct)
+		diskStr := fmt.Sprintf("%5.1f%%", diskPct)
+
+		// Create progress bars
+		cpuBar := renderProgressBar(cpuPct, colCPUBar)
+		ramBar := renderProgressBar(ramPct, colRAMBar)
+		diskBar := renderProgressBar(diskPct, colStorageBar)
+
+		// Format row
+		row := fmt.Sprintf("%-*s %-*s %*d %*s %s %*s %s %*s %s",
+			colName, truncate(node.Name, colName),
+			colStatus, node.Status,
+			colVMs, len(node.VMs),
+			colCPU, cpuStr,
+			cpuBar,
+			colRAM, ramStr,
+			ramBar,
+			colStorage, diskStr,
+			diskBar)
+
+		// Selector
+		if i == selectedIdx {
+			sb.WriteString("> ")
+		} else {
+			sb.WriteString("  ")
+		}
+
+		sb.WriteString(style.Render(row) + "\n")
+	}
+
+	return sb.String()
+}
+
+// renderProgressBar creates a text-based progress bar
+func renderProgressBar(percent float64, width int) string {
+	if width < 5 {
+		width = 5
+	}
+
+	// Calculate filled portion
+	barWidth := width - 2 // Account for [ and ]
+	filled := int(percent / 100.0 * float64(barWidth))
+	if filled > barWidth {
+		filled = barWidth
+	}
+	if filled < 0 {
+		filled = 0
+	}
+
+	// Choose color based on percentage
+	barColor := "2" // green
+	if percent > 80 {
+		barColor = "1" // red
+	} else if percent > 60 {
+		barColor = "3" // yellow
+	}
+
+	// Build the bar
+	filledPart := strings.Repeat("=", filled)
+	emptyPart := strings.Repeat("-", barWidth-filled)
+
+	barStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(barColor))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+
+	return "[" + barStyle.Render(filledPart) + dimStyle.Render(emptyPart) + "]"
+}
+
 // RenderVMTable creates a table of VMs with resource usage
 func RenderVMTable(vms []proxmox.VM, selectedIndices map[int]bool, cursorIdx int) string {
 	var sb strings.Builder
