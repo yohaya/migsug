@@ -13,8 +13,13 @@ import (
 // titleStyle for results view
 var resultsTitleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5"))
 
-// RenderResults renders the migration results view
+// RenderResults renders the migration results view (non-scrollable version for backwards compatibility)
 func RenderResults(result *analyzer.AnalysisResult, width int) string {
+	return RenderResultsWithScroll(result, width, 24, 0)
+}
+
+// RenderResultsWithScroll renders the migration results view with scrolling support
+func RenderResultsWithScroll(result *analyzer.AnalysisResult, width, height, scrollPos int) string {
 	var sb strings.Builder
 
 	// Title
@@ -40,10 +45,22 @@ func RenderResults(result *analyzer.AnalysisResult, width int) string {
 	))
 	sb.WriteString("\n\n")
 
-	// Suggestions table
+	// Suggestions table with scrolling
 	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6")).
-		Render("Suggested Migrations:") + "\n\n")
-	sb.WriteString(components.RenderSuggestionTable(result.Suggestions))
+		Render("Suggested Migrations:") + " ")
+
+	// Show scroll indicator if there are more suggestions than visible
+	maxVisible := calculateVisibleRows(height)
+	if len(result.Suggestions) > maxVisible {
+		scrollInfo := fmt.Sprintf("(showing %d-%d of %d, use ↑/↓ to scroll)",
+			scrollPos+1,
+			min(scrollPos+maxVisible, len(result.Suggestions)),
+			len(result.Suggestions))
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(scrollInfo))
+	}
+	sb.WriteString("\n\n")
+
+	sb.WriteString(components.RenderSuggestionTableWithScroll(result.Suggestions, scrollPos, maxVisible))
 	sb.WriteString("\n")
 
 	// Before/After comparison
@@ -77,9 +94,28 @@ func RenderResults(result *analyzer.AnalysisResult, width int) string {
 
 	// Help text
 	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	sb.WriteString("\n" + helpStyle.Render("s: Save  r: New Analysis  Esc: Back  q: Quit"))
+	sb.WriteString("\n" + helpStyle.Render("↑/↓: Scroll  s: Save  r: New Analysis  Esc: Back  q: Quit"))
 
 	return sb.String()
+}
+
+// calculateVisibleRows calculates how many suggestion rows can fit on screen
+func calculateVisibleRows(height int) int {
+	// Reserve space for: title (2), summary (4), section headers (4), node comparison (8), help (2)
+	// Each suggestion takes 2 rows (data + reason)
+	reserved := 20
+	available := height - reserved
+	if available < 3 {
+		return 3
+	}
+	return available / 2 // Each suggestion takes 2 lines
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // RenderVMSelection renders the VM selection view

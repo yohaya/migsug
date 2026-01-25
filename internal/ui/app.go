@@ -47,6 +47,9 @@ type Model struct {
 	// Analysis results
 	result *analyzer.AnalysisResult
 
+	// Results view scroll state
+	resultsScrollPos int
+
 	// UI state
 	width      int
 	height     int
@@ -343,12 +346,29 @@ func (m Model) handleVMSelectionKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) handleResultsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
+	case "up", "k":
+		if m.resultsScrollPos > 0 {
+			m.resultsScrollPos--
+		}
+	case "down", "j":
+		// Allow scrolling if there are more suggestions than fit on screen
+		if m.result != nil {
+			maxScroll := len(m.result.Suggestions) - 1
+			if maxScroll < 0 {
+				maxScroll = 0
+			}
+			if m.resultsScrollPos < maxScroll {
+				m.resultsScrollPos++
+			}
+		}
 	case "r":
 		// Reset and start new analysis
 		m.currentView = ViewCriteria
 		m.result = nil
+		m.resultsScrollPos = 0
 	case "esc":
 		m.currentView = ViewDashboard
+		m.resultsScrollPos = 0
 	case "s":
 		// TODO: Save results to file
 		// For now, just ignore
@@ -388,7 +408,7 @@ func (m Model) View() string {
 		return views.RenderVMSelection(sourceNode.VMs, m.criteriaState.SelectedVMs, m.vmCursorIdx, m.width)
 	case ViewResults:
 		if m.result != nil {
-			return views.RenderResults(m.result, m.width)
+			return views.RenderResultsWithScroll(m.result, m.width, m.height, m.resultsScrollPos)
 		}
 		return "No results available"
 	case ViewError:

@@ -79,11 +79,22 @@ func selectSpecificVMs(node *proxmox.Node, vmids []int) []proxmox.VM {
 	return selected
 }
 
-func selectByVMCount(node *proxmox.Node, count int) []proxmox.VM {
-	// Sort VMs by resource usage (ascending - move least impactful first)
-	vms := make([]proxmox.VM, len(node.VMs))
-	copy(vms, node.VMs)
+// filterRunningVMs returns only running VMs (excludes stopped/paused)
+func filterRunningVMs(vms []proxmox.VM) []proxmox.VM {
+	var running []proxmox.VM
+	for _, vm := range vms {
+		if vm.Status == "running" {
+			running = append(running, vm)
+		}
+	}
+	return running
+}
 
+func selectByVMCount(node *proxmox.Node, count int) []proxmox.VM {
+	// Only select running VMs (don't migrate powered off VMs)
+	vms := filterRunningVMs(node.VMs)
+
+	// Sort VMs by resource usage (ascending - move least impactful first)
 	sort.Slice(vms, func(i, j int) bool {
 		scoreI := vms[i].CPUUsage + vms[i].GetMemPercent()
 		scoreJ := vms[j].CPUUsage + vms[j].GetMemPercent()
@@ -98,10 +109,10 @@ func selectByVMCount(node *proxmox.Node, count int) []proxmox.VM {
 }
 
 func selectByVCPU(node *proxmox.Node, targetVCPUs int) []proxmox.VM {
-	// Sort VMs by vCPU count
-	vms := make([]proxmox.VM, len(node.VMs))
-	copy(vms, node.VMs)
+	// Only select running VMs (don't migrate powered off VMs)
+	vms := filterRunningVMs(node.VMs)
 
+	// Sort VMs by vCPU count
 	sort.Slice(vms, func(i, j int) bool {
 		return vms[i].CPUCores < vms[j].CPUCores
 	})
@@ -122,10 +133,10 @@ func selectByVCPU(node *proxmox.Node, targetVCPUs int) []proxmox.VM {
 }
 
 func selectByCPUUsage(node *proxmox.Node, targetUsage float64) []proxmox.VM {
-	// Sort VMs by CPU usage
-	vms := make([]proxmox.VM, len(node.VMs))
-	copy(vms, node.VMs)
+	// Only select running VMs (don't migrate powered off VMs)
+	vms := filterRunningVMs(node.VMs)
 
+	// Sort VMs by CPU usage
 	sort.Slice(vms, func(i, j int) bool {
 		return vms[i].CPUUsage < vms[j].CPUUsage
 	})
@@ -146,10 +157,10 @@ func selectByCPUUsage(node *proxmox.Node, targetUsage float64) []proxmox.VM {
 }
 
 func selectByRAM(node *proxmox.Node, targetRAM int64) []proxmox.VM {
-	// Sort VMs by RAM usage
-	vms := make([]proxmox.VM, len(node.VMs))
-	copy(vms, node.VMs)
+	// Only select running VMs (don't migrate powered off VMs)
+	vms := filterRunningVMs(node.VMs)
 
+	// Sort VMs by RAM usage
 	sort.Slice(vms, func(i, j int) bool {
 		return vms[i].UsedMem < vms[j].UsedMem
 	})
@@ -170,6 +181,7 @@ func selectByRAM(node *proxmox.Node, targetRAM int64) []proxmox.VM {
 }
 
 func selectByStorage(node *proxmox.Node, targetStorage int64) []proxmox.VM {
+	// Include ALL VMs (even stopped ones) since we need to free storage
 	// Sort VMs by storage usage
 	vms := make([]proxmox.VM, len(node.VMs))
 	copy(vms, node.VMs)

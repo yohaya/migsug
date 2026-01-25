@@ -383,8 +383,13 @@ func RenderVMTable(vms []proxmox.VM, selectedIndices map[int]bool, cursorIdx int
 	return sb.String()
 }
 
-// RenderSuggestionTable creates a table of migration suggestions
+// RenderSuggestionTable creates a table of migration suggestions (shows all)
 func RenderSuggestionTable(suggestions []analyzer.MigrationSuggestion) string {
+	return RenderSuggestionTableWithScroll(suggestions, 0, len(suggestions))
+}
+
+// RenderSuggestionTableWithScroll creates a scrollable table of migration suggestions
+func RenderSuggestionTableWithScroll(suggestions []analyzer.MigrationSuggestion, scrollPos, maxVisible int) string {
 	var sb strings.Builder
 
 	// Column widths
@@ -410,8 +415,20 @@ func RenderSuggestionTable(suggestions []analyzer.MigrationSuggestion) string {
 	sb.WriteString(headerStyle.Render(header) + "\n")
 	sb.WriteString("  " + strings.Repeat("─", colVMID+colName+colFrom+colTo+colVCPU+colRAM+colStorage+6) + "\n")
 
-	// Rows
-	for _, sug := range suggestions {
+	// Show scroll up indicator if not at top
+	if scrollPos > 0 {
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("  ↑ more above...") + "\n")
+	}
+
+	// Calculate visible range
+	endPos := scrollPos + maxVisible
+	if endPos > len(suggestions) {
+		endPos = len(suggestions)
+	}
+
+	// Rows (only visible portion)
+	for i := scrollPos; i < endPos; i++ {
+		sug := suggestions[i]
 		style := normalStyle
 		if sug.TargetNode == "NONE" {
 			style = offlineStyle
@@ -434,6 +451,11 @@ func RenderSuggestionTable(suggestions []analyzer.MigrationSuggestion) string {
 			reasonStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Italic(true)
 			sb.WriteString("    " + reasonStyle.Render("└─ "+truncate(sug.Reason, 80)) + "\n")
 		}
+	}
+
+	// Show scroll down indicator if not at bottom
+	if endPos < len(suggestions) {
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("  ↓ more below...") + "\n")
 	}
 
 	return sb.String()
