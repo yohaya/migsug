@@ -10,12 +10,15 @@ import (
 	"github.com/yourusername/migsug/internal/ui/components"
 )
 
+// titleStyle for results view
+var resultsTitleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5"))
+
 // RenderResults renders the migration results view
 func RenderResults(result *analyzer.AnalysisResult, width int) string {
 	var sb strings.Builder
 
 	// Title
-	sb.WriteString(titleStyle.Render("🎯 Migration Suggestions") + "\n\n")
+	sb.WriteString(resultsTitleStyle.Render("Migration Suggestions") + "\n\n")
 
 	// Summary
 	if len(result.Suggestions) == 0 {
@@ -84,7 +87,7 @@ func RenderVMSelection(vms []proxmox.VM, selectedVMs map[int]bool, cursorIdx int
 	var sb strings.Builder
 
 	// Title
-	sb.WriteString(titleStyle.Render("Select VMs to Migrate") + "\n\n")
+	sb.WriteString(resultsTitleStyle.Render("Select VMs to Migrate") + "\n\n")
 
 	// Instructions
 	instructionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
