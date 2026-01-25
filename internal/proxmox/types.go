@@ -37,10 +37,15 @@ type VM struct {
 
 // Cluster represents the entire Proxmox cluster
 type Cluster struct {
-	Nodes     []Node
-	TotalVMs  int
-	TotalCPUs int
-	TotalRAM  int64
+	Nodes        []Node
+	TotalVMs     int
+	TotalVCPUs   int   // Total vCPUs across all VMs
+	RunningVMs   int   // Count of running VMs
+	StoppedVMs   int   // Count of stopped VMs
+	TotalCPUs    int   // Total physical CPUs
+	TotalRAM     int64 // Total RAM across all nodes
+	TotalStorage int64 // Total storage across all nodes
+	UsedStorage  int64 // Used storage across all nodes
 }
 
 // ClusterResource represents a resource from the Proxmox cluster/resources API
@@ -111,6 +116,19 @@ type VMStatus struct {
 // APIResponse is a generic API response wrapper
 type APIResponse struct {
 	Data interface{} `json:"data"`
+}
+
+// StorageInfo represents storage information for a node
+type StorageInfo struct {
+	Storage string `json:"storage"`
+	Type    string `json:"type"`
+	Content string `json:"content"`
+	Total   int64  `json:"total"`
+	Used    int64  `json:"used"`
+	Avail   int64  `json:"avail"`
+	Active  int    `json:"active"`
+	Enabled int    `json:"enabled"`
+	Shared  int    `json:"shared"`
 }
 
 // GetCPUPercent returns CPU usage as a percentage

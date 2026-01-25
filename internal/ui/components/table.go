@@ -77,6 +77,13 @@ func RenderNodeTable(nodes []proxmox.Node, selectedIdx int) string {
 	return sb.String()
 }
 
+// Box drawing characters
+const (
+	boxHeavyHoriz = "━"
+	boxLightHoriz = "─"
+	boxDoubleHoriz = "═"
+)
+
 // RenderNodeTableWide creates a full-width table of nodes with detailed info
 func RenderNodeTableWide(nodes []proxmox.Node, selectedIdx int, width int) string {
 	var sb strings.Builder
@@ -116,8 +123,9 @@ func RenderNodeTableWide(nodes []proxmox.Node, selectedIdx int, width int) strin
 		colCPUModel = 35
 	}
 
-	// Header - two lines for better readability
+	// Styles
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 
 	// Main header
 	header1 := fmt.Sprintf("  %-*s %-*s %*s %*s %*s  %-*s  %-*s  %s",
@@ -130,17 +138,13 @@ func RenderNodeTableWide(nodes []proxmox.Node, selectedIdx int, width int) strin
 		colDiskUsed+colDiskMax+1, "Disk (Used/Total)",
 		"CPU Model")
 	sb.WriteString(headerStyle.Render(header1) + "\n")
-	sb.WriteString("  " + strings.Repeat("=", width-4) + "\n")
+	// Use graphical separator
+	sb.WriteString("  " + borderStyle.Render(strings.Repeat(boxHeavyHoriz, width-4)) + "\n")
 
 	// Rows
 	for i, node := range nodes {
-		style := normalStyle
-		if i == selectedIdx {
-			style = selectedStyle
-		}
-		if node.Status != "online" {
-			style = offlineStyle
-		}
+		isSelected := i == selectedIdx
+		isOffline := node.Status != "online"
 
 		// Format values
 		cpuPctStr := fmt.Sprintf("%5.1f%%", node.GetCPUPercent())
@@ -157,71 +161,90 @@ func RenderNodeTableWide(nodes []proxmox.Node, selectedIdx int, width int) strin
 			cpuModel = shortenCPUModel(cpuModel)
 		}
 
-		// Format RAM and Disk with color coding
-		ramPct := node.GetMemPercent()
-		diskPct := node.GetDiskPercent()
+		// Build the row content (plain text for width calculation)
+		rowContent := fmt.Sprintf("%-*s %-*s %*d %*s %*s  %*s/%-*s  %*s/%-*s  %s",
+			colName, truncate(node.Name, colName),
+			colStatus, node.Status,
+			colVMs, len(node.VMs),
+			colCPUs, fmt.Sprintf("%d", node.CPUCores),
+			colCPUPct, cpuPctStr,
+			colRAMUsed, ramUsedStr,
+			colRAMMax, ramMaxStr,
+			colDiskUsed, diskUsedStr,
+			colDiskMax, diskMaxStr,
+			truncate(cpuModel, colCPUModel))
 
-		ramColor := getUsageColor(ramPct)
-		diskColor := getUsageColor(diskPct)
-
-		ramStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ramColor))
-		diskStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(diskColor))
-
-		// Build the row
-		var row strings.Builder
-
-		// Name (full or truncated to fit)
-		nodeName := node.Name
-		if len(nodeName) > colName-1 {
-			nodeName = nodeName[:colName-4] + "..."
+		// Pad row to full width for consistent highlighting
+		if len(rowContent) < width-4 {
+			rowContent += strings.Repeat(" ", width-4-len(rowContent))
 		}
-		row.WriteString(fmt.Sprintf("%-*s ", colName, nodeName))
 
-		// Status
-		statusStyle := normalStyle
-		if node.Status == "online" {
-			statusStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
+		// Selector prefix
+		prefix := "  "
+		if isSelected {
+			prefix = "▶ "
+		}
+
+		// Apply styling based on selection and status
+		var styledRow string
+		if isSelected {
+			// Selected: highlight entire row with background
+			selectBgStyle := lipgloss.NewStyle().
+				Background(lipgloss.Color("236")).
+				Foreground(lipgloss.Color("15")).
+				Bold(true)
+			styledRow = selectBgStyle.Render(prefix + rowContent)
+		} else if isOffline {
+			// Offline node: dim the entire row
+			styledRow = prefix + offlineStyle.Render(rowContent)
 		} else {
-			statusStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+			// Normal row: apply color coding to specific columns
+			var coloredRow strings.Builder
+
+			// Name
+			nodeName := truncate(node.Name, colName)
+			coloredRow.WriteString(fmt.Sprintf("%-*s ", colName, nodeName))
+
+			// Status with color
+			statusColor := "2" // green for online
+			if node.Status != "online" {
+				statusColor = "1" // red for offline
+			}
+			statusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(statusColor))
+			coloredRow.WriteString(statusStyle.Render(fmt.Sprintf("%-*s", colStatus, node.Status)) + " ")
+
+			// VMs
+			coloredRow.WriteString(fmt.Sprintf("%*d ", colVMs, len(node.VMs)))
+
+			// CPUs
+			coloredRow.WriteString(fmt.Sprintf("%*s ", colCPUs, fmt.Sprintf("%d", node.CPUCores)))
+
+			// CPU % with color
+			cpuPctColor := getUsageColor(node.GetCPUPercent())
+			cpuPctStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(cpuPctColor))
+			coloredRow.WriteString(cpuPctStyle.Render(fmt.Sprintf("%*s", colCPUPct, cpuPctStr)) + "  ")
+
+			// RAM with color
+			ramColor := getUsageColor(node.GetMemPercent())
+			ramStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ramColor))
+			coloredRow.WriteString(ramStyle.Render(fmt.Sprintf("%*s", colRAMUsed, ramUsedStr)))
+			coloredRow.WriteString(dimStyle.Render("/"))
+			coloredRow.WriteString(fmt.Sprintf("%-*s  ", colRAMMax, ramMaxStr))
+
+			// Disk with color
+			diskColor := getUsageColor(node.GetDiskPercent())
+			diskStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(diskColor))
+			coloredRow.WriteString(diskStyle.Render(fmt.Sprintf("%*s", colDiskUsed, diskUsedStr)))
+			coloredRow.WriteString(dimStyle.Render("/"))
+			coloredRow.WriteString(fmt.Sprintf("%-*s  ", colDiskMax, diskMaxStr))
+
+			// CPU model (dimmed)
+			coloredRow.WriteString(dimStyle.Render(truncate(cpuModel, colCPUModel)))
+
+			styledRow = prefix + coloredRow.String()
 		}
-		row.WriteString(statusStyle.Render(fmt.Sprintf("%-*s", colStatus, node.Status)) + " ")
 
-		// VMs count
-		row.WriteString(fmt.Sprintf("%*d ", colVMs, len(node.VMs)))
-
-		// CPUs (sockets x cores format if available)
-		cpuStr := fmt.Sprintf("%d", node.CPUCores)
-		if node.CPUSockets > 0 {
-			cpuStr = fmt.Sprintf("%d", node.CPUCores)
-		}
-		row.WriteString(fmt.Sprintf("%*s ", colCPUs, cpuStr))
-
-		// CPU usage %
-		cpuPctColor := getUsageColor(node.GetCPUPercent())
-		cpuPctStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(cpuPctColor))
-		row.WriteString(cpuPctStyle.Render(fmt.Sprintf("%*s", colCPUPct, cpuPctStr)) + "  ")
-
-		// RAM used/total
-		row.WriteString(ramStyle.Render(fmt.Sprintf("%*s", colRAMUsed, ramUsedStr)))
-		row.WriteString(dimStyle.Render("/"))
-		row.WriteString(fmt.Sprintf("%-*s  ", colRAMMax, ramMaxStr))
-
-		// Disk used/total
-		row.WriteString(diskStyle.Render(fmt.Sprintf("%*s", colDiskUsed, diskUsedStr)))
-		row.WriteString(dimStyle.Render("/"))
-		row.WriteString(fmt.Sprintf("%-*s  ", colDiskMax, diskMaxStr))
-
-		// CPU model
-		row.WriteString(dimStyle.Render(truncate(cpuModel, colCPUModel)))
-
-		// Selector
-		if i == selectedIdx {
-			sb.WriteString("> ")
-		} else {
-			sb.WriteString("  ")
-		}
-
-		sb.WriteString(style.Render(row.String()) + "\n")
+		sb.WriteString(styledRow + "\n")
 	}
 
 	return sb.String()

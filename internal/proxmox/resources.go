@@ -22,6 +22,12 @@ func CollectClusterData(client ProxmoxClient) (*Cluster, error) {
 	nodeMap := make(map[string]*Node)
 	vmList := []VM{}
 
+	// Track storage per node (aggregated from storage type resources)
+	nodeStorage := make(map[string]struct {
+		maxDisk  int64
+		usedDisk int64
+	})
+
 	// Process resources
 	for _, res := range resources {
 		switch res.Type {
@@ -33,12 +39,20 @@ func CollectClusterData(client ProxmoxClient) (*Cluster, error) {
 				CPUUsage: res.CPU,
 				MaxMem:   res.MaxMem,
 				UsedMem:  res.Mem,
-				MaxDisk:  res.MaxDisk,
-				UsedDisk: res.Disk,
+				MaxDisk:  res.MaxDisk,  // This is just rootfs, will be updated
+				UsedDisk: res.Disk,     // This is just rootfs, will be updated
 				Uptime:   res.Uptime,
 				VMs:      []VM{},
 			}
 			nodeMap[res.Node] = &node
+
+		case "storage":
+			// Aggregate storage from all storage resources per node
+			// Only count local storage (not shared across nodes)
+			storage := nodeStorage[res.Node]
+			storage.maxDisk += res.MaxDisk
+			storage.usedDisk += res.Disk
+			nodeStorage[res.Node] = storage
 
 		case "qemu", "lxc":
 			// Skip templates
@@ -65,6 +79,17 @@ func CollectClusterData(client ProxmoxClient) (*Cluster, error) {
 		}
 	}
 
+	// Update node storage with aggregated values from storage resources
+	for nodeName, storage := range nodeStorage {
+		if node, exists := nodeMap[nodeName]; exists {
+			// Use storage resource totals if available (more accurate than rootfs only)
+			if storage.maxDisk > 0 {
+				node.MaxDisk = storage.maxDisk
+				node.UsedDisk = storage.usedDisk
+			}
+		}
+	}
+
 	// Fetch detailed node status for each node (CPU model, sockets, PVE version)
 	for nodeName, node := range nodeMap {
 		if node.Status == "online" {
@@ -88,11 +113,23 @@ func CollectClusterData(client ProxmoxClient) (*Cluster, error) {
 		}
 	}
 
-	// Convert map to slice
+	// Convert map to slice and calculate totals
 	for _, node := range nodeMap {
 		cluster.Nodes = append(cluster.Nodes, *node)
 		cluster.TotalCPUs += node.CPUCores
 		cluster.TotalRAM += node.MaxMem
+		cluster.TotalStorage += node.MaxDisk
+		cluster.UsedStorage += node.UsedDisk
+
+		// Count vCPUs and VM states
+		for _, vm := range node.VMs {
+			cluster.TotalVCPUs += vm.CPUCores
+			if vm.Status == "running" {
+				cluster.RunningVMs++
+			} else {
+				cluster.StoppedVMs++
+			}
+		}
 	}
 
 	// Sort nodes by name for consistent ordering

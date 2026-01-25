@@ -33,6 +33,7 @@ type Model struct {
 	client      proxmox.ProxmoxClient
 	currentView ViewType
 	err         error
+	version     string // Application version
 
 	// Dashboard state
 	selectedNodeIdx int
@@ -64,11 +65,17 @@ type Model struct {
 
 // NewModel creates a new application model
 func NewModel(cluster *proxmox.Cluster, client proxmox.ProxmoxClient) Model {
+	return NewModelWithVersion(cluster, client, "dev")
+}
+
+// NewModelWithVersion creates a new application model with version info
+func NewModelWithVersion(cluster *proxmox.Cluster, client proxmox.ProxmoxClient, version string) Model {
 	return Model{
 		cluster:         cluster,
 		client:          client,
 		currentView:     ViewDashboard,
 		selectedNodeIdx: 0,
+		version:         version,
 		criteriaState: views.CriteriaState{
 			SelectedMode: analyzer.ModeVMCount,
 			SelectedVMs:  make(map[int]bool),
@@ -397,7 +404,7 @@ func (m Model) View() string {
 
 	switch m.currentView {
 	case ViewDashboard:
-		return views.RenderDashboardWithRefresh(m.cluster, m.selectedNodeIdx, m.width, m.refreshCountdown, m.refreshing)
+		return views.RenderDashboardFull(m.cluster, m.selectedNodeIdx, m.width, m.refreshCountdown, m.refreshing, m.version)
 	case ViewCriteria:
 		return views.RenderCriteria(m.criteriaState, m.sourceNode, m.width)
 	case ViewVMSelection:

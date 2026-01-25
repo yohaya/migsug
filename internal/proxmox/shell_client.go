@@ -63,12 +63,52 @@ func (c *ShellClient) GetNodeStatus(node string) (*NodeStatus, error) {
 		return nil, err
 	}
 
-	var status NodeStatus
-	if err := json.Unmarshal(output, &status); err != nil {
+	// Try to unmarshal with flexible structure
+	var rawStatus map[string]interface{}
+	if err := json.Unmarshal(output, &rawStatus); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal node status: %w", err)
 	}
 
-	return &status, nil
+	status := &NodeStatus{}
+
+	// Extract cpuinfo if present
+	if cpuinfo, ok := rawStatus["cpuinfo"].(map[string]interface{}); ok {
+		if model, ok := cpuinfo["model"].(string); ok {
+			status.CPUInfo.Model = model
+		}
+		if sockets, ok := cpuinfo["sockets"].(float64); ok {
+			status.CPUInfo.Sockets = int(sockets)
+		}
+		if cpus, ok := cpuinfo["cpus"].(float64); ok {
+			status.CPUInfo.CPUs = int(cpus)
+		}
+		if cores, ok := cpuinfo["cores"].(float64); ok {
+			status.CPUInfo.Cores = int(cores)
+		}
+	}
+
+	// Extract uptime
+	if uptime, ok := rawStatus["uptime"].(float64); ok {
+		status.Uptime = int64(uptime)
+	}
+
+	return status, nil
+}
+
+// GetNodeStorage retrieves storage information for a specific node
+func (c *ShellClient) GetNodeStorage(node string) ([]StorageInfo, error) {
+	path := fmt.Sprintf("/nodes/%s/storage", node)
+	output, err := c.pvesh("get", path)
+	if err != nil {
+		return nil, err
+	}
+
+	var storages []StorageInfo
+	if err := json.Unmarshal(output, &storages); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal storage info: %w", err)
+	}
+
+	return storages, nil
 }
 
 // GetVMStatus retrieves detailed status for a specific VM

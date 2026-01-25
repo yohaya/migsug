@@ -192,7 +192,7 @@ func main() {
 	log.Printf("Loaded cluster with %d nodes and %d VMs\n", len(cluster.Nodes), cluster.TotalVMs)
 
 	// Create and run TUI
-	model := ui.NewModel(cluster, client)
+	model := ui.NewModelWithVersion(cluster, client, appVersion)
 
 	// If source node is specified, pre-select it
 	if *sourceNode != "" {

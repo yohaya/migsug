@@ -167,17 +167,36 @@ func (c *Client) GetNodeStatus(node string) (*NodeStatus, error) {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	data, err := json.Marshal(result.Data)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal data: %w", err)
+	// Handle the response with flexible parsing
+	rawData, ok := result.Data.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("unexpected response format")
 	}
 
-	var status NodeStatus
-	if err := json.Unmarshal(data, &status); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal node status: %w", err)
+	status := &NodeStatus{}
+
+	// Extract cpuinfo if present
+	if cpuinfo, ok := rawData["cpuinfo"].(map[string]interface{}); ok {
+		if model, ok := cpuinfo["model"].(string); ok {
+			status.CPUInfo.Model = model
+		}
+		if sockets, ok := cpuinfo["sockets"].(float64); ok {
+			status.CPUInfo.Sockets = int(sockets)
+		}
+		if cpus, ok := cpuinfo["cpus"].(float64); ok {
+			status.CPUInfo.CPUs = int(cpus)
+		}
+		if cores, ok := cpuinfo["cores"].(float64); ok {
+			status.CPUInfo.Cores = int(cores)
+		}
 	}
 
-	return &status, nil
+	// Extract uptime
+	if uptime, ok := rawData["uptime"].(float64); ok {
+		status.Uptime = int64(uptime)
+	}
+
+	return status, nil
 }
 
 // GetVMStatus retrieves detailed status for a specific VM
