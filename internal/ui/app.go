@@ -27,7 +27,7 @@ const (
 // Model is the main application model
 type Model struct {
 	cluster     *proxmox.Cluster
-	client      *proxmox.Client
+	client      proxmox.ProxmoxClient
 	currentView ViewType
 	err         error
 
@@ -53,7 +53,7 @@ type Model struct {
 }
 
 // NewModel creates a new application model
-func NewModel(cluster *proxmox.Cluster, client *proxmox.Client) Model {
+func NewModel(cluster *proxmox.Cluster, client proxmox.ProxmoxClient) Model {
 	return Model{
 		cluster:         cluster,
 		client:          client,

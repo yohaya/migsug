@@ -6,7 +6,7 @@ import (
 )
 
 // CollectClusterData gathers complete cluster information
-func CollectClusterData(client *Client) (*Cluster, error) {
+func CollectClusterData(client ProxmoxClient) (*Cluster, error) {
 	// Get all cluster resources
 	resources, err := client.GetClusterResources()
 	if err != nil {
