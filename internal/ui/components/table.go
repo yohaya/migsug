@@ -77,44 +77,60 @@ func RenderNodeTable(nodes []proxmox.Node, selectedIdx int) string {
 	return sb.String()
 }
 
-// RenderNodeTableWide creates a full-width table of nodes with resource bars
+// RenderNodeTableWide creates a full-width table of nodes with detailed info
 func RenderNodeTableWide(nodes []proxmox.Node, selectedIdx int, width int) string {
 	var sb strings.Builder
 
-	// Calculate column widths based on terminal width
-	// Reserve space for: selector(2) + name + status + VMs + CPU + RAM + Storage + spacing
-	minTableWidth := 80
+	// Ensure minimum width
+	minTableWidth := 120
 	if width < minTableWidth {
 		width = minTableWidth
 	}
 
-	// Column widths
-	colName := 15
+	// Determine max name length from actual data
+	maxNameLen := 10
+	for _, node := range nodes {
+		if len(node.Name) > maxNameLen {
+			maxNameLen = len(node.Name)
+		}
+	}
+	if maxNameLen > 25 {
+		maxNameLen = 25
+	}
+
+	// Column widths - fit to terminal width
+	colName := maxNameLen + 2
 	colStatus := 8
 	colVMs := 5
-	colCPU := 8
-	colRAM := 8
-	colStorage := 8
-	colCPUBar := (width - colName - colStatus - colVMs - colCPU - colRAM - colStorage - 20) / 3
-	if colCPUBar < 10 {
-		colCPUBar = 10
+	colCPUs := 6
+	colCPUPct := 7
+	colRAMUsed := 12
+	colRAMMax := 10
+	colDiskUsed := 12
+	colDiskMax := 10
+	colCPUModel := width - colName - colStatus - colVMs - colCPUs - colCPUPct - colRAMUsed - colRAMMax - colDiskUsed - colDiskMax - 15
+	if colCPUModel < 15 {
+		colCPUModel = 15
 	}
-	colRAMBar := colCPUBar
-	colStorageBar := colCPUBar
+	if colCPUModel > 35 {
+		colCPUModel = 35
+	}
 
-	// Header
-	header := fmt.Sprintf("  %-*s %-*s %*s %*s %-*s %*s %-*s %*s %-*s",
-		colName, "Name",
+	// Header - two lines for better readability
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+
+	// Main header
+	header1 := fmt.Sprintf("  %-*s %-*s %*s %*s %*s  %-*s  %-*s  %s",
+		colName, "Host",
 		colStatus, "Status",
 		colVMs, "VMs",
-		colCPU, "CPU",
-		colCPUBar, "",
-		colRAM, "RAM",
-		colRAMBar, "",
-		colStorage, "Disk",
-		colStorageBar, "")
-	sb.WriteString(headerStyle.Render(header) + "\n")
-	sb.WriteString("  " + strings.Repeat("-", width-4) + "\n")
+		colCPUs, "CPUs",
+		colCPUPct, "CPU%",
+		colRAMUsed+colRAMMax+1, "RAM (Used/Total)",
+		colDiskUsed+colDiskMax+1, "Disk (Used/Total)",
+		"CPU Model")
+	sb.WriteString(headerStyle.Render(header1) + "\n")
+	sb.WriteString("  " + strings.Repeat("=", width-4) + "\n")
 
 	// Rows
 	for i, node := range nodes {
@@ -126,31 +142,77 @@ func RenderNodeTableWide(nodes []proxmox.Node, selectedIdx int, width int) strin
 			style = offlineStyle
 		}
 
-		// Format percentages
-		cpuPct := node.GetCPUPercent()
+		// Format values
+		cpuPctStr := fmt.Sprintf("%5.1f%%", node.GetCPUPercent())
+		ramUsedStr := FormatBytesShort(node.UsedMem)
+		ramMaxStr := FormatBytesShort(node.MaxMem)
+		diskUsedStr := FormatBytesShort(node.UsedDisk)
+		diskMaxStr := FormatBytesShort(node.MaxDisk)
+
+		// CPU model - truncate if needed
+		cpuModel := node.CPUModel
+		if cpuModel == "" {
+			cpuModel = "-"
+		} else {
+			cpuModel = shortenCPUModel(cpuModel)
+		}
+
+		// Format RAM and Disk with color coding
 		ramPct := node.GetMemPercent()
 		diskPct := node.GetDiskPercent()
 
-		cpuStr := fmt.Sprintf("%5.1f%%", cpuPct)
-		ramStr := fmt.Sprintf("%5.1f%%", ramPct)
-		diskStr := fmt.Sprintf("%5.1f%%", diskPct)
+		ramColor := getUsageColor(ramPct)
+		diskColor := getUsageColor(diskPct)
 
-		// Create progress bars
-		cpuBar := renderProgressBar(cpuPct, colCPUBar)
-		ramBar := renderProgressBar(ramPct, colRAMBar)
-		diskBar := renderProgressBar(diskPct, colStorageBar)
+		ramStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ramColor))
+		diskStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(diskColor))
 
-		// Format row
-		row := fmt.Sprintf("%-*s %-*s %*d %*s %s %*s %s %*s %s",
-			colName, truncate(node.Name, colName),
-			colStatus, node.Status,
-			colVMs, len(node.VMs),
-			colCPU, cpuStr,
-			cpuBar,
-			colRAM, ramStr,
-			ramBar,
-			colStorage, diskStr,
-			diskBar)
+		// Build the row
+		var row strings.Builder
+
+		// Name (full or truncated to fit)
+		nodeName := node.Name
+		if len(nodeName) > colName-1 {
+			nodeName = nodeName[:colName-4] + "..."
+		}
+		row.WriteString(fmt.Sprintf("%-*s ", colName, nodeName))
+
+		// Status
+		statusStyle := normalStyle
+		if node.Status == "online" {
+			statusStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
+		} else {
+			statusStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+		}
+		row.WriteString(statusStyle.Render(fmt.Sprintf("%-*s", colStatus, node.Status)) + " ")
+
+		// VMs count
+		row.WriteString(fmt.Sprintf("%*d ", colVMs, len(node.VMs)))
+
+		// CPUs (sockets x cores format if available)
+		cpuStr := fmt.Sprintf("%d", node.CPUCores)
+		if node.CPUSockets > 0 {
+			cpuStr = fmt.Sprintf("%d", node.CPUCores)
+		}
+		row.WriteString(fmt.Sprintf("%*s ", colCPUs, cpuStr))
+
+		// CPU usage %
+		cpuPctColor := getUsageColor(node.GetCPUPercent())
+		cpuPctStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(cpuPctColor))
+		row.WriteString(cpuPctStyle.Render(fmt.Sprintf("%*s", colCPUPct, cpuPctStr)) + "  ")
+
+		// RAM used/total
+		row.WriteString(ramStyle.Render(fmt.Sprintf("%*s", colRAMUsed, ramUsedStr)))
+		row.WriteString(dimStyle.Render("/"))
+		row.WriteString(fmt.Sprintf("%-*s  ", colRAMMax, ramMaxStr))
+
+		// Disk used/total
+		row.WriteString(diskStyle.Render(fmt.Sprintf("%*s", colDiskUsed, diskUsedStr)))
+		row.WriteString(dimStyle.Render("/"))
+		row.WriteString(fmt.Sprintf("%-*s  ", colDiskMax, diskMaxStr))
+
+		// CPU model
+		row.WriteString(dimStyle.Render(truncate(cpuModel, colCPUModel)))
 
 		// Selector
 		if i == selectedIdx {
@@ -159,10 +221,63 @@ func RenderNodeTableWide(nodes []proxmox.Node, selectedIdx int, width int) strin
 			sb.WriteString("  ")
 		}
 
-		sb.WriteString(style.Render(row) + "\n")
+		sb.WriteString(style.Render(row.String()) + "\n")
 	}
 
 	return sb.String()
+}
+
+// FormatBytesShort formats bytes to a short human-readable format (e.g., "128G")
+func FormatBytesShort(bytes int64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%dB", bytes)
+	}
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	units := []string{"K", "M", "G", "T", "P"}
+	val := float64(bytes) / float64(div)
+	if val >= 100 {
+		return fmt.Sprintf("%.0f%s", val, units[exp])
+	}
+	return fmt.Sprintf("%.1f%s", val, units[exp])
+}
+
+// shortenCPUModel shortens the CPU model name
+func shortenCPUModel(model string) string {
+	// Remove common prefixes/suffixes to make it shorter
+	replacements := []struct {
+		old string
+		new string
+	}{
+		{"Intel(R) Xeon(R) ", "Xeon "},
+		{"Intel(R) Core(TM) ", "Core "},
+		{"AMD EPYC ", "EPYC "},
+		{"AMD Ryzen ", "Ryzen "},
+		{" Processor", ""},
+		{" CPU", ""},
+		{" @ ", "@"},
+		{"  ", " "},
+	}
+
+	result := model
+	for _, r := range replacements {
+		result = strings.ReplaceAll(result, r.old, r.new)
+	}
+	return result
+}
+
+// getUsageColor returns color based on usage percentage
+func getUsageColor(percent float64) string {
+	if percent > 80 {
+		return "1" // red
+	} else if percent > 60 {
+		return "3" // yellow
+	}
+	return "2" // green
 }
 
 // renderProgressBar creates a text-based progress bar

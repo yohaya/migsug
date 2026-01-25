@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"strconv"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yourusername/migsug/internal/analyzer"
@@ -10,6 +11,8 @@ import (
 	"github.com/yourusername/migsug/internal/ui/components"
 	"github.com/yourusername/migsug/internal/ui/views"
 )
+
+const refreshInterval = 60 // seconds
 
 // ViewType represents the current view
 type ViewType int
@@ -50,6 +53,10 @@ type Model struct {
 	showHelp   bool
 	loading    bool
 	loadingMsg string
+
+	// Auto-refresh state
+	refreshCountdown int  // seconds until next refresh
+	refreshing       bool // true when actively refreshing data
 }
 
 // NewModel creates a new application model
@@ -63,14 +70,31 @@ func NewModel(cluster *proxmox.Cluster, client proxmox.ProxmoxClient) Model {
 			SelectedMode: analyzer.ModeVMCount,
 			SelectedVMs:  make(map[int]bool),
 		},
-		width:  80,
-		height: 24,
+		width:            80,
+		height:           24,
+		refreshCountdown: refreshInterval,
 	}
 }
 
 // Init initializes the model
 func (m Model) Init() tea.Cmd {
-	return nil
+	return tickCmd()
+}
+
+// tickCmd returns a command that sends a tick message every second
+func tickCmd() tea.Cmd {
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
+		return tickMsg(t)
+	})
+}
+
+// tickMsg is sent every second for the refresh countdown
+type tickMsg time.Time
+
+// refreshCompleteMsg is sent when cluster data refresh is complete
+type refreshCompleteMsg struct {
+	cluster *proxmox.Cluster
+	err     error
 }
 
 // Update handles messages and updates the model
@@ -82,6 +106,33 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		return m, nil
+
+	case tickMsg:
+		// Only decrement countdown on dashboard view
+		if m.currentView == ViewDashboard && !m.refreshing {
+			m.refreshCountdown--
+			if m.refreshCountdown <= 0 {
+				// Start refresh
+				m.refreshing = true
+				return m, tea.Batch(tickCmd(), m.refreshClusterData())
+			}
+		}
+		return m, tickCmd()
+
+	case refreshCompleteMsg:
+		m.refreshing = false
+		m.refreshCountdown = refreshInterval
+		if msg.err == nil && msg.cluster != nil {
+			m.cluster = msg.cluster
+			// Keep selection valid
+			if m.selectedNodeIdx >= len(m.cluster.Nodes) {
+				m.selectedNodeIdx = len(m.cluster.Nodes) - 1
+			}
+			if m.selectedNodeIdx < 0 {
+				m.selectedNodeIdx = 0
+			}
+		}
 		return m, nil
 
 	case errMsg:
@@ -98,6 +149,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+// refreshClusterData creates a command to refresh cluster data
+func (m Model) refreshClusterData() tea.Cmd {
+	return func() tea.Msg {
+		cluster, err := proxmox.CollectClusterData(m.client)
+		return refreshCompleteMsg{cluster: cluster, err: err}
+	}
 }
 
 // handleKeyPress handles keyboard input
@@ -148,6 +207,12 @@ func (m Model) handleDashboardKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			SelectedVMs:  make(map[int]bool),
 		}
 		m.currentView = ViewCriteria
+	case "r":
+		// Manual refresh
+		if !m.refreshing {
+			m.refreshing = true
+			return m, m.refreshClusterData()
+		}
 	}
 	return m, nil
 }
@@ -312,7 +377,7 @@ func (m Model) View() string {
 
 	switch m.currentView {
 	case ViewDashboard:
-		return views.RenderDashboard(m.cluster, m.selectedNodeIdx, m.width)
+		return views.RenderDashboardWithRefresh(m.cluster, m.selectedNodeIdx, m.width, m.refreshCountdown, m.refreshing)
 	case ViewCriteria:
 		return views.RenderCriteria(m.criteriaState, m.sourceNode, m.width)
 	case ViewVMSelection:
