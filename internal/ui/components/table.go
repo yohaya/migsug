@@ -20,11 +20,26 @@ var (
 func RenderNodeTable(nodes []proxmox.Node, selectedIdx int) string {
 	var sb strings.Builder
 
-	// Header
-	header := fmt.Sprintf("%-15s %-8s %-5s %-10s %-12s %-12s",
-		"Name", "Status", "VMs", "CPU", "RAM", "Storage")
+	// Column widths (must match between header and rows)
+	const (
+		colName    = 15
+		colStatus  = 8
+		colVMs     = 5
+		colCPU     = 8
+		colRAM     = 8
+		colStorage = 8
+	)
+
+	// Header (with 2-char prefix to align with row selector "→ ")
+	header := fmt.Sprintf("  %-*s %-*s %*s %*s %*s %*s",
+		colName, "Name",
+		colStatus, "Status",
+		colVMs, "VMs",
+		colCPU, "CPU",
+		colRAM, "RAM",
+		colStorage, "Storage")
 	sb.WriteString(headerStyle.Render(header) + "\n")
-	sb.WriteString(strings.Repeat("─", 70) + "\n")
+	sb.WriteString("  " + strings.Repeat("─", colName+colStatus+colVMs+colCPU+colRAM+colStorage+5) + "\n")
 
 	// Rows
 	for i, node := range nodes {
@@ -36,13 +51,18 @@ func RenderNodeTable(nodes []proxmox.Node, selectedIdx int) string {
 			style = offlineStyle
 		}
 
-		row := fmt.Sprintf("%-15s %-8s %-5d %-10s %-12s %-12s",
-			node.Name,
-			node.Status,
-			len(node.VMs),
-			fmt.Sprintf("%.1f%%", node.GetCPUPercent()),
-			fmt.Sprintf("%.1f%%", node.GetMemPercent()),
-			fmt.Sprintf("%.1f%%", node.GetDiskPercent()),
+		// Format percentages with consistent width (right-aligned)
+		cpuStr := fmt.Sprintf("%6.1f%%", node.GetCPUPercent())
+		ramStr := fmt.Sprintf("%6.1f%%", node.GetMemPercent())
+		storageStr := fmt.Sprintf("%6.1f%%", node.GetDiskPercent())
+
+		row := fmt.Sprintf("%-*s %-*s %*d %*s %*s %*s",
+			colName, truncate(node.Name, colName),
+			colStatus, node.Status,
+			colVMs, len(node.VMs),
+			colCPU, cpuStr,
+			colRAM, ramStr,
+			colStorage, storageStr,
 		)
 
 		if i == selectedIdx {
@@ -61,11 +81,29 @@ func RenderNodeTable(nodes []proxmox.Node, selectedIdx int) string {
 func RenderVMTable(vms []proxmox.VM, selectedIndices map[int]bool, cursorIdx int) string {
 	var sb strings.Builder
 
-	// Header
-	header := fmt.Sprintf("%-5s %-20s %-6s %-8s %-8s %-10s %-10s",
-		"VMID", "Name", "Status", "vCPU", "CPU%", "RAM", "Storage")
+	// Column widths
+	const (
+		colCheck   = 3  // [x]
+		colVMID    = 6
+		colName    = 20
+		colStatus  = 8
+		colVCPU    = 5
+		colCPU     = 7
+		colRAM     = 10
+		colStorage = 10
+	)
+
+	// Header (with prefix to align with "→ [x] ")
+	header := fmt.Sprintf("      %*s %-*s %-*s %*s %*s %*s %*s",
+		colVMID, "VMID",
+		colName, "Name",
+		colStatus, "Status",
+		colVCPU, "vCPU",
+		colCPU, "CPU%",
+		colRAM, "RAM",
+		colStorage, "Storage")
 	sb.WriteString(headerStyle.Render(header) + "\n")
-	sb.WriteString(strings.Repeat("─", 80) + "\n")
+	sb.WriteString("      " + strings.Repeat("─", colVMID+colName+colStatus+colVCPU+colCPU+colRAM+colStorage+6) + "\n")
 
 	// Rows
 	for i, vm := range vms {
@@ -82,15 +120,18 @@ func RenderVMTable(vms []proxmox.VM, selectedIndices map[int]bool, cursorIdx int
 			checkbox = "✓"
 		}
 
-		row := fmt.Sprintf("[%s] %-5d %-20s %-6s %-8d %-8.1f %-10s %-10s",
+		// Format CPU usage with consistent width
+		cpuStr := fmt.Sprintf("%5.1f%%", vm.CPUUsage)
+
+		row := fmt.Sprintf("[%s] %*d %-*s %-*s %*d %*s %*s %*s",
 			checkbox,
-			vm.VMID,
-			truncate(vm.Name, 20),
-			vm.Status,
-			vm.CPUCores,
-			vm.CPUUsage,
-			FormatBytes(vm.UsedMem),
-			FormatBytes(vm.UsedDisk),
+			colVMID, vm.VMID,
+			colName, truncate(vm.Name, colName),
+			colStatus, vm.Status,
+			colVCPU, vm.CPUCores,
+			colCPU, cpuStr,
+			colRAM, FormatBytes(vm.UsedMem),
+			colStorage, FormatBytes(vm.UsedDisk),
 		)
 
 		if i == cursorIdx {
@@ -109,11 +150,28 @@ func RenderVMTable(vms []proxmox.VM, selectedIndices map[int]bool, cursorIdx int
 func RenderSuggestionTable(suggestions []analyzer.MigrationSuggestion) string {
 	var sb strings.Builder
 
-	// Header
-	header := fmt.Sprintf("%-5s %-20s %-12s %-12s %-8s %-10s %-10s",
-		"VMID", "Name", "From", "To", "vCPU", "RAM", "Storage")
+	// Column widths
+	const (
+		colVMID    = 6
+		colName    = 20
+		colFrom    = 12
+		colTo      = 12
+		colVCPU    = 5
+		colRAM     = 10
+		colStorage = 10
+	)
+
+	// Header (with 2-char prefix for alignment)
+	header := fmt.Sprintf("  %*s %-*s %-*s %-*s %*s %*s %*s",
+		colVMID, "VMID",
+		colName, "Name",
+		colFrom, "From",
+		colTo, "To",
+		colVCPU, "vCPU",
+		colRAM, "RAM",
+		colStorage, "Storage")
 	sb.WriteString(headerStyle.Render(header) + "\n")
-	sb.WriteString(strings.Repeat("─", 90) + "\n")
+	sb.WriteString("  " + strings.Repeat("─", colVMID+colName+colFrom+colTo+colVCPU+colRAM+colStorage+6) + "\n")
 
 	// Rows
 	for _, sug := range suggestions {
@@ -122,14 +180,14 @@ func RenderSuggestionTable(suggestions []analyzer.MigrationSuggestion) string {
 			style = offlineStyle
 		}
 
-		row := fmt.Sprintf("%-5d %-20s %-12s %-12s %-8d %-10s %-10s",
-			sug.VMID,
-			truncate(sug.VMName, 20),
-			truncate(sug.SourceNode, 12),
-			truncate(sug.TargetNode, 12),
-			sug.VCPUs,
-			FormatBytes(sug.RAM),
-			FormatBytes(sug.Storage),
+		row := fmt.Sprintf("%*d %-*s %-*s %-*s %*d %*s %*s",
+			colVMID, sug.VMID,
+			colName, truncate(sug.VMName, colName),
+			colFrom, truncate(sug.SourceNode, colFrom),
+			colTo, truncate(sug.TargetNode, colTo),
+			colVCPU, sug.VCPUs,
+			colRAM, FormatBytes(sug.RAM),
+			colStorage, FormatBytes(sug.Storage),
 		)
 
 		sb.WriteString("  " + style.Render(row) + "\n")
