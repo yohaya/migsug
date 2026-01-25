@@ -83,7 +83,7 @@ func RenderVMTable(vms []proxmox.VM, selectedIndices map[int]bool, cursorIdx int
 
 	// Column widths
 	const (
-		colCheck   = 3  // [x]
+		colCheck   = 3 // [x]
 		colVMID    = 6
 		colName    = 20
 		colStatus  = 8
