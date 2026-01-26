@@ -105,10 +105,16 @@ func RenderResultsWithSource(result *analyzer.AnalysisResult, cluster *proxmox.C
 
 	// Show scroll info after the closing dashes if there are more items than visible
 	if len(result.Suggestions) > maxVisible {
-		scrollInfo := fmt.Sprintf("(showing %d-%d of %d, use ↑/↓ to scroll)",
+		scrollInfo := fmt.Sprintf("Showing %d-%d of %d",
 			scrollPos+1,
 			min(scrollPos+maxVisible, len(result.Suggestions)),
 			len(result.Suggestions))
+		// Right-align to match table width (approximately 100 characters)
+		tableWidth := 100
+		padding := tableWidth - len(scrollInfo)
+		if padding > 0 {
+			scrollInfo = strings.Repeat(" ", padding) + scrollInfo
+		}
 		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(scrollInfo) + "\n")
 	}
 	sb.WriteString("\n")

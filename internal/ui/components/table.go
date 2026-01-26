@@ -916,7 +916,7 @@ func RenderImpactTable(sourceBefore, sourceAfter analyzer.NodeState, targetsBefo
 		sectionWidth, "After")
 	sb.WriteString(headerStyle.Render(header1) + "\n")
 
-	// Header row 2: column names
+	// Header row 2: column names (same color as main header)
 	colHeaders := fmt.Sprintf("%*s %*s %*s %*s %*s",
 		colVMs, "VMs",
 		colVCPUs, "vCPUs",
@@ -927,7 +927,7 @@ func RenderImpactTable(sourceBefore, sourceAfter analyzer.NodeState, targetsBefo
 		colHost, "",
 		colHeaders,
 		colHeaders)
-	sb.WriteString(dimStyle.Render(header2) + "\n")
+	sb.WriteString(headerStyle.Render(header2) + "\n")
 
 	// Separator
 	sb.WriteString("  " + strings.Repeat("─", totalWidth) + "\n")
