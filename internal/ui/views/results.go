@@ -187,11 +187,8 @@ func RenderResultsInteractive(result *analyzer.AnalysisResult, cluster *proxmox.
 		return sb.String()
 	}
 
-	// Migration summary with section indicator
-	summaryTitle := "Migration Summary:"
-	if focusedSection == 0 {
-		summaryTitle = "▶ Migration Summary:"
-	}
+	// Migration summary with section indicator (always show ▶)
+	summaryTitle := "▶ Migration Summary:"
 	sb.WriteString(summaryTitle + "\n")
 	sb.WriteString(components.RenderMigrationSummaryContent(
 		result.TotalVMs,
@@ -226,11 +223,8 @@ func RenderResultsInteractive(result *analyzer.AnalysisResult, cluster *proxmox.
 	}
 	sb.WriteString("\n")
 
-	// Impact table with section indicator and cursor
-	impactTitle := "Migration Impact:"
-	if focusedSection == 1 {
-		impactTitle = "▶ Migration Impact:"
-	}
+	// Impact table with section indicator (always show ▶)
+	impactTitle := "▶ Migration Impact:"
 	sb.WriteString(impactTitle + "\n\n")
 
 	if focusedSection == 1 {
