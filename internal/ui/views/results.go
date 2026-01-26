@@ -198,7 +198,7 @@ func renderResultsClusterSummary(cluster *proxmox.Cluster, width int) string {
 	}
 
 	// Fixed column widths
-	col1Width := 32
+	col1Width := 34
 	col2Width := 30
 
 	// Row 1: Nodes, CPU, vCPUs

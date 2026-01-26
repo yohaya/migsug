@@ -175,7 +175,7 @@ func renderEnhancedClusterSummary(cluster *proxmox.Cluster, width int) string {
 	storageColor := getUsageColorCode(storagePercent)
 
 	// Fixed column widths for vertical alignment
-	col1Width := 32 // "VMs:   4639 (On: 4046, Off: 593)" needs ~32 chars
+	col1Width := 34 // "VMs:   4639 (On: 4046, Off: 593)" + 2 char spacing
 	col2Width := 30 // "RAM: 49306/75927 GiB (64.9%)" needs ~30 chars
 
 	// Row 1: Nodes, CPU, vCPUs

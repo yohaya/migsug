@@ -278,7 +278,7 @@ func renderClusterSummary(cluster *proxmox.Cluster, width int) string {
 	storageColor := getUsageColor(storagePercent)
 
 	// Fixed column widths for vertical alignment
-	col1Width := 32 // "VMs:   4639 (On: 4046, Off: 593)" needs ~32 chars
+	col1Width := 34 // "VMs:   4639 (On: 4046, Off: 593)" + 2 char spacing
 	col2Width := 30 // "RAM: 49306/75927 GiB (64.9%)" needs ~30 chars
 
 	// Row 1: Nodes, CPU, vCPUs
@@ -350,8 +350,8 @@ func renderNodeSummary(node *proxmox.Node, width int) string {
 	}
 
 	// Fixed column widths for vertical alignment
-	col1Width := 28 // "VMs: 57 (On: 41, Off: 16)"
-	col2Width := 14 // "CPU: 19.0%"
+	col1Width := 30 // "VMs: 158 (On: 143, Off: 15)" + 2 char spacing
+	col2Width := 24 // "RAM: 1641/2015G (81%)" + 2 char spacing
 
 	// Format values
 	vmStr := fmt.Sprintf("%d (On: %d, Off: %d)", len(node.VMs), runningVMs, stoppedVMs)
