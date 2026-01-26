@@ -149,6 +149,20 @@ func RenderMigrationSummary(totalVMs int, totalVCPUs int, totalRAM int64, totalS
 	return content
 }
 
+// RenderMigrationSummaryContent creates just the content row for migration results (no title)
+func RenderMigrationSummaryContent(totalVMs int, totalVCPUs int, totalRAM int64, totalStorage int64) string {
+	labelStyle := lipgloss.NewStyle()
+	valueStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
+
+	var content string
+	content = "  " + labelStyle.Render("VMs: ") + valueStyle.Render(fmt.Sprintf("%-10d", totalVMs))
+	content += labelStyle.Render("vCPUs: ") + valueStyle.Render(fmt.Sprintf("%-10d", totalVCPUs))
+	content += labelStyle.Render("RAM: ") + valueStyle.Render(fmt.Sprintf("%-14s", FormatBytes(totalRAM)))
+	content += labelStyle.Render("Storage: ") + valueStyle.Render(FormatBytes(totalStorage))
+
+	return content
+}
+
 // RenderHelp creates a help box with keyboard shortcuts
 func RenderHelp() string {
 	content := titleStyle.Render("Keyboard Shortcuts") + "\n\n"

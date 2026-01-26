@@ -120,9 +120,8 @@ func RenderResultsWithSource(result *analyzer.AnalysisResult, cluster *proxmox.C
 	}
 	sb.WriteString("\n")
 
-	// Combined impact table (source + targets)
-	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6")).
-		Render("Migration Impact:") + "\n\n")
+	// Combined impact table (source + targets) - title in regular white
+	sb.WriteString("Migration Impact:\n\n")
 	sb.WriteString(components.RenderImpactTable(
 		result.SourceBefore,
 		result.SourceAfter,
@@ -135,6 +134,236 @@ func RenderResultsWithSource(result *analyzer.AnalysisResult, cluster *proxmox.C
 	sb.WriteString("\n" + helpStyle.Render("↑/↓/PgUp/PgDn/Home/End: Navigate  r: New Analysis  Esc: Back  q: Quit"))
 
 	return sb.String()
+}
+
+// RenderResultsInteractive renders the results view with section focus and impact cursor support
+func RenderResultsInteractive(result *analyzer.AnalysisResult, cluster *proxmox.Cluster, sourceNode *proxmox.Node, version string, width, height, scrollPos, cursorPos, focusedSection, impactCursor int) string {
+	var sb strings.Builder
+
+	if width < 80 {
+		width = 100
+	}
+
+	// Count active targets
+	activeTargets := 0
+	for targetName, afterState := range result.TargetsAfter {
+		beforeState := result.TargetsBefore[targetName]
+		if afterState.VMCount != beforeState.VMCount {
+			activeTargets++
+		}
+	}
+
+	// Title with version
+	versionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+
+	title := "KVM Migration Suggester"
+	if version != "" && version != "dev" {
+		title += " " + versionStyle.Render("v"+version)
+	}
+	sb.WriteString(resultsTitleStyle.Render(title) + "\n")
+	sb.WriteString(borderStyle.Render(strings.Repeat("━", width)) + "\n\n")
+
+	// Cluster summary
+	if cluster != nil {
+		sb.WriteString(renderResultsClusterSummary(cluster, width))
+		sb.WriteString("\n")
+	}
+
+	// Source node info
+	if sourceNode != nil {
+		sb.WriteString(renderSourceNodeSummary(sourceNode, width))
+		sb.WriteString("\n")
+	}
+
+	// No suggestions case
+	if len(result.Suggestions) == 0 {
+		errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Bold(true)
+		sb.WriteString(errorStyle.Render("No migration suggestions generated.") + "\n")
+		sb.WriteString("This might mean:\n")
+		sb.WriteString("  • No VMs match the criteria\n")
+		sb.WriteString("  • No target nodes have sufficient capacity\n")
+		sb.WriteString("  • All target nodes are excluded\n\n")
+		return sb.String()
+	}
+
+	// Migration summary with section indicator
+	summaryTitle := "Migration Summary:"
+	if focusedSection == 0 {
+		summaryTitle = "▶ Migration Summary:"
+	}
+	sb.WriteString(summaryTitle + "\n")
+	sb.WriteString(components.RenderMigrationSummaryContent(
+		result.TotalVMs,
+		result.TotalVCPUs,
+		result.TotalRAM,
+		result.TotalStorage,
+	))
+	sb.WriteString("\n\n")
+
+	// Calculate visible rows
+	maxVisible := calculateVisibleRowsWithTargets(height, activeTargets)
+
+	// Suggestions table
+	if focusedSection == 0 {
+		sb.WriteString(components.RenderSuggestionTableWithCursor(result.Suggestions, scrollPos, maxVisible, cursorPos))
+	} else {
+		sb.WriteString(components.RenderSuggestionTableWithCursor(result.Suggestions, scrollPos, maxVisible, -1))
+	}
+
+	// Scroll info
+	if len(result.Suggestions) > maxVisible {
+		scrollInfo := fmt.Sprintf("Showing %d-%d of %d",
+			scrollPos+1,
+			min(scrollPos+maxVisible, len(result.Suggestions)),
+			len(result.Suggestions))
+		tableWidth := 106
+		padding := tableWidth - len(scrollInfo)
+		if padding > 0 {
+			scrollInfo = strings.Repeat(" ", padding) + scrollInfo
+		}
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(scrollInfo) + "\n")
+	}
+	sb.WriteString("\n")
+
+	// Impact table with section indicator and cursor
+	impactTitle := "Migration Impact:"
+	if focusedSection == 1 {
+		impactTitle = "▶ Migration Impact:"
+	}
+	sb.WriteString(impactTitle + "\n\n")
+
+	if focusedSection == 1 {
+		sb.WriteString(components.RenderImpactTableWithCursor(
+			result.SourceBefore,
+			result.SourceAfter,
+			result.TargetsBefore,
+			result.TargetsAfter,
+			impactCursor,
+		))
+	} else {
+		sb.WriteString(components.RenderImpactTable(
+			result.SourceBefore,
+			result.SourceAfter,
+			result.TargetsBefore,
+			result.TargetsAfter,
+		))
+	}
+
+	// Help text with TAB instruction
+	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	sb.WriteString("\n" + helpStyle.Render("Tab: Switch section  ↑/↓: Navigate  Enter: View details  r: New Analysis  Esc: Back  q: Quit"))
+
+	return sb.String()
+}
+
+// RenderHostDetail renders the detail view for a selected host showing VMs added/removed
+func RenderHostDetail(result *analyzer.AnalysisResult, hostName, sourceNodeName string, width, height int) string {
+	var sb strings.Builder
+
+	if width < 80 {
+		width = 100
+	}
+
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5"))
+	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
+	labelStyle := lipgloss.NewStyle()
+	valueStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
+	addedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
+	removedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+
+	// Title
+	sb.WriteString(titleStyle.Render("Host Detail: "+hostName) + "\n")
+	sb.WriteString(borderStyle.Render(strings.Repeat("━", width)) + "\n\n")
+
+	// Check if this is the source node
+	isSource := (hostName == sourceNodeName || hostName == result.SourceBefore.Name)
+
+	// Get before/after state
+	var beforeState, afterState analyzer.NodeState
+	if isSource {
+		beforeState = result.SourceBefore
+		afterState = result.SourceAfter
+	} else {
+		beforeState = result.TargetsBefore[hostName]
+		afterState = result.TargetsAfter[hostName]
+	}
+
+	// Show before/after summary
+	sb.WriteString(labelStyle.Render("Before: ") +
+		valueStyle.Render(fmt.Sprintf("VMs: %d, vCPUs: %d, CPU: %.1f%%, RAM: %.1f%%",
+			beforeState.VMCount, beforeState.VCPUs, beforeState.CPUPercent, beforeState.RAMPercent)) + "\n")
+	sb.WriteString(labelStyle.Render("After:  ") +
+		valueStyle.Render(fmt.Sprintf("VMs: %d, vCPUs: %d, CPU: %.1f%%, RAM: %.1f%%",
+			afterState.VMCount, afterState.VCPUs, afterState.CPUPercent, afterState.RAMPercent)) + "\n\n")
+
+	// Collect VMs added/removed
+	var addedVMs, removedVMs []analyzer.MigrationSuggestion
+
+	for _, sug := range result.Suggestions {
+		if isSource && sug.SourceNode == sourceNodeName {
+			removedVMs = append(removedVMs, sug)
+		} else if !isSource && sug.TargetNode == hostName {
+			addedVMs = append(addedVMs, sug)
+		}
+	}
+
+	// Show removed VMs (for source node)
+	if len(removedVMs) > 0 {
+		sb.WriteString(removedStyle.Render(fmt.Sprintf("VMs Removed (%d):", len(removedVMs))) + "\n")
+		sb.WriteString(headerStyle.Render(fmt.Sprintf("  %6s  %-24s  %-20s  %6s  %8s  %8s",
+			"VMID", "Name", "Target", "vCPUs", "RAM", "Storage")) + "\n")
+		sb.WriteString("  " + strings.Repeat("─", 90) + "\n")
+
+		for _, vm := range removedVMs {
+			sb.WriteString(fmt.Sprintf("  %6d  %-24s  %-20s  %6d  %8s  %8s\n",
+				vm.VMID,
+				truncateString(vm.VMName, 24),
+				truncateString(vm.TargetNode, 20),
+				vm.VCPUs,
+				components.FormatBytesShort(vm.RAM),
+				components.FormatBytesShort(vm.Storage)))
+		}
+		sb.WriteString("\n")
+	}
+
+	// Show added VMs (for target nodes)
+	if len(addedVMs) > 0 {
+		sb.WriteString(addedStyle.Render(fmt.Sprintf("VMs Added (%d):", len(addedVMs))) + "\n")
+		sb.WriteString(headerStyle.Render(fmt.Sprintf("  %6s  %-24s  %-20s  %6s  %8s  %8s",
+			"VMID", "Name", "From", "vCPUs", "RAM", "Storage")) + "\n")
+		sb.WriteString("  " + strings.Repeat("─", 90) + "\n")
+
+		for _, vm := range addedVMs {
+			sb.WriteString(fmt.Sprintf("  %6d  %-24s  %-20s  %6d  %8s  %8s\n",
+				vm.VMID,
+				truncateString(vm.VMName, 24),
+				truncateString(vm.SourceNode, 20),
+				vm.VCPUs,
+				components.FormatBytesShort(vm.RAM),
+				components.FormatBytesShort(vm.Storage)))
+		}
+		sb.WriteString("\n")
+	}
+
+	if len(addedVMs) == 0 && len(removedVMs) == 0 {
+		sb.WriteString("No VMs added or removed on this host.\n\n")
+	}
+
+	// Help text
+	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	sb.WriteString("\n" + helpStyle.Render("Press Esc or Enter to go back"))
+
+	return sb.String()
+}
+
+// truncateString truncates a string to maxLen characters
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-1] + "…"
 }
 
 // calculateVisibleRows calculates how many suggestion rows can fit on screen (legacy)

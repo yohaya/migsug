@@ -1019,6 +1019,166 @@ func RenderImpactTable(sourceBefore, sourceAfter analyzer.NodeState, targetsBefo
 	return sb.String()
 }
 
+// RenderImpactTableWithCursor renders the impact table with cursor highlighting
+func RenderImpactTableWithCursor(sourceBefore, sourceAfter analyzer.NodeState, targetsBefore, targetsAfter map[string]analyzer.NodeState, cursorPos int) string {
+	var sb strings.Builder
+
+	// Column widths
+	const (
+		colHost    = 28
+		colVMs     = 5
+		colVCPUs   = 6
+		colCPU     = 6
+		colRAM     = 8
+		colStorage = 8
+		colSep     = 3
+	)
+
+	// Styles
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
+	labelStyle := lipgloss.NewStyle()
+	valueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
+	greenStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
+	yellowStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
+	selectedStyle := lipgloss.NewStyle().Background(lipgloss.Color("236")).Foreground(lipgloss.Color("15")).Bold(true)
+
+	// Calculate total width
+	sectionWidth := colVMs + colVCPUs + colCPU + colRAM + colStorage + 4
+	totalWidth := colHost + colSep + sectionWidth + colSep + sectionWidth
+
+	// Header row 1
+	header1 := fmt.Sprintf("  %-*s │ %-*s │ %-*s",
+		colHost, "Hostname",
+		sectionWidth, "Before",
+		sectionWidth, "After")
+	sb.WriteString(headerStyle.Render(header1) + "\n")
+
+	// Header row 2
+	colHeaders := fmt.Sprintf("%*s %*s %*s %*s %*s",
+		colVMs, "VMs",
+		colVCPUs, "vCPUs",
+		colCPU, "CPU%",
+		colRAM, "RAM",
+		colStorage, "Storage")
+	header2 := fmt.Sprintf("  %-*s │ %s │ %s",
+		colHost, "",
+		colHeaders,
+		colHeaders)
+	sb.WriteString(headerStyle.Render(header2) + "\n")
+
+	// Separator
+	sb.WriteString("  " + strings.Repeat("─", totalWidth) + "\n")
+
+	rowIndex := 0
+
+	// Helper function to render a row with optional cursor highlight
+	renderRowWithCursor := func(name string, before, after analyzer.NodeState, isSource bool) {
+		isSelected := (rowIndex == cursorPos)
+
+		// Build row content
+		beforeVMs := fmt.Sprintf("%*d", colVMs, before.VMCount)
+		beforeVCPUs := fmt.Sprintf("%*d", colVCPUs, before.VCPUs)
+		beforeCPU := fmt.Sprintf("%*.1f", colCPU-1, before.CPUPercent) + "%"
+		beforeRAM := fmt.Sprintf("%*s", colRAM, FormatBytesShort(before.RAMUsed))
+		beforeStorage := fmt.Sprintf("%*s", colStorage, FormatBytesShort(before.StorageUsed))
+
+		afterVMs := fmt.Sprintf("%*d", colVMs, after.VMCount)
+		afterVCPUs := fmt.Sprintf("%*d", colVCPUs, after.VCPUs)
+		afterCPU := fmt.Sprintf("%*.1f", colCPU-1, after.CPUPercent) + "%"
+		afterRAM := fmt.Sprintf("%*s", colRAM, FormatBytesShort(after.RAMUsed))
+		afterStorage := fmt.Sprintf("%*s", colStorage, FormatBytesShort(after.StorageUsed))
+
+		beforeSection := fmt.Sprintf("%s %s %s %s %s", beforeVMs, beforeVCPUs, beforeCPU, beforeRAM, beforeStorage)
+		afterSection := fmt.Sprintf("%s %s %s %s %s", afterVMs, afterVCPUs, afterCPU, afterRAM, afterStorage)
+
+		// Selector indicator
+		selector := "  "
+		if isSelected {
+			selector = "▶ "
+		}
+
+		if isSelected {
+			// Render entire row with highlight
+			rowContent := fmt.Sprintf("%-*s │ %s │ %s",
+				colHost, truncate(name, colHost),
+				beforeSection,
+				afterSection)
+			// Pad to full width
+			if len(rowContent) < totalWidth {
+				rowContent += strings.Repeat(" ", totalWidth-len(rowContent))
+			}
+			sb.WriteString(selector + selectedStyle.Render(rowContent) + "\n")
+		} else {
+			// Normal rendering with colors
+			vmsDiff := after.VMCount - before.VMCount
+			cpuDiff := after.CPUPercent - before.CPUPercent
+
+			var afterVMsStyle, afterCPUStyle lipgloss.Style
+			if isSource {
+				if vmsDiff < 0 {
+					afterVMsStyle = greenStyle
+				} else {
+					afterVMsStyle = valueStyle
+				}
+				if cpuDiff < -0.1 {
+					afterCPUStyle = greenStyle
+				} else {
+					afterCPUStyle = valueStyle
+				}
+			} else {
+				if vmsDiff > 0 {
+					afterVMsStyle = yellowStyle
+				} else {
+					afterVMsStyle = valueStyle
+				}
+				if cpuDiff > 0.1 {
+					afterCPUStyle = yellowStyle
+				} else {
+					afterCPUStyle = valueStyle
+				}
+			}
+
+			afterSectionStyled := afterVMsStyle.Render(afterVMs) + " " +
+				valueStyle.Render(afterVCPUs) + " " +
+				afterCPUStyle.Render(afterCPU) + " " +
+				valueStyle.Render(afterRAM) + " " +
+				valueStyle.Render(afterStorage)
+
+			row := fmt.Sprintf("%s%-*s │ %s │ %s",
+				selector,
+				colHost, truncate(name, colHost),
+				labelStyle.Render(beforeSection),
+				afterSectionStyled)
+			sb.WriteString(row + "\n")
+		}
+
+		rowIndex++
+	}
+
+	// Render source node first
+	renderRowWithCursor(sourceBefore.Name+" (src)", sourceBefore, sourceAfter, true)
+
+	// Render target nodes (sorted)
+	var targetNames []string
+	for name := range targetsAfter {
+		targetNames = append(targetNames, name)
+	}
+	sort.Strings(targetNames)
+
+	for _, name := range targetNames {
+		afterState := targetsAfter[name]
+		beforeState := targetsBefore[name]
+		if afterState.VMCount != beforeState.VMCount {
+			renderRowWithCursor(name, beforeState, afterState, false)
+		}
+	}
+
+	// Closing line
+	sb.WriteString("  " + strings.Repeat("─", totalWidth) + "\n")
+
+	return sb.String()
+}
+
 // RenderNodeStateComparison shows before/after comparison for a node on a single line
 func RenderNodeStateComparison(nodeName string, before, after analyzer.NodeState) string {
 	var sb strings.Builder

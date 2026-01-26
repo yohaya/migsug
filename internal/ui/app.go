@@ -24,6 +24,7 @@ const (
 	ViewVMSelection
 	ViewAnalyzing
 	ViewResults
+	ViewHostDetail // Shows VMs added/removed on a specific host
 	ViewError
 	ViewHelp
 )
@@ -68,6 +69,12 @@ type Model struct {
 	// Results view scroll state
 	resultsScrollPos int
 	resultsCursorPos int // Current cursor position in results list
+
+	// Results view section focus (0 = suggestions table, 1 = impact table)
+	resultsSection    int
+	impactCursorPos   int    // Cursor position in impact table
+	selectedHostName  string // Selected host for detail view
+	impactHostNames   []string // Sorted list of host names in impact table
 
 	// UI state
 	width      int
@@ -245,6 +252,8 @@ func (m Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleVMSelectionKeys(msg)
 	case ViewResults:
 		return m.handleResultsKeys(msg)
+	case ViewHostDetail:
+		return m.handleHostDetailKeys(msg)
 	case ViewError:
 		return m.handleErrorKeys(msg)
 	}
@@ -641,6 +650,11 @@ func (m Model) handleResultsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Build sorted list of impact hosts (source + active targets)
+	if len(m.impactHostNames) == 0 {
+		m.impactHostNames = m.buildImpactHostList()
+	}
+
 	// Count active targets (those that receive VMs) - must match results.go calculation
 	activeTargets := 0
 	for targetName, afterState := range m.result.TargetsAfter {
@@ -651,7 +665,6 @@ func (m Model) handleResultsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Calculate visible area - must match calculateVisibleRowsWithTargets in results.go
-	// Fixed overhead: 27 lines (includes buffer for title visibility), plus 1 line per target node
 	fixedOverhead := 27
 	targetLines := activeTargets * 1
 	reserved := fixedOverhead + targetLines
@@ -662,60 +675,112 @@ func (m Model) handleResultsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	totalItems := len(m.result.Suggestions)
 
 	switch msg.String() {
+	case "tab":
+		// Toggle between suggestions table (0) and impact table (1)
+		m.resultsSection = (m.resultsSection + 1) % 2
+		return m, nil
+
 	case "up", "k":
-		if m.resultsCursorPos > 0 {
-			m.resultsCursorPos--
-			// Window-style scrolling: scroll up when cursor goes above visible area
+		if m.resultsSection == 0 {
+			// Suggestions table navigation
+			if m.resultsCursorPos > 0 {
+				m.resultsCursorPos--
+				if m.resultsCursorPos < m.resultsScrollPos {
+					m.resultsScrollPos = m.resultsCursorPos
+				}
+			}
+		} else {
+			// Impact table navigation
+			if m.impactCursorPos > 0 {
+				m.impactCursorPos--
+			}
+		}
+
+	case "down", "j":
+		if m.resultsSection == 0 {
+			// Suggestions table navigation
+			if m.resultsCursorPos < totalItems-1 {
+				m.resultsCursorPos++
+				if m.resultsCursorPos >= m.resultsScrollPos+maxVisible {
+					m.resultsScrollPos = m.resultsCursorPos - maxVisible + 1
+				}
+			}
+		} else {
+			// Impact table navigation
+			if m.impactCursorPos < len(m.impactHostNames)-1 {
+				m.impactCursorPos++
+			}
+		}
+
+	case "enter":
+		if m.resultsSection == 1 && len(m.impactHostNames) > 0 {
+			// Show host detail view
+			m.selectedHostName = m.impactHostNames[m.impactCursorPos]
+			m.currentView = ViewHostDetail
+			return m, tea.ClearScreen
+		}
+
+	case "home":
+		if m.resultsSection == 0 {
+			m.resultsCursorPos = 0
+			m.resultsScrollPos = 0
+		} else {
+			m.impactCursorPos = 0
+		}
+
+	case "end":
+		if m.resultsSection == 0 {
+			m.resultsCursorPos = totalItems - 1
+			if totalItems > maxVisible {
+				m.resultsScrollPos = totalItems - maxVisible
+			} else {
+				m.resultsScrollPos = 0
+			}
+		} else {
+			m.impactCursorPos = len(m.impactHostNames) - 1
+		}
+
+	case "pgup":
+		if m.resultsSection == 0 {
+			m.resultsCursorPos -= maxVisible
+			if m.resultsCursorPos < 0 {
+				m.resultsCursorPos = 0
+			}
 			if m.resultsCursorPos < m.resultsScrollPos {
 				m.resultsScrollPos = m.resultsCursorPos
 			}
+		} else {
+			m.impactCursorPos -= 5
+			if m.impactCursorPos < 0 {
+				m.impactCursorPos = 0
+			}
 		}
-	case "down", "j":
-		if m.resultsCursorPos < totalItems-1 {
-			m.resultsCursorPos++
-			// Window-style scrolling: scroll down when cursor goes below visible area
+
+	case "pgdown":
+		if m.resultsSection == 0 {
+			m.resultsCursorPos += maxVisible
+			if m.resultsCursorPos >= totalItems {
+				m.resultsCursorPos = totalItems - 1
+			}
 			if m.resultsCursorPos >= m.resultsScrollPos+maxVisible {
 				m.resultsScrollPos = m.resultsCursorPos - maxVisible + 1
 			}
-		}
-	case "home":
-		m.resultsCursorPos = 0
-		m.resultsScrollPos = 0
-	case "end":
-		m.resultsCursorPos = totalItems - 1
-		// Scroll to show the last item at the bottom of visible area
-		if totalItems > maxVisible {
-			m.resultsScrollPos = totalItems - maxVisible
 		} else {
-			m.resultsScrollPos = 0
+			m.impactCursorPos += 5
+			if m.impactCursorPos >= len(m.impactHostNames) {
+				m.impactCursorPos = len(m.impactHostNames) - 1
+			}
 		}
-	case "pgup":
-		// Move cursor up by page size
-		m.resultsCursorPos -= maxVisible
-		if m.resultsCursorPos < 0 {
-			m.resultsCursorPos = 0
-		}
-		// Scroll to keep cursor visible
-		if m.resultsCursorPos < m.resultsScrollPos {
-			m.resultsScrollPos = m.resultsCursorPos
-		}
-	case "pgdown":
-		// Move cursor down by page size
-		m.resultsCursorPos += maxVisible
-		if m.resultsCursorPos >= totalItems {
-			m.resultsCursorPos = totalItems - 1
-		}
-		// Scroll to keep cursor visible
-		if m.resultsCursorPos >= m.resultsScrollPos+maxVisible {
-			m.resultsScrollPos = m.resultsCursorPos - maxVisible + 1
-		}
+
 	case "r":
 		// Reset and start new analysis
 		m.currentView = ViewCriteria
 		m.result = nil
 		m.resultsScrollPos = 0
 		m.resultsCursorPos = 0
-		// Clear criteria input for fresh start
+		m.resultsSection = 0
+		m.impactCursorPos = 0
+		m.impactHostNames = nil
 		m.criteriaState.VMCount = ""
 		m.criteriaState.VCPUCount = ""
 		m.criteriaState.CPUUsage = ""
@@ -724,12 +789,15 @@ func (m Model) handleResultsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.criteriaState.InputFocused = false
 		m.criteriaState.ErrorMessage = ""
 		return m, tea.ClearScreen
+
 	case "esc":
 		// Go back to criteria screen (not dashboard)
 		m.currentView = ViewCriteria
 		m.resultsScrollPos = 0
 		m.resultsCursorPos = 0
-		// Clear criteria input
+		m.resultsSection = 0
+		m.impactCursorPos = 0
+		m.impactHostNames = nil
 		m.criteriaState.VMCount = ""
 		m.criteriaState.VCPUCount = ""
 		m.criteriaState.CPUUsage = ""
@@ -737,6 +805,36 @@ func (m Model) handleResultsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.criteriaState.StorageAmount = ""
 		m.criteriaState.InputFocused = false
 		m.criteriaState.ErrorMessage = ""
+		return m, tea.ClearScreen
+	}
+	return m, nil
+}
+
+// buildImpactHostList builds a sorted list of hosts in the impact table
+func (m *Model) buildImpactHostList() []string {
+	var hosts []string
+
+	// Add source node first
+	hosts = append(hosts, m.result.SourceBefore.Name)
+
+	// Add target nodes that receive VMs
+	var targetNames []string
+	for name, afterState := range m.result.TargetsAfter {
+		beforeState := m.result.TargetsBefore[name]
+		if afterState.VMCount != beforeState.VMCount {
+			targetNames = append(targetNames, name)
+		}
+	}
+	sort.Strings(targetNames)
+	hosts = append(hosts, targetNames...)
+
+	return hosts
+}
+
+func (m Model) handleHostDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "enter", "q":
+		m.currentView = ViewResults
 		return m, tea.ClearScreen
 	}
 	return m, nil
@@ -786,9 +884,14 @@ func (m Model) View() string {
 	case ViewResults:
 		if m.result != nil {
 			sourceNode := proxmox.GetNodeByName(m.cluster, m.sourceNode)
-			return views.RenderResultsWithSource(m.result, m.cluster, sourceNode, m.version, m.width, m.height, m.resultsScrollPos, m.resultsCursorPos)
+			return views.RenderResultsInteractive(m.result, m.cluster, sourceNode, m.version, m.width, m.height, m.resultsScrollPos, m.resultsCursorPos, m.resultsSection, m.impactCursorPos)
 		}
 		return "No results available"
+	case ViewHostDetail:
+		if m.result != nil && m.selectedHostName != "" {
+			return views.RenderHostDetail(m.result, m.selectedHostName, m.sourceNode, m.width, m.height)
+		}
+		return "No host selected"
 	case ViewError:
 		return fmt.Sprintf("\nError: %v\n\nPress Enter to continue", m.err)
 	default:

@@ -72,13 +72,19 @@ func SelectVMsToMigrate(node *proxmox.Node, constraints MigrationConstraints) []
 	}
 }
 
-// selectAllVMs returns all running VMs from the node for "Migrate All" mode
+// selectAllVMs returns ALL VMs from the node for "Migrate All" mode (including powered-off)
 func selectAllVMs(node *proxmox.Node) []proxmox.VM {
-	// Return all running VMs sorted by resource usage (largest first for better distribution)
-	vms := filterRunningVMs(node.VMs)
+	// Return ALL VMs (running and stopped) sorted by resource usage (largest first for better distribution)
+	vms := make([]proxmox.VM, len(node.VMs))
+	copy(vms, node.VMs)
 
 	// Sort by combined resource score (descending - distribute largest VMs first)
+	// Running VMs get priority, then by size
 	sort.Slice(vms, func(i, j int) bool {
+		// Running VMs first
+		if vms[i].Status != vms[j].Status {
+			return vms[i].Status == "running"
+		}
 		scoreI := float64(vms[i].CPUCores)*10 + vms[i].CPUUsage + float64(vms[i].MaxMem)/(1024*1024*1024)
 		scoreJ := float64(vms[j].CPUCores)*10 + vms[j].CPUUsage + float64(vms[j].MaxMem)/(1024*1024*1024)
 		return scoreI > scoreJ
