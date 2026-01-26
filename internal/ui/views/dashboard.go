@@ -39,6 +39,12 @@ type RefreshProgress struct {
 	Total   int
 }
 
+// SortInfo contains sorting information for display
+type SortInfo struct {
+	Column    int  // 0-6 for columns 1-7
+	Ascending bool
+}
+
 // RenderDashboardFull renders the main dashboard view with all options
 func RenderDashboardFull(cluster *proxmox.Cluster, selectedIdx int, width int, countdown int, refreshing bool, version string) string {
 	return RenderDashboardWithProgress(cluster, selectedIdx, width, countdown, refreshing, version, RefreshProgress{})
@@ -46,6 +52,11 @@ func RenderDashboardFull(cluster *proxmox.Cluster, selectedIdx int, width int, c
 
 // RenderDashboardWithProgress renders the main dashboard view with progress info
 func RenderDashboardWithProgress(cluster *proxmox.Cluster, selectedIdx int, width int, countdown int, refreshing bool, version string, progress RefreshProgress) string {
+	return RenderDashboardWithSort(cluster, selectedIdx, width, countdown, refreshing, version, progress, SortInfo{Column: 0, Ascending: true})
+}
+
+// RenderDashboardWithSort renders the main dashboard view with sort info
+func RenderDashboardWithSort(cluster *proxmox.Cluster, selectedIdx int, width int, countdown int, refreshing bool, version string, progress RefreshProgress, sortInfo SortInfo) string {
 	var sb strings.Builder
 
 	// Ensure minimum width
@@ -76,7 +87,8 @@ func RenderDashboardWithProgress(cluster *proxmox.Cluster, selectedIdx int, widt
 	sb.WriteString(instructionStyle.Render("Select source node to migrate from:") + "\n\n")
 
 	// Node table with width - using the updated component that colors whole lines
-	sb.WriteString(components.RenderNodeTableWide(cluster.Nodes, selectedIdx, width))
+	compSortInfo := components.SortInfo{Column: sortInfo.Column, Ascending: sortInfo.Ascending}
+	sb.WriteString(components.RenderNodeTableWideWithSort(cluster.Nodes, selectedIdx, width, compSortInfo))
 	sb.WriteString("\n")
 
 	// Graphical separator
@@ -202,7 +214,7 @@ func renderEnhancedClusterSummary(cluster *proxmox.Cluster, width int) string {
 // getUsageColorCode returns color code based on usage percentage
 func getUsageColorCode(percent float64) string {
 	if percent > 80 {
-		return "1" // red
+		return "9" // bright red (readable on black background)
 	} else if percent > 60 {
 		return "3" // yellow
 	}

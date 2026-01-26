@@ -534,7 +534,11 @@ func (m Model) View() string {
 			Current: m.refreshCurrent,
 			Total:   m.refreshTotal,
 		}
-		return views.RenderDashboardWithProgress(m.cluster, m.selectedNodeIdx, m.width, m.refreshCountdown, m.refreshing, m.version, progress)
+		sortInfo := views.SortInfo{
+			Column:    int(m.sortColumn),
+			Ascending: m.sortAsc,
+		}
+		return views.RenderDashboardWithSort(m.cluster, m.selectedNodeIdx, m.width, m.refreshCountdown, m.refreshing, m.version, progress, sortInfo)
 	case ViewCriteria:
 		return views.RenderCriteria(m.criteriaState, m.sourceNode, m.width)
 	case ViewVMSelection:

@@ -94,8 +94,19 @@ const (
 	boxCross       = "┼"
 )
 
+// SortInfo contains sorting information for the table
+type SortInfo struct {
+	Column    int  // 0-6 for columns 1-7
+	Ascending bool
+}
+
 // RenderNodeTableWide creates a full-width table of nodes with detailed info
 func RenderNodeTableWide(nodes []proxmox.Node, selectedIdx int, width int) string {
+	return RenderNodeTableWideWithSort(nodes, selectedIdx, width, SortInfo{Column: 0, Ascending: true})
+}
+
+// RenderNodeTableWideWithSort creates a full-width table with sort indicator
+func RenderNodeTableWideWithSort(nodes []proxmox.Node, selectedIdx int, width int, sortInfo SortInfo) string {
 	var sb strings.Builder
 
 	// Ensure minimum width
@@ -118,11 +129,11 @@ func RenderNodeTableWide(nodes []proxmox.Node, selectedIdx int, width int) strin
 	// Column widths - fit to terminal width
 	colName := maxNameLen + 2
 	colStatus := 8
-	colVMs := 5
-	colVCPUs := 7 // e.g., "572" (just running vCPUs)
-	colCPUPct := 7
-	colRAM := 22  // e.g., "1632/2048G (80%)"
-	colDisk := 14 // e.g., "165T/205T"
+	colVMs := 6
+	colVCPUs := 8
+	colCPUPct := 8
+	colRAM := 22      // e.g., "1632/2048G (80%)"
+	colDisk := 20     // e.g., "165/205T (80%)"
 	// CPU Model gets remaining width - no artificial limit
 	colCPUModel := width - colName - colStatus - colVMs - colVCPUs - colCPUPct - colRAM - colDisk - 20
 	if colCPUModel < 20 {
@@ -134,16 +145,29 @@ func RenderNodeTableWide(nodes []proxmox.Node, selectedIdx int, width int) strin
 	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 	sepStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 
-	// Main header with Unicode separators
+	// Sort arrows
+	upArrow := "▲"
+	downArrow := "▼"
+	getSortArrow := func(col int) string {
+		if sortInfo.Column == col {
+			if sortInfo.Ascending {
+				return " " + upArrow
+			}
+			return " " + downArrow
+		}
+		return ""
+	}
+
+	// Main header with Unicode separators and sort arrows
 	sep := sepStyle.Render(boxVertical)
 	header1 := fmt.Sprintf("  %-*s %s %-*s %s %*s %s %*s %s %*s %s %-*s %s %-*s %s %s",
-		colName, "Host", sep,
-		colStatus, "Status", sep,
-		colVMs, "VMs", sep,
-		colVCPUs, "vCPUs", sep,
-		colCPUPct, "CPU%", sep,
-		colRAM, "RAM", sep,
-		colDisk, "Disk", sep,
+		colName, "Host"+getSortArrow(0), sep,
+		colStatus, "Status"+getSortArrow(1), sep,
+		colVMs, "VMs"+getSortArrow(2), sep,
+		colVCPUs, "vCPUs"+getSortArrow(3), sep,
+		colCPUPct, "CPU%"+getSortArrow(4), sep,
+		colRAM, "RAM"+getSortArrow(5), sep,
+		colDisk, "Disk"+getSortArrow(6), sep,
 		"CPU Model")
 	sb.WriteString(headerStyle.Render(header1) + "\n")
 	// Use graphical separator
@@ -161,16 +185,14 @@ func RenderNodeTableWide(nodes []proxmox.Node, selectedIdx int, width int) strin
 		vcpuStr := fmt.Sprintf("%d", runningVCPUs)
 		// RAM: show used/total in G with percentage at end
 		ramStr := FormatRAMWithPercent(node.UsedMem, node.MaxMem, node.GetMemPercent())
-		// Disk: show used/total
-		diskUsedStr := FormatBytesShort(node.UsedDisk)
-		diskMaxStr := FormatBytesShort(node.MaxDisk)
-		diskStr := fmt.Sprintf("%s/%s", diskUsedStr, diskMaxStr)
+		// Disk: show used/total with percentage
+		diskStr := FormatDiskWithPercent(node.UsedDisk, node.MaxDisk, node.GetDiskPercent())
 
 		// CPU info - format as "2x Xeon (2.5GHz, 176 threads)"
 		cpuInfo := formatCPUInfo(node.CPUSockets, node.CPUModel, node.CPUMHz, node.CPUCores)
 
 		// Build the row content (plain text for width calculation)
-		rowContent := fmt.Sprintf("%-*s %-*s %*d %*s %*s  %-*s  %-*s  %s",
+		rowContent := fmt.Sprintf("%-*s %-*s %*d %*s %*s %-*s %-*s %s",
 			colName, truncate(node.Name, colName),
 			colStatus, node.Status,
 			colVMs, len(node.VMs),
@@ -214,7 +236,7 @@ func RenderNodeTableWide(nodes []proxmox.Node, selectedIdx int, width int) strin
 			// Status with color
 			statusColor := "2" // green for online
 			if node.Status != "online" {
-				statusColor = "1" // red for offline
+				statusColor = "9" // bright red for offline
 			}
 			statusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(statusColor))
 			coloredRow.WriteString(statusStyle.Render(fmt.Sprintf("%-*s", colStatus, node.Status)) + " ")
@@ -228,17 +250,17 @@ func RenderNodeTableWide(nodes []proxmox.Node, selectedIdx int, width int) strin
 			// CPU % with color
 			cpuPctColor := getUsageColor(node.GetCPUPercent())
 			cpuPctStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(cpuPctColor))
-			coloredRow.WriteString(cpuPctStyle.Render(fmt.Sprintf("%*s", colCPUPct, cpuPctStr)) + "  ")
+			coloredRow.WriteString(cpuPctStyle.Render(fmt.Sprintf("%*s", colCPUPct, cpuPctStr)) + " ")
 
 			// RAM with color
 			ramColor := getUsageColor(node.GetMemPercent())
 			ramStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ramColor))
-			coloredRow.WriteString(ramStyle.Render(fmt.Sprintf("%-*s", colRAM, ramStr)) + "  ")
+			coloredRow.WriteString(ramStyle.Render(fmt.Sprintf("%-*s", colRAM, ramStr)) + " ")
 
 			// Disk with color
 			diskColor := getUsageColor(node.GetDiskPercent())
 			diskStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(diskColor))
-			coloredRow.WriteString(diskStyle.Render(fmt.Sprintf("%-*s", colDisk, diskStr)) + "  ")
+			coloredRow.WriteString(diskStyle.Render(fmt.Sprintf("%-*s", colDisk, diskStr)) + " ")
 
 			// CPU model (dimmed) - don't truncate unless terminal is too narrow
 			coloredRow.WriteString(dimStyle.Render(cpuInfo))
@@ -278,6 +300,14 @@ func FormatRAMWithPercent(usedBytes, totalBytes int64, percent float64) string {
 	usedG := float64(usedBytes) / float64(gib)
 	totalG := float64(totalBytes) / float64(gib)
 	return fmt.Sprintf("%.0f/%.0fG (%.0f%%)", usedG, totalG, percent)
+}
+
+// FormatDiskWithPercent formats used/total disk with percentage
+// e.g., "156/205T (76%)"
+func FormatDiskWithPercent(usedBytes, totalBytes int64, percent float64) string {
+	usedStr := FormatBytesShort(usedBytes)
+	totalStr := FormatBytesShort(totalBytes)
+	return fmt.Sprintf("%s/%s (%.0f%%)", usedStr, totalStr, percent)
 }
 
 // FormatRAMGiB formats bytes to GiB with percentage (e.g., "1.6T (80%)")
@@ -368,7 +398,7 @@ func shortenCPUModel(model string) string {
 // getUsageColor returns color based on usage percentage
 func getUsageColor(percent float64) string {
 	if percent > 80 {
-		return "1" // red
+		return "9" // bright red (readable on black background)
 	} else if percent > 60 {
 		return "3" // yellow
 	}
