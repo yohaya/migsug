@@ -159,17 +159,16 @@ func RenderNodeTableWideWithSort(nodes []proxmox.Node, selectedIdx int, width in
 		return ""
 	}
 
-	// Main header with Unicode separators and sort arrows
-	sep := sepStyle.Render(boxVertical)
-	header1 := fmt.Sprintf("  %-*s %s %-*s %s %*s %s %*s %s %*s %s %*s %s %-*s %s %-*s %s %s",
-		colName, "Host"+getSortArrow(0), sep,
-		colStatus, "Status"+getSortArrow(1), sep,
-		colVMs, "VMs"+getSortArrow(2), sep,
-		colVCPUs, "vCPUs"+getSortArrow(3), sep,
-		colCPUPct, "CPU%"+getSortArrow(4), sep,
-		colLA, "LA"+getSortArrow(5), sep,
-		colRAM, "RAM"+getSortArrow(6), sep,
-		colDisk, "Disk"+getSortArrow(7), sep,
+	// Main header with sort arrows (aligned to match row format)
+	header1 := fmt.Sprintf("  %-*s %-*s %*s %*s %*s %*s %-*s %-*s %s",
+		colName, "Host"+getSortArrow(0),
+		colStatus, "Status"+getSortArrow(1),
+		colVMs, "VMs"+getSortArrow(2),
+		colVCPUs, "vCPUs"+getSortArrow(3),
+		colCPUPct, "CPU%"+getSortArrow(4),
+		colLA, "LA"+getSortArrow(5),
+		colRAM, "RAM"+getSortArrow(6),
+		colDisk, "Disk"+getSortArrow(7),
 		"CPU Model")
 	sb.WriteString(headerStyle.Render(header1) + "\n")
 	// Use graphical separator
