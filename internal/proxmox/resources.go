@@ -4,17 +4,38 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"sync/atomic"
 )
 
 // Maximum concurrent node status fetches
 const maxConcurrentFetches = 32
 
+// ProgressCallback is called to report progress during data collection
+// stage: current stage name (e.g., "resources", "nodes", "storage")
+// current: current item being processed
+// total: total items to process
+type ProgressCallback func(stage string, current, total int)
+
 // CollectClusterData gathers complete cluster information
 func CollectClusterData(client ProxmoxClient) (*Cluster, error) {
+	return CollectClusterDataWithProgress(client, nil)
+}
+
+// CollectClusterDataWithProgress gathers complete cluster information with progress reporting
+func CollectClusterDataWithProgress(client ProxmoxClient, progress ProgressCallback) (*Cluster, error) {
+	// Report initial stage
+	if progress != nil {
+		progress("Fetching cluster resources", 0, 1)
+	}
+
 	// Get all cluster resources
 	resources, err := client.GetClusterResources()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get cluster resources: %w", err)
+	}
+
+	if progress != nil {
+		progress("Processing resources", 1, 1)
 	}
 
 	// Build cluster structure
@@ -96,7 +117,7 @@ func CollectClusterData(client ProxmoxClient) (*Cluster, error) {
 
 	// Fetch detailed node status for each node in parallel (CPU model, sockets, MHz, PVE version)
 	// Use a worker pool with limited concurrency for large clusters
-	fetchNodeDetails(client, nodeMap)
+	fetchNodeDetails(client, nodeMap, progress)
 
 	// Assign VMs to their nodes
 	for _, vm := range vmList {
@@ -260,7 +281,7 @@ type nodeStatusResult struct {
 
 // fetchNodeDetails fetches detailed status for all online nodes in parallel
 // Uses a worker pool with limited concurrency (maxConcurrentFetches)
-func fetchNodeDetails(client ProxmoxClient, nodeMap map[string]*Node) {
+func fetchNodeDetails(client ProxmoxClient, nodeMap map[string]*Node, progress ProgressCallback) {
 	// Collect online nodes that need fetching
 	var onlineNodes []string
 	for nodeName, node := range nodeMap {
@@ -271,6 +292,14 @@ func fetchNodeDetails(client ProxmoxClient, nodeMap map[string]*Node) {
 
 	if len(onlineNodes) == 0 {
 		return
+	}
+
+	totalNodes := len(onlineNodes)
+	var completed int32 = 0
+
+	// Report initial progress
+	if progress != nil {
+		progress("Fetching node details", 0, totalNodes)
 	}
 
 	// Create channels for work distribution and results
@@ -314,6 +343,12 @@ func fetchNodeDetails(client ProxmoxClient, nodeMap map[string]*Node) {
 
 	// Collect results and update node map
 	for result := range results {
+		// Update progress
+		current := int(atomic.AddInt32(&completed, 1))
+		if progress != nil {
+			progress("Fetching node details", current, totalNodes)
+		}
+
 		if result.err == nil && result.status != nil {
 			if node, exists := nodeMap[result.nodeName]; exists {
 				node.CPUModel = result.status.CPUInfo.Model

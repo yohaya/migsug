@@ -59,8 +59,11 @@ type Model struct {
 	loadingMsg string
 
 	// Auto-refresh state
-	refreshCountdown int  // seconds until next refresh
-	refreshing       bool // true when actively refreshing data
+	refreshCountdown int    // seconds until next refresh
+	refreshing       bool   // true when actively refreshing data
+	refreshProgress  string // progress message during refresh
+	refreshCurrent   int    // current progress count
+	refreshTotal     int    // total items to refresh
 }
 
 // NewModel creates a new application model
@@ -107,6 +110,13 @@ type refreshCompleteMsg struct {
 	err     error
 }
 
+// refreshProgressMsg is sent to update refresh progress
+type refreshProgressMsg struct {
+	stage   string
+	current int
+	total   int
+}
+
 // Update handles messages and updates the model
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -123,16 +133,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.currentView == ViewDashboard && !m.refreshing {
 			m.refreshCountdown--
 			if m.refreshCountdown <= 0 {
-				// Start refresh
+				// Start refresh with initial progress info
 				m.refreshing = true
+				m.refreshProgress = fmt.Sprintf("Refreshing %d nodes", len(m.cluster.Nodes))
+				m.refreshTotal = len(m.cluster.Nodes)
+				m.refreshCurrent = 0
 				return m, tea.Batch(tickCmd(), m.refreshClusterData())
 			}
 		}
 		return m, tickCmd()
 
+	case refreshProgressMsg:
+		m.refreshProgress = msg.stage
+		m.refreshCurrent = msg.current
+		m.refreshTotal = msg.total
+		return m, nil
+
 	case refreshCompleteMsg:
 		m.refreshing = false
 		m.refreshCountdown = refreshInterval
+		m.refreshProgress = ""
+		m.refreshCurrent = 0
+		m.refreshTotal = 0
 		if msg.err == nil && msg.cluster != nil {
 			m.cluster = msg.cluster
 			// Keep selection valid
@@ -163,7 +185,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // refreshClusterData creates a command to refresh cluster data
 func (m Model) refreshClusterData() tea.Cmd {
+	// Get current node count for progress display
+	nodeCount := len(m.cluster.Nodes)
+
 	return func() tea.Msg {
+		// Note: We can't easily send progress updates from here in Bubble Tea
+		// The progress is shown during initial load in main.go
+		// During refresh, we just show "Refreshing X nodes..."
+		_ = nodeCount // Used for context
+
 		cluster, err := proxmox.CollectClusterData(m.client)
 		return refreshCompleteMsg{cluster: cluster, err: err}
 	}
@@ -221,6 +251,9 @@ func (m Model) handleDashboardKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Manual refresh
 		if !m.refreshing {
 			m.refreshing = true
+			m.refreshProgress = fmt.Sprintf("Refreshing %d nodes", len(m.cluster.Nodes))
+			m.refreshTotal = len(m.cluster.Nodes)
+			m.refreshCurrent = 0
 			return m, m.refreshClusterData()
 		}
 	}
@@ -405,7 +438,12 @@ func (m Model) View() string {
 
 	switch m.currentView {
 	case ViewDashboard:
-		return views.RenderDashboardFull(m.cluster, m.selectedNodeIdx, m.width, m.refreshCountdown, m.refreshing, m.version)
+		progress := views.RefreshProgress{
+			Stage:   m.refreshProgress,
+			Current: m.refreshCurrent,
+			Total:   m.refreshTotal,
+		}
+		return views.RenderDashboardWithProgress(m.cluster, m.selectedNodeIdx, m.width, m.refreshCountdown, m.refreshing, m.version, progress)
 	case ViewCriteria:
 		return views.RenderCriteria(m.criteriaState, m.sourceNode, m.width)
 	case ViewVMSelection:

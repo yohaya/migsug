@@ -32,8 +32,20 @@ func RenderDashboardWithRefresh(cluster *proxmox.Cluster, selectedIdx int, width
 	return RenderDashboardFull(cluster, selectedIdx, width, countdown, refreshing, "")
 }
 
+// RefreshProgress contains progress info for display
+type RefreshProgress struct {
+	Stage   string
+	Current int
+	Total   int
+}
+
 // RenderDashboardFull renders the main dashboard view with all options
 func RenderDashboardFull(cluster *proxmox.Cluster, selectedIdx int, width int, countdown int, refreshing bool, version string) string {
+	return RenderDashboardWithProgress(cluster, selectedIdx, width, countdown, refreshing, version, RefreshProgress{})
+}
+
+// RenderDashboardWithProgress renders the main dashboard view with progress info
+func RenderDashboardWithProgress(cluster *proxmox.Cluster, selectedIdx int, width int, countdown int, refreshing bool, version string, progress RefreshProgress) string {
 	var sb strings.Builder
 
 	// Ensure minimum width
@@ -73,7 +85,18 @@ func RenderDashboardFull(cluster *proxmox.Cluster, selectedIdx int, width int, c
 	// Refresh status line
 	refreshStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 	if refreshing {
-		sb.WriteString(refreshStyle.Render("⟳ Refreshing cluster data...") + "\n")
+		if progress.Total > 0 {
+			// Show progress bar
+			percent := float64(progress.Current) / float64(progress.Total) * 100
+			barWidth := 20
+			filled := int(float64(barWidth) * float64(progress.Current) / float64(progress.Total))
+			bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
+			sb.WriteString(refreshStyle.Render(fmt.Sprintf("⟳ %s: [%s] %d/%d (%.0f%%)", progress.Stage, bar, progress.Current, progress.Total, percent)) + "\n")
+		} else if progress.Stage != "" {
+			sb.WriteString(refreshStyle.Render(fmt.Sprintf("⟳ %s...", progress.Stage)) + "\n")
+		} else {
+			sb.WriteString(refreshStyle.Render("⟳ Refreshing cluster data...") + "\n")
+		}
 	} else if countdown > 0 {
 		sb.WriteString(refreshStyle.Render(fmt.Sprintf("⟳ Auto-refresh in %ds", countdown)) + "  ")
 		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("(Press 'r' to refresh now)") + "\n")

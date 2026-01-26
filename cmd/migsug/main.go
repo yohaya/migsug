@@ -176,9 +176,23 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Collect cluster data
+	// Collect cluster data with progress bar
 	fmt.Println("Loading cluster data...")
-	cluster, err := proxmox.CollectClusterData(client)
+	cluster, err := proxmox.CollectClusterDataWithProgress(client, func(stage string, current, total int) {
+		if total > 0 {
+			// Calculate percentage
+			percent := float64(current) / float64(total) * 100
+			// Create progress bar
+			barWidth := 30
+			filled := int(float64(barWidth) * float64(current) / float64(total))
+			bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
+			// Print progress (use \r to overwrite line)
+			fmt.Printf("\r  %s: [%s] %d/%d (%.0f%%)  ", stage, bar, current, total, percent)
+		} else {
+			fmt.Printf("\r  %s...                                        ", stage)
+		}
+	})
+	fmt.Println() // New line after progress
 	if err != nil {
 		fmt.Printf("Failed to collect cluster data: %v\n", err)
 		os.Exit(1)
