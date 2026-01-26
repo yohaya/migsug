@@ -99,20 +99,21 @@ func RenderResultsWithSource(result *analyzer.AnalysisResult, cluster *proxmox.C
 
 	// Suggestions table with scrolling
 	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6")).
-		Render("Suggested Migrations:") + " ")
+		Render("Suggested Migrations:") + "\n\n")
 
 	// Calculate visible rows based on terminal height and number of target nodes
 	maxVisible := calculateVisibleRowsWithTargets(height, activeTargets)
+
+	sb.WriteString(components.RenderSuggestionTableWithCursor(result.Suggestions, scrollPos, maxVisible, cursorPos))
+
+	// Show scroll info below the table if there are more items than visible
 	if len(result.Suggestions) > maxVisible {
 		scrollInfo := fmt.Sprintf("(showing %d-%d of %d, use ↑/↓ to scroll)",
 			scrollPos+1,
 			min(scrollPos+maxVisible, len(result.Suggestions)),
 			len(result.Suggestions))
-		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(scrollInfo))
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(scrollInfo) + "\n")
 	}
-	sb.WriteString("\n\n")
-
-	sb.WriteString(components.RenderSuggestionTableWithCursor(result.Suggestions, scrollPos, maxVisible, cursorPos))
 	sb.WriteString("\n")
 
 	// Before/After comparison

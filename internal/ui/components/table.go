@@ -135,8 +135,9 @@ func RenderNodeTableWideWithSort(nodes []proxmox.Node, selectedIdx int, width in
 	colLA := 14   // e.g., "62.56 (35.5%)"
 	colRAM := 22  // e.g., "1632/2048G (80%)"
 	colDisk := 20 // e.g., "165/205T (80%)"
+	colSwap := 4  // "Yes" or "No"
 	// CPU Model gets remaining width - no artificial limit
-	colCPUModel := width - colName - colStatus - colVMs - colVCPUs - colCPUPct - colLA - colRAM - colDisk - 24
+	colCPUModel := width - colName - colStatus - colVMs - colVCPUs - colCPUPct - colLA - colRAM - colDisk - colSwap - 26
 	if colCPUModel < 20 {
 		colCPUModel = 20
 	}
@@ -159,7 +160,7 @@ func RenderNodeTableWideWithSort(nodes []proxmox.Node, selectedIdx int, width in
 	}
 
 	// Main header with sort arrows (aligned to match row format)
-	header1 := fmt.Sprintf("  %-*s %-*s %*s %*s %*s %*s %-*s %-*s %s",
+	header1 := fmt.Sprintf("  %-*s %-*s %*s %*s %*s %*s %-*s %-*s %-*s %s",
 		colName, "Host"+getSortArrow(0),
 		colStatus, "Status"+getSortArrow(1),
 		colVMs, "VMs"+getSortArrow(2),
@@ -168,6 +169,7 @@ func RenderNodeTableWideWithSort(nodes []proxmox.Node, selectedIdx int, width in
 		colLA, "LA"+getSortArrow(5),
 		colRAM, "RAM"+getSortArrow(6),
 		colDisk, "Disk"+getSortArrow(7),
+		colSwap, "Swap",
 		"CPU Model")
 	sb.WriteString(headerStyle.Render(header1) + "\n")
 	// Use graphical separator
@@ -217,8 +219,14 @@ func RenderNodeTableWideWithSort(nodes []proxmox.Node, selectedIdx int, width in
 		// CPU info - format as "2x Xeon (2.5GHz, 176 threads)"
 		cpuInfo := formatCPUInfo(node.CPUSockets, node.CPUModel, node.CPUMHz, node.CPUCores)
 
+		// Swap status
+		swapStr := "No"
+		if node.HasActiveSwap() {
+			swapStr = "Yes"
+		}
+
 		// Build the row content (plain text for width calculation)
-		rowContent := fmt.Sprintf("%-*s %-*s %*d %*s %*s %*s %-*s %-*s %s",
+		rowContent := fmt.Sprintf("%-*s %-*s %*d %*s %*s %*s %-*s %-*s %-*s %s",
 			colName, truncate(node.Name, colName),
 			colStatus, node.Status,
 			colVMs, len(node.VMs),
@@ -227,6 +235,7 @@ func RenderNodeTableWideWithSort(nodes []proxmox.Node, selectedIdx int, width in
 			colLA, laStr,
 			colRAM, ramStr,
 			colDisk, diskStr,
+			colSwap, swapStr,
 			cpuInfo) // Don't truncate CPU info
 
 		// Pad row to full width for consistent highlighting
@@ -300,6 +309,14 @@ func RenderNodeTableWideWithSort(nodes []proxmox.Node, selectedIdx int, width in
 			diskColor := getDiskFreeColor(node.MaxDisk - node.UsedDisk)
 			diskStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(diskColor))
 			coloredRow.WriteString(diskStyle.Render(fmt.Sprintf("%-*s", colDisk, diskStr)) + " ")
+
+			// Swap with color (red for Yes, green for No)
+			swapColor := "2" // green for No
+			if node.HasActiveSwap() {
+				swapColor = "9" // bright red for Yes
+			}
+			swapStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(swapColor))
+			coloredRow.WriteString(swapStyle.Render(fmt.Sprintf("%-*s", colSwap, swapStr)) + " ")
 
 			// CPU model (dimmed) - don't truncate unless terminal is too narrow
 			coloredRow.WriteString(dimStyle.Render(cpuInfo))
@@ -645,8 +662,8 @@ func RenderSuggestionTableWithCursor(suggestions []analyzer.MigrationSuggestion,
 		sug := suggestions[i]
 		isSelected := (i == cursorPos)
 
-		// Format CPU usage as percentage
-		cpuStr := fmt.Sprintf("%.1f", sug.CPUUsage*100)
+		// Format CPU usage as percentage (already in 0-100 from resources.go)
+		cpuStr := fmt.Sprintf("%.1f", sug.CPUUsage)
 
 		row := fmt.Sprintf("%*d %-*s %-*s %*s %*d %*s %*s",
 			colVMID, sug.VMID,

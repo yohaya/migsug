@@ -216,6 +216,19 @@ func (c *Client) GetNodeStatus(node string) (*NodeStatus, error) {
 		}
 	}
 
+	// Extract swap information
+	if swap, ok := rawData["swap"].(map[string]interface{}); ok {
+		if total, ok := swap["total"].(float64); ok {
+			status.Swap.Total = int64(total)
+		}
+		if used, ok := swap["used"].(float64); ok {
+			status.Swap.Used = int64(used)
+		}
+		if free, ok := swap["free"].(float64); ok {
+			status.Swap.Free = int64(free)
+		}
+	}
+
 	return status, nil
 }
 

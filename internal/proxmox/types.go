@@ -16,9 +16,16 @@ type Node struct {
 	UsedMem     int64     // bytes
 	MaxDisk     int64     // bytes
 	UsedDisk    int64     // bytes
+	SwapTotal   int64     // bytes - total swap configured
+	SwapUsed    int64     // bytes - swap currently in use
 	VMs         []VM
 	Uptime      int64  // seconds
 	PVEVersion  string // Proxmox VE version
+}
+
+// HasActiveSwap returns true if swap is configured and in use
+func (n *Node) HasActiveSwap() bool {
+	return n.SwapTotal > 0 && n.SwapUsed > 0
 }
 
 // VM represents a virtual machine
@@ -74,8 +81,16 @@ type NodeStatus struct {
 	Uptime      int64     `json:"uptime"`
 	CPUInfo     CPUInfo   `json:"cpuinfo"`
 	Memory      Memory    `json:"memory"`
+	Swap        Swap      `json:"swap"`
 	RootFS      RootFS    `json:"rootfs"`
 	LoadAverage []float64 `json:"loadavg"`
+}
+
+// Swap contains swap information
+type Swap struct {
+	Total int64 `json:"total"`
+	Used  int64 `json:"used"`
+	Free  int64 `json:"free"`
 }
 
 // CPUInfo contains CPU information

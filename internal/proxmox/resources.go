@@ -430,6 +430,9 @@ func fetchNodeDetails(client ProxmoxClient, nodeMap map[string]*Node, progress P
 				if result.status.CPUInfo.CPUs > 0 {
 					node.CPUCores = result.status.CPUInfo.CPUs
 				}
+				// Populate swap information
+				node.SwapTotal = result.status.Swap.Total
+				node.SwapUsed = result.status.Swap.Used
 			}
 		}
 	}
