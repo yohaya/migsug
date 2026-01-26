@@ -143,17 +143,28 @@ func CollectClusterDataWithProgress(client ProxmoxClient, progress ProgressCallb
 				Uptime:   res.Uptime,
 			}
 
-			// Log VMs with missing storage info to migsug.log (always, not just debug mode)
-			if res.MaxDisk == 0 && res.Status == "running" {
-				log.Printf("VM %d (%s) on node %s has MaxDisk=0. API returned: MaxDisk=%d, Disk=%d, Type=%s",
-					res.VMID, res.Name, res.Node, res.MaxDisk, res.Disk, res.Type)
-				// Also log to dedicated storage log file
-				logMissingStorage(res.VMID, res.Name, res.Node, res.Type, res.Status, res.MaxDisk, res.Disk)
-				missingStorageCount++
-			}
-
 			vmList = append(vmList, vm)
 			cluster.TotalVMs++
+		}
+	}
+
+	// Fetch detailed storage info for VMs with MaxDisk=0
+	vmsWithMissingStorage := findVMsWithMissingStorage(vmList)
+	if len(vmsWithMissingStorage) > 0 {
+		if progress != nil {
+			progress("Fetching VM storage details", 0, len(vmsWithMissingStorage))
+		}
+		fetchVMStorageDetails(client, vmList, vmsWithMissingStorage, progress)
+		missingStorageCount = countVMsWithMissingStorage(vmList)
+	}
+
+	// Log VMs still missing storage info
+	for i := range vmList {
+		vm := &vmList[i]
+		if vm.MaxDisk == 0 && vm.Status == "running" {
+			log.Printf("VM %d (%s) on node %s has MaxDisk=0 after detailed fetch",
+				vm.VMID, vm.Name, vm.Node)
+			logMissingStorage(vm.VMID, vm.Name, vm.Node, vm.Type, vm.Status, vm.MaxDisk, vm.UsedDisk)
 		}
 	}
 
@@ -479,6 +490,108 @@ func fetchNodeDetails(client ProxmoxClient, nodeMap map[string]*Node, progress P
 				// Populate swap information
 				node.SwapTotal = result.status.Swap.Total
 				node.SwapUsed = result.status.Swap.Used
+			}
+		}
+	}
+}
+
+// findVMsWithMissingStorage returns indices of VMs that have MaxDisk=0 and are running
+func findVMsWithMissingStorage(vmList []VM) []int {
+	var indices []int
+	for i, vm := range vmList {
+		if vm.MaxDisk == 0 && vm.Status == "running" {
+			indices = append(indices, i)
+		}
+	}
+	return indices
+}
+
+// countVMsWithMissingStorage counts VMs that still have MaxDisk=0
+func countVMsWithMissingStorage(vmList []VM) int {
+	count := 0
+	for _, vm := range vmList {
+		if vm.MaxDisk == 0 && vm.Status == "running" {
+			count++
+		}
+	}
+	return count
+}
+
+// vmStorageResult holds the result of fetching VM storage details
+type vmStorageResult struct {
+	vmIdx   int
+	status  *VMStatus
+	err     error
+}
+
+// fetchVMStorageDetails fetches detailed storage info for VMs with missing data
+func fetchVMStorageDetails(client ProxmoxClient, vmList []VM, vmIndices []int, progress ProgressCallback) {
+	if len(vmIndices) == 0 {
+		return
+	}
+
+	var completed int32 = 0
+	totalVMs := len(vmIndices)
+
+	// Create channels for work distribution and results
+	jobs := make(chan int, len(vmIndices))
+	results := make(chan vmStorageResult, len(vmIndices))
+
+	// Determine number of workers
+	numWorkers := maxConcurrentFetches
+	if len(vmIndices) < numWorkers {
+		numWorkers = len(vmIndices)
+	}
+
+	// Start worker goroutines
+	var wg sync.WaitGroup
+	for i := 0; i < numWorkers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for vmIdx := range jobs {
+				vm := vmList[vmIdx]
+				status, err := client.GetVMStatus(vm.Node, vm.VMID)
+				results <- vmStorageResult{
+					vmIdx:  vmIdx,
+					status: status,
+					err:    err,
+				}
+			}
+		}()
+	}
+
+	// Send jobs to workers
+	for _, vmIdx := range vmIndices {
+		jobs <- vmIdx
+	}
+	close(jobs)
+
+	// Wait for all workers to complete in a separate goroutine
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	// Collect results and update VM list
+	for result := range results {
+		current := int(atomic.AddInt32(&completed, 1))
+		if progress != nil {
+			progress("Fetching VM storage details", current, totalVMs)
+		}
+
+		if result.err == nil && result.status != nil {
+			vm := &vmList[result.vmIdx]
+			// Update storage info if we got better data
+			if result.status.MaxDisk > 0 {
+				vm.MaxDisk = result.status.MaxDisk
+				if storageLogger != nil {
+					storageLogger.Printf("VM %d (%s): Got storage from detailed status: MaxDisk=%d, Disk=%d",
+						vm.VMID, vm.Name, result.status.MaxDisk, result.status.Disk)
+				}
+			}
+			if result.status.Disk > 0 {
+				vm.UsedDisk = result.status.Disk
 			}
 		}
 	}
