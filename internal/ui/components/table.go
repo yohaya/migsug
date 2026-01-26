@@ -901,7 +901,6 @@ func RenderImpactTable(sourceBefore, sourceAfter analyzer.NodeState, targetsBefo
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
 	labelStyle := lipgloss.NewStyle()
 	valueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
-	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	greenStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
 	yellowStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 
