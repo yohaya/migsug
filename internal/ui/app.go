@@ -286,6 +286,7 @@ func (m Model) handleDashboardKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			SelectedVMs:  make(map[int]bool),
 		}
 		m.currentView = ViewCriteria
+		return m, tea.ClearScreen
 	case "1":
 		m.toggleSort(SortByName)
 	case "2":
@@ -392,12 +393,13 @@ func (m Model) handleCriteriaKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.criteriaState.SelectedMode == analyzer.ModeSpecific {
 			m.currentView = ViewVMSelection
 			m.vmCursorIdx = 0
-		} else {
-			// Otherwise, enable input
-			m.criteriaState.InputFocused = true
+			return m, tea.ClearScreen
 		}
+		// Otherwise, enable input
+		m.criteriaState.InputFocused = true
 	case "esc":
 		m.currentView = ViewDashboard
+		return m, tea.ClearScreen
 	}
 	return m, nil
 }
@@ -417,11 +419,11 @@ func (m Model) handleCriteriaInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		// Validate and start analysis
 		m.criteriaState.InputFocused = false
-		return m, m.startAnalysis()
+		return m, tea.Batch(tea.ClearScreen, m.startAnalysis())
 	case "esc":
 		m.criteriaState.InputFocused = false
 		m.criteriaState.ErrorMessage = ""
-	case "backspace":
+	case "backspace", "ctrl+h", "delete":
 		m.deleteLastChar()
 		m.criteriaState.ErrorMessage = "" // Clear error on edit
 	default:
@@ -574,10 +576,11 @@ func (m Model) handleVMSelectionKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		// Confirm selection and start analysis
 		if len(m.criteriaState.SelectedVMs) > 0 {
-			return m, m.startAnalysis()
+			return m, tea.Batch(tea.ClearScreen, m.startAnalysis())
 		}
 	case "esc":
 		m.currentView = ViewCriteria
+		return m, tea.ClearScreen
 	}
 	return m, nil
 }
@@ -590,10 +593,12 @@ func (m Model) handleResultsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.result = nil
 			m.resultsScrollPos = 0
 			m.resultsCursorPos = 0
+			return m, tea.ClearScreen
 		case "esc":
 			m.currentView = ViewCriteria
 			m.resultsScrollPos = 0
 			m.resultsCursorPos = 0
+			return m, tea.ClearScreen
 		}
 		return m, nil
 	}
@@ -659,11 +664,13 @@ func (m Model) handleResultsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.result = nil
 		m.resultsScrollPos = 0
 		m.resultsCursorPos = 0
+		return m, tea.ClearScreen
 	case "esc":
 		// Go back to criteria screen (not dashboard)
 		m.currentView = ViewCriteria
 		m.resultsScrollPos = 0
 		m.resultsCursorPos = 0
+		return m, tea.ClearScreen
 	case "s":
 		// TODO: Save results to file
 		// For now, just ignore
@@ -676,6 +683,7 @@ func (m Model) handleErrorKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter", "esc":
 		m.currentView = ViewDashboard
 		m.err = nil
+		return m, tea.ClearScreen
 	}
 	return m, nil
 }

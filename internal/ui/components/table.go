@@ -657,48 +657,41 @@ func RenderSuggestionTableWithCursor(suggestions []analyzer.MigrationSuggestion,
 	return sb.String()
 }
 
-// RenderNodeStateComparison shows before/after comparison for a node
+// RenderNodeStateComparison shows before/after comparison for a node on a single line
 func RenderNodeStateComparison(nodeName string, before, after analyzer.NodeState) string {
 	var sb strings.Builder
 
-	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5"))
-	sb.WriteString(titleStyle.Render(fmt.Sprintf("Node: %s", nodeName)) + "\n\n")
+	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	nodeStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5"))
+	valueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
 
-	// Before column
-	sb.WriteString(headerStyle.Render("BEFORE") + strings.Repeat(" ", 25))
-	sb.WriteString(headerStyle.Render("AFTER") + "\n")
-	sb.WriteString(strings.Repeat("─", 60) + "\n")
+	// Node name
+	sb.WriteString(nodeStyle.Render(fmt.Sprintf("%-20s", nodeName)))
 
-	// VMs
-	sb.WriteString(fmt.Sprintf("VMs:     %-5d", before.VMCount))
-	sb.WriteString(strings.Repeat(" ", 20))
-	sb.WriteString(fmt.Sprintf("%-5d", after.VMCount))
-	diff := after.VMCount - before.VMCount
-	sb.WriteString(renderDiff(diff))
-	sb.WriteString("\n")
+	// VMs: before→after (diff)
+	vmDiff := after.VMCount - before.VMCount
+	sb.WriteString(labelStyle.Render("VMs: "))
+	sb.WriteString(valueStyle.Render(fmt.Sprintf("%d→%d", before.VMCount, after.VMCount)))
+	sb.WriteString(renderDiff(vmDiff) + "  ")
 
-	// CPU
-	sb.WriteString(fmt.Sprintf("CPU:     %-5.1f%%", before.CPUPercent))
-	sb.WriteString(strings.Repeat(" ", 19))
-	sb.WriteString(fmt.Sprintf("%-5.1f%%", after.CPUPercent))
+	// CPU: before→after (diff)
 	cpuDiff := after.CPUPercent - before.CPUPercent
-	sb.WriteString(renderPercentDiff(cpuDiff))
-	sb.WriteString("\n")
+	sb.WriteString(labelStyle.Render("CPU: "))
+	sb.WriteString(valueStyle.Render(fmt.Sprintf("%.1f%%→%.1f%%", before.CPUPercent, after.CPUPercent)))
+	sb.WriteString(renderPercentDiff(cpuDiff) + "  ")
 
-	// RAM
-	sb.WriteString(fmt.Sprintf("RAM:     %-5.1f%%", before.RAMPercent))
-	sb.WriteString(strings.Repeat(" ", 19))
-	sb.WriteString(fmt.Sprintf("%-5.1f%%", after.RAMPercent))
+	// RAM: before→after (diff)
 	ramDiff := after.RAMPercent - before.RAMPercent
-	sb.WriteString(renderPercentDiff(ramDiff))
-	sb.WriteString("\n")
+	sb.WriteString(labelStyle.Render("RAM: "))
+	sb.WriteString(valueStyle.Render(fmt.Sprintf("%.1f%%→%.1f%%", before.RAMPercent, after.RAMPercent)))
+	sb.WriteString(renderPercentDiff(ramDiff) + "  ")
 
-	// Storage
-	sb.WriteString(fmt.Sprintf("Storage: %-5.1f%%", before.StoragePercent))
-	sb.WriteString(strings.Repeat(" ", 19))
-	sb.WriteString(fmt.Sprintf("%-5.1f%%", after.StoragePercent))
+	// Storage: before→after (diff)
 	storageDiff := after.StoragePercent - before.StoragePercent
+	sb.WriteString(labelStyle.Render("Stor: "))
+	sb.WriteString(valueStyle.Render(fmt.Sprintf("%.1f%%→%.1f%%", before.StoragePercent, after.StoragePercent)))
 	sb.WriteString(renderPercentDiff(storageDiff))
+
 	sb.WriteString("\n")
 
 	return sb.String()
