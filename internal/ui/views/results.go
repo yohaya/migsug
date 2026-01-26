@@ -401,6 +401,11 @@ func renderSourceNodeSummary(node *proxmox.Node, width int) string {
 
 // RenderVMSelection renders the VM selection view
 func RenderVMSelection(vms []proxmox.VM, selectedVMs map[int]bool, cursorIdx int, width int) string {
+	return RenderVMSelectionWithHeight(vms, selectedVMs, cursorIdx, width, 24)
+}
+
+// RenderVMSelectionWithHeight renders the VM selection view with height limit
+func RenderVMSelectionWithHeight(vms []proxmox.VM, selectedVMs map[int]bool, cursorIdx int, width, height int) string {
 	var sb strings.Builder
 
 	// Title
@@ -411,8 +416,31 @@ func RenderVMSelection(vms []proxmox.VM, selectedVMs map[int]bool, cursorIdx int
 	sb.WriteString(instructionStyle.Render(
 		fmt.Sprintf("Selected: %d VMs - Use Space to toggle, Enter to confirm", len(selectedVMs))) + "\n\n")
 
-	// VM table
-	sb.WriteString(components.RenderVMTable(vms, selectedVMs, cursorIdx))
+	// Calculate visible rows based on height
+	// Fixed overhead: Title+blank(2) + Instructions+blank(2) + Table header+sep(2) + Help(1) + scroll info(1)
+	fixedOverhead := 8
+	maxVisible := height - fixedOverhead
+	if maxVisible < 3 {
+		maxVisible = 3
+	}
+
+	// VM table with scroll support
+	sb.WriteString(components.RenderVMTableWithScroll(vms, selectedVMs, cursorIdx, maxVisible))
+
+	// Show scroll info if there are more VMs than visible
+	if len(vms) > maxVisible {
+		scrollPos := 0
+		if cursorIdx >= maxVisible {
+			scrollPos = cursorIdx - maxVisible + 1
+		}
+		endPos := scrollPos + maxVisible
+		if endPos > len(vms) {
+			endPos = len(vms)
+		}
+		scrollInfo := fmt.Sprintf("(showing %d-%d of %d VMs)",
+			scrollPos+1, endPos, len(vms))
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(scrollInfo) + "\n")
+	}
 	sb.WriteString("\n")
 
 	// Help text

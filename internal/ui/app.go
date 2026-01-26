@@ -144,7 +144,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		return m, nil
+		// Clear screen on resize to prevent rendering artifacts
+		return m, tea.ClearScreen
 
 	case tickMsg:
 		// Only decrement countdown on dashboard view
@@ -757,7 +758,7 @@ func (m Model) View() string {
 			Column:    int(m.sortColumn),
 			Ascending: m.sortAsc,
 		}
-		return views.RenderDashboardWithSort(m.cluster, m.selectedNodeIdx, m.width, m.refreshCountdown, m.refreshing, m.version, progress, sortInfo)
+		return views.RenderDashboardWithHeight(m.cluster, m.selectedNodeIdx, m.width, m.height, m.refreshCountdown, m.refreshing, m.version, progress, sortInfo)
 	case ViewCriteria:
 		sourceNode := proxmox.GetNodeByName(m.cluster, m.sourceNode)
 		return views.RenderCriteriaFull(m.criteriaState, m.sourceNode, sourceNode, m.cluster, m.version, m.width)
@@ -766,7 +767,7 @@ func (m Model) View() string {
 		if sourceNode == nil {
 			return "Error: Source node not found"
 		}
-		return views.RenderVMSelection(sourceNode.VMs, m.criteriaState.SelectedVMs, m.vmCursorIdx, m.width)
+		return views.RenderVMSelectionWithHeight(sourceNode.VMs, m.criteriaState.SelectedVMs, m.vmCursorIdx, m.width, m.height)
 	case ViewResults:
 		if m.result != nil {
 			sourceNode := proxmox.GetNodeByName(m.cluster, m.sourceNode)

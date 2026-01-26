@@ -32,6 +32,103 @@ func RenderDashboardWithRefresh(cluster *proxmox.Cluster, selectedIdx int, width
 	return RenderDashboardFull(cluster, selectedIdx, width, countdown, refreshing, "")
 }
 
+// RenderDashboardWithHeight renders the main dashboard view with height limit
+func RenderDashboardWithHeight(cluster *proxmox.Cluster, selectedIdx int, width, height int, countdown int, refreshing bool, version string, progress RefreshProgress, sortInfo SortInfo) string {
+	var sb strings.Builder
+
+	// Ensure minimum width
+	if width < 80 {
+		width = 100
+	}
+
+	// Title with version
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5"))
+	versionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+
+	title := "KVM Migration Suggester"
+	if version != "" && version != "dev" {
+		title += " " + versionStyle.Render("v"+version)
+	}
+	sb.WriteString(titleStyle.Render(title) + "\n")
+
+	// Graphical top border
+	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+	sb.WriteString(borderStyle.Render(strings.Repeat(boxHorizontal, width)) + "\n\n")
+
+	// Cluster summary with enhanced info
+	sb.WriteString(renderEnhancedClusterSummary(cluster, width))
+	sb.WriteString("\n")
+
+	// Instructions
+	sb.WriteString("Select source node to migrate from:\n\n")
+
+	// Calculate visible rows for nodes based on terminal height
+	// Fixed overhead:
+	// - Title + border + blank: 3 lines
+	// - Cluster summary (2 rows): 2 lines
+	// - Blank: 1 line
+	// - Instructions + blank: 2 lines
+	// - Table header + separator: 2 lines
+	// - Scroll info (if scrolling): 1 line
+	// - Separator: 1 line
+	// - Refresh status: 1 line
+	// - Help text: 1 line
+	// Total: 14 lines
+	fixedOverhead := 14
+	maxVisibleNodes := height - fixedOverhead
+	if maxVisibleNodes < 3 {
+		maxVisibleNodes = 3
+	}
+
+	// Node table with width and scroll support
+	compSortInfo := components.SortInfo{Column: sortInfo.Column, Ascending: sortInfo.Ascending}
+	sb.WriteString(components.RenderNodeTableWideWithScroll(cluster.Nodes, selectedIdx, width, compSortInfo, maxVisibleNodes))
+
+	// Show scroll info if there are more nodes than visible
+	if len(cluster.Nodes) > maxVisibleNodes {
+		scrollPos := 0
+		if selectedIdx >= maxVisibleNodes {
+			scrollPos = selectedIdx - maxVisibleNodes + 1
+		}
+		endPos := scrollPos + maxVisibleNodes
+		if endPos > len(cluster.Nodes) {
+			endPos = len(cluster.Nodes)
+		}
+		scrollInfo := fmt.Sprintf("(showing %d-%d of %d nodes)",
+			scrollPos+1, endPos, len(cluster.Nodes))
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(scrollInfo) + "\n")
+	}
+
+	// Graphical separator
+	sb.WriteString(borderStyle.Render(strings.Repeat(boxThinHoriz, width)) + "\n")
+
+	// Refresh status line
+	refreshStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+	if refreshing {
+		if progress.Total > 0 {
+			// Show progress bar
+			percent := float64(progress.Current) / float64(progress.Total) * 100
+			barWidth := 20
+			filled := int(float64(barWidth) * float64(progress.Current) / float64(progress.Total))
+			bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
+			sb.WriteString(refreshStyle.Render(fmt.Sprintf("⟳ %s: [%s] %d/%d (%.0f%%)", progress.Stage, bar, progress.Current, progress.Total, percent)) + "\n")
+		} else if progress.Stage != "" {
+			sb.WriteString(refreshStyle.Render(fmt.Sprintf("⟳ %s...", progress.Stage)) + "\n")
+		} else {
+			sb.WriteString(refreshStyle.Render("⟳ Refreshing cluster data...") + "\n")
+		}
+	} else if countdown > 0 {
+		sb.WriteString(refreshStyle.Render(fmt.Sprintf("⟳ Auto-refresh in %ds", countdown)) + "  ")
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("(Press 'r' to refresh now)") + "\n")
+	}
+
+	// Help text
+	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	sb.WriteString(helpStyle.Render("↑/↓/PgUp/PgDn/Home/End: Navigate │ 1-8: Sort columns │ Enter: Select │ r: Refresh │ q: Quit"))
+
+	return sb.String()
+}
+
 // RefreshProgress contains progress info for display
 type RefreshProgress struct {
 	Stage   string

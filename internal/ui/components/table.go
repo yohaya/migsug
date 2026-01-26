@@ -107,6 +107,11 @@ func RenderNodeTableWide(nodes []proxmox.Node, selectedIdx int, width int) strin
 
 // RenderNodeTableWideWithSort creates a full-width table with sort indicator
 func RenderNodeTableWideWithSort(nodes []proxmox.Node, selectedIdx int, width int, sortInfo SortInfo) string {
+	return RenderNodeTableWideWithScroll(nodes, selectedIdx, width, sortInfo, len(nodes))
+}
+
+// RenderNodeTableWideWithScroll creates a full-width table with sort indicator and scroll support
+func RenderNodeTableWideWithScroll(nodes []proxmox.Node, selectedIdx int, width int, sortInfo SortInfo, maxVisible int) string {
 	var sb strings.Builder
 
 	// Ensure minimum width
@@ -159,6 +164,42 @@ func RenderNodeTableWideWithSort(nodes []proxmox.Node, selectedIdx int, width in
 		return ""
 	}
 
+	// Scrollbar styles
+	scrollTrackStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	scrollThumbStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+
+	totalItems := len(nodes)
+	if maxVisible <= 0 || maxVisible > totalItems {
+		maxVisible = totalItems
+	}
+	needsScrollbar := totalItems > maxVisible
+
+	// Calculate scroll position to keep selected item visible
+	scrollPos := 0
+	if selectedIdx >= maxVisible {
+		scrollPos = selectedIdx - maxVisible + 1
+	}
+	if scrollPos+maxVisible > totalItems {
+		scrollPos = totalItems - maxVisible
+	}
+	if scrollPos < 0 {
+		scrollPos = 0
+	}
+
+	// Calculate scrollbar thumb position
+	thumbPos := 0
+	thumbSize := maxVisible
+	if needsScrollbar && totalItems > 0 {
+		thumbSize = max(1, maxVisible*maxVisible/totalItems)
+		if thumbSize > maxVisible {
+			thumbSize = maxVisible
+		}
+		scrollRange := maxVisible - thumbSize
+		if scrollRange > 0 && totalItems > maxVisible {
+			thumbPos = scrollPos * scrollRange / (totalItems - maxVisible)
+		}
+	}
+
 	// Main header with sort arrows (aligned to match row format)
 	header1 := fmt.Sprintf("  %-*s %-*s %*s %*s %*s %*s %-*s %-*s %-*s %s",
 		colName, "Host"+getSortArrow(0),
@@ -171,12 +212,23 @@ func RenderNodeTableWideWithSort(nodes []proxmox.Node, selectedIdx int, width in
 		colDisk, "Disk"+getSortArrow(7),
 		colSwap, "Swap",
 		"CPU Model")
-	sb.WriteString(headerStyle.Render(header1) + "\n")
-	// Use graphical separator
-	sb.WriteString("  " + borderStyle.Render(strings.Repeat(boxHeavyHoriz, width-4)) + "\n")
+	if needsScrollbar {
+		sb.WriteString(headerStyle.Render(header1) + "  \n")
+		sb.WriteString("  " + borderStyle.Render(strings.Repeat(boxHeavyHoriz, width-4)) + "  \n")
+	} else {
+		sb.WriteString(headerStyle.Render(header1) + "\n")
+		sb.WriteString("  " + borderStyle.Render(strings.Repeat(boxHeavyHoriz, width-4)) + "\n")
+	}
 
-	// Rows
-	for i, node := range nodes {
+	// Calculate visible range
+	endPos := scrollPos + maxVisible
+	if endPos > totalItems {
+		endPos = totalItems
+	}
+
+	// Rows (only visible portion)
+	for i := scrollPos; i < endPos; i++ {
+		node := nodes[i]
 		isSelected := i == selectedIdx
 		isOffline := node.Status != "online"
 
@@ -324,7 +376,18 @@ func RenderNodeTableWideWithSort(nodes []proxmox.Node, selectedIdx int, width in
 			styledRow = prefix + coloredRow.String()
 		}
 
-		sb.WriteString(styledRow + "\n")
+		sb.WriteString(styledRow)
+
+		// Add scrollbar character if needed
+		if needsScrollbar {
+			rowIdx := i - scrollPos
+			if rowIdx >= thumbPos && rowIdx < thumbPos+thumbSize {
+				sb.WriteString(" " + scrollThumbStyle.Render("█"))
+			} else {
+				sb.WriteString(" " + scrollTrackStyle.Render("│"))
+			}
+		}
+		sb.WriteString("\n")
 	}
 
 	return sb.String()
@@ -512,6 +575,11 @@ func renderProgressBar(percent float64, width int) string {
 
 // RenderVMTable creates a table of VMs with resource usage
 func RenderVMTable(vms []proxmox.VM, selectedIndices map[int]bool, cursorIdx int) string {
+	return RenderVMTableWithScroll(vms, selectedIndices, cursorIdx, len(vms))
+}
+
+// RenderVMTableWithScroll creates a table of VMs with scroll support
+func RenderVMTableWithScroll(vms []proxmox.VM, selectedIndices map[int]bool, cursorIdx int, maxVisible int) string {
 	var sb strings.Builder
 
 	// Column widths
@@ -526,6 +594,44 @@ func RenderVMTable(vms []proxmox.VM, selectedIndices map[int]bool, cursorIdx int
 		colStorage = 10
 	)
 
+	totalWidth := colCheck + colVMID + colName + colStatus + colVCPU + colCPU + colRAM + colStorage + 6
+
+	// Scrollbar styles
+	scrollTrackStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	scrollThumbStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+
+	totalItems := len(vms)
+	if maxVisible <= 0 || maxVisible > totalItems {
+		maxVisible = totalItems
+	}
+	needsScrollbar := totalItems > maxVisible
+
+	// Calculate scroll position to keep selected item visible
+	scrollPos := 0
+	if cursorIdx >= maxVisible {
+		scrollPos = cursorIdx - maxVisible + 1
+	}
+	if scrollPos+maxVisible > totalItems {
+		scrollPos = totalItems - maxVisible
+	}
+	if scrollPos < 0 {
+		scrollPos = 0
+	}
+
+	// Calculate scrollbar thumb position
+	thumbPos := 0
+	thumbSize := maxVisible
+	if needsScrollbar && totalItems > 0 {
+		thumbSize = max(1, maxVisible*maxVisible/totalItems)
+		if thumbSize > maxVisible {
+			thumbSize = maxVisible
+		}
+		scrollRange := maxVisible - thumbSize
+		if scrollRange > 0 && totalItems > maxVisible {
+			thumbPos = scrollPos * scrollRange / (totalItems - maxVisible)
+		}
+	}
+
 	// Header (with prefix to align with "→ [x] ")
 	header := fmt.Sprintf("      %*s %-*s %-*s %*s %*s %*s %*s",
 		colVMID, "VMID",
@@ -535,11 +641,23 @@ func RenderVMTable(vms []proxmox.VM, selectedIndices map[int]bool, cursorIdx int
 		colCPU, "CPU%",
 		colRAM, "RAM",
 		colStorage, "Storage")
-	sb.WriteString(headerStyle.Render(header) + "\n")
-	sb.WriteString("      " + strings.Repeat("─", colVMID+colName+colStatus+colVCPU+colCPU+colRAM+colStorage+6) + "\n")
+	if needsScrollbar {
+		sb.WriteString(headerStyle.Render(header) + "  \n")
+		sb.WriteString("      " + strings.Repeat("─", totalWidth) + "  \n")
+	} else {
+		sb.WriteString(headerStyle.Render(header) + "\n")
+		sb.WriteString("      " + strings.Repeat("─", totalWidth) + "\n")
+	}
 
-	// Rows
-	for i, vm := range vms {
+	// Calculate visible range
+	endPos := scrollPos + maxVisible
+	if endPos > totalItems {
+		endPos = totalItems
+	}
+
+	// Rows (only visible portion)
+	for i := scrollPos; i < endPos; i++ {
+		vm := vms[i]
 		style := normalStyle
 		if i == cursorIdx {
 			style = selectedStyle
@@ -573,7 +691,18 @@ func RenderVMTable(vms []proxmox.VM, selectedIndices map[int]bool, cursorIdx int
 			sb.WriteString("  ")
 		}
 
-		sb.WriteString(style.Render(row) + "\n")
+		sb.WriteString(style.Render(row))
+
+		// Add scrollbar character if needed
+		if needsScrollbar {
+			rowIdx := i - scrollPos
+			if rowIdx >= thumbPos && rowIdx < thumbPos+thumbSize {
+				sb.WriteString(" " + scrollThumbStyle.Render("█"))
+			} else {
+				sb.WriteString(" " + scrollTrackStyle.Render("│"))
+			}
+		}
+		sb.WriteString("\n")
 	}
 
 	return sb.String()
