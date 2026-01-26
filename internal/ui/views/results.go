@@ -20,10 +20,36 @@ func RenderResults(result *analyzer.AnalysisResult, width int) string {
 
 // RenderResultsWithScroll renders the migration results view with scrolling support
 func RenderResultsWithScroll(result *analyzer.AnalysisResult, width, height, scrollPos int) string {
+	return RenderResultsFull(result, nil, "", width, height, scrollPos)
+}
+
+// RenderResultsFull renders the migration results view with full header
+func RenderResultsFull(result *analyzer.AnalysisResult, cluster *proxmox.Cluster, version string, width, height, scrollPos int) string {
 	var sb strings.Builder
 
-	// Title
-	sb.WriteString(resultsTitleStyle.Render("Migration Suggestions") + "\n\n")
+	// Ensure minimum width
+	if width < 80 {
+		width = 100
+	}
+
+	// Title with version (same as dashboard)
+	versionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+
+	title := "KVM Migration Suggester"
+	if version != "" && version != "dev" {
+		title += " " + versionStyle.Render("v"+version)
+	}
+	sb.WriteString(resultsTitleStyle.Render(title) + "\n")
+
+	// Graphical top border
+	sb.WriteString(borderStyle.Render(strings.Repeat("━", width)) + "\n\n")
+
+	// Cluster summary if available
+	if cluster != nil {
+		sb.WriteString(renderResultsClusterSummary(cluster, width))
+		sb.WriteString("\n")
+	}
 
 	// Summary
 	if len(result.Suggestions) == 0 {
@@ -102,13 +128,13 @@ func RenderResultsWithScroll(result *analyzer.AnalysisResult, width, height, scr
 // calculateVisibleRows calculates how many suggestion rows can fit on screen
 func calculateVisibleRows(height int) int {
 	// Reserve space for: title (2), summary (4), section headers (4), node comparison (8), help (2)
-	// Each suggestion takes 2 rows (data + reason)
+	// Each suggestion takes 1 row
 	reserved := 20
 	available := height - reserved
-	if available < 3 {
-		return 3
+	if available < 5 {
+		return 5
 	}
-	return available / 2 // Each suggestion takes 2 lines
+	return available // Each suggestion takes 1 line
 }
 
 func min(a, b int) int {
@@ -116,6 +142,96 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// renderResultsClusterSummary creates a compact cluster summary for results view
+func renderResultsClusterSummary(cluster *proxmox.Cluster, width int) string {
+	var sb strings.Builder
+
+	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	valueStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	runningStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
+	stoppedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+
+	// Count online nodes
+	onlineNodes := 0
+	for _, node := range cluster.Nodes {
+		if node.Status == "online" {
+			onlineNodes++
+		}
+	}
+
+	// Calculate cluster-wide storage in TiB
+	totalStorageTiB := float64(cluster.TotalStorage) / (1024 * 1024 * 1024 * 1024)
+	usedStorageTiB := float64(cluster.UsedStorage) / (1024 * 1024 * 1024 * 1024)
+	storagePercent := 0.0
+	if cluster.TotalStorage > 0 {
+		storagePercent = float64(cluster.UsedStorage) / float64(cluster.TotalStorage) * 100
+	}
+
+	// Calculate RAM in GiB
+	totalRAMGiB := float64(cluster.TotalRAM) / (1024 * 1024 * 1024)
+	usedRAM := int64(0)
+	for _, node := range cluster.Nodes {
+		usedRAM += node.UsedMem
+	}
+	usedRAMGiB := float64(usedRAM) / (1024 * 1024 * 1024)
+	ramPercent := 0.0
+	if cluster.TotalRAM > 0 {
+		ramPercent = float64(usedRAM) / float64(cluster.TotalRAM) * 100
+	}
+
+	// Calculate average CPU
+	avgCPU := 0.0
+	if len(cluster.Nodes) > 0 {
+		totalCPU := 0.0
+		for _, node := range cluster.Nodes {
+			totalCPU += node.CPUUsage
+		}
+		avgCPU = (totalCPU / float64(len(cluster.Nodes))) * 100
+	}
+
+	// Fixed column widths
+	col1Width := 32
+	col2Width := 30
+
+	// Row 1: Nodes, CPU, vCPUs
+	nodesStr := fmt.Sprintf("%d/%d online", onlineNodes, len(cluster.Nodes))
+	col1Content := fmt.Sprintf("Nodes: %s", nodesStr)
+	sb.WriteString(labelStyle.Render("Nodes: ") + valueStyle.Render(nodesStr))
+	sb.WriteString(strings.Repeat(" ", col1Width-len(col1Content)))
+
+	cpuStr := fmt.Sprintf("%.1f%%", avgCPU)
+	col2Content := fmt.Sprintf("CPU: %s", cpuStr)
+	sb.WriteString(labelStyle.Render("CPU: ") + valueStyle.Render(cpuStr))
+	sb.WriteString(strings.Repeat(" ", col2Width-len(col2Content)))
+
+	sb.WriteString(labelStyle.Render("vCPUs: ") + valueStyle.Render(fmt.Sprintf("%d", cluster.TotalVCPUs)))
+	sb.WriteString("\n")
+
+	// Row 2: VMs, RAM, Storage
+	col1Row2 := fmt.Sprintf("VMs:   %d ", cluster.TotalVMs) + fmt.Sprintf("(On: %d, Off: %d)", cluster.RunningVMs, cluster.StoppedVMs)
+	sb.WriteString(labelStyle.Render("VMs:   ") + valueStyle.Render(fmt.Sprintf("%d ", cluster.TotalVMs)))
+	sb.WriteString(dimStyle.Render("(") + runningStyle.Render(fmt.Sprintf("On: %d", cluster.RunningVMs)) + dimStyle.Render(", "))
+	sb.WriteString(stoppedStyle.Render(fmt.Sprintf("Off: %d", cluster.StoppedVMs)) + dimStyle.Render(")"))
+	if len(col1Row2) < col1Width {
+		sb.WriteString(strings.Repeat(" ", col1Width-len(col1Row2)))
+	}
+
+	ramValStr := fmt.Sprintf("%.0f/%.0f GiB", usedRAMGiB, totalRAMGiB)
+	ramPctStr := fmt.Sprintf("(%.1f%%)", ramPercent)
+	ramFull := fmt.Sprintf("RAM: %s %s", ramValStr, ramPctStr)
+	sb.WriteString(labelStyle.Render("RAM: ") + valueStyle.Render(ramValStr) + " " + valueStyle.Render(ramPctStr))
+	if len(ramFull) < col2Width {
+		sb.WriteString(strings.Repeat(" ", col2Width-len(ramFull)))
+	}
+
+	sb.WriteString(labelStyle.Render("Storage: ") + valueStyle.Render(fmt.Sprintf("%.0f/%.0f TiB", usedStorageTiB, totalStorageTiB)))
+	sb.WriteString(" " + valueStyle.Render(fmt.Sprintf("(%.1f%%)", storagePercent)))
+	sb.WriteString("\n")
+
+	return sb.String()
 }
 
 // RenderVMSelection renders the VM selection view

@@ -108,11 +108,11 @@ func RenderCriteriaFull(state CriteriaState, sourceNode string, node *proxmox.No
 		name string
 		desc string
 	}{
-		{analyzer.ModeVMCount, "VM Count", "Migrate a specific number of virtual machines"},
-		{analyzer.ModeVCPU, "vCPU Count", "Migrate VMs until reaching target vCPU count"},
-		{analyzer.ModeCPUUsage, "CPU Usage %", "Migrate VMs to free up target CPU percentage"},
-		{analyzer.ModeRAM, "RAM Amount", "Migrate VMs to free up target RAM (in GB)"},
-		{analyzer.ModeStorage, "Storage Amount", "Migrate VMs to free up target storage (in GB)"},
+		{analyzer.ModeVMCount, "VM", "Migrate a specific number of VMs"},
+		{analyzer.ModeVCPU, "vCPU", "Migrate VMs based on the count of vCPUs to migrate"},
+		{analyzer.ModeCPUUsage, "CPU Usage (%)", "Migrate VMs based on the CPU Usage Percentage to migrate from the Host"},
+		{analyzer.ModeRAM, "RAM (GiB)", "Migrate VMs based on the amount of GiB RAM to migrate from the Host"},
+		{analyzer.ModeStorage, "Storage (GiB)", "Migrate VMs based on the amount of GiB of VM Storage to migrate from Host"},
 		{analyzer.ModeSpecific, "Specific VMs", "Manually select which VMs to migrate"},
 	}
 
@@ -165,20 +165,18 @@ func RenderCriteriaFull(state CriteriaState, sourceNode string, node *proxmox.No
 		inputLabel = "Number of VMs to migrate"
 		inputValue = state.VMCount
 	case analyzer.ModeVCPU:
-		inputLabel = "Total vCPUs to migrate"
+		inputLabel = "Number of vCPUs to migrate"
 		inputValue = state.VCPUCount
 	case analyzer.ModeCPUUsage:
 		inputLabel = "CPU usage percentage to free"
 		inputValue = state.CPUUsage
 		inputSuffix = "%"
 	case analyzer.ModeRAM:
-		inputLabel = "RAM amount to free"
+		inputLabel = "RAM to free (GiB)"
 		inputValue = state.RAMAmount
-		inputSuffix = "GB"
 	case analyzer.ModeStorage:
-		inputLabel = "Storage amount to free"
+		inputLabel = "Storage to free (GiB)"
 		inputValue = state.StorageAmount
-		inputSuffix = "GB"
 	case analyzer.ModeSpecific:
 		showInput = false
 		noteStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Italic(true)

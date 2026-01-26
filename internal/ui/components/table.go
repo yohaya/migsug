@@ -605,7 +605,7 @@ func RenderSuggestionTableWithScroll(suggestions []analyzer.MigrationSuggestion,
 		endPos = len(suggestions)
 	}
 
-	// Rows (only visible portion)
+	// Rows (only visible portion) - all on single line
 	for i := scrollPos; i < endPos; i++ {
 		sug := suggestions[i]
 		style := normalStyle
@@ -624,12 +624,6 @@ func RenderSuggestionTableWithScroll(suggestions []analyzer.MigrationSuggestion,
 		)
 
 		sb.WriteString("  " + style.Render(row) + "\n")
-
-		// Add reason as subtitle
-		if sug.Reason != "" {
-			reasonStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Italic(true)
-			sb.WriteString("    " + reasonStyle.Render("└─ "+truncate(sug.Reason, 80)) + "\n")
-		}
 	}
 
 	// Show scroll down indicator if not at bottom

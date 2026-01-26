@@ -654,7 +654,7 @@ func (m Model) View() string {
 		return views.RenderVMSelection(sourceNode.VMs, m.criteriaState.SelectedVMs, m.vmCursorIdx, m.width)
 	case ViewResults:
 		if m.result != nil {
-			return views.RenderResultsWithScroll(m.result, m.width, m.height, m.resultsScrollPos)
+			return views.RenderResultsFull(m.result, m.cluster, m.version, m.width, m.height, m.resultsScrollPos)
 		}
 		return "No results available"
 	case ViewError:
