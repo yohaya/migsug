@@ -127,15 +127,15 @@ func renderEnhancedClusterSummary(cluster *proxmox.Cluster, width int) string {
 		}
 	}
 
-	// Calculate cluster-wide storage
-	totalStorageGiB := float64(cluster.TotalStorage) / (1024 * 1024 * 1024)
-	usedStorageGiB := float64(cluster.UsedStorage) / (1024 * 1024 * 1024)
+	// Calculate cluster-wide storage in TiB
+	totalStorageTiB := float64(cluster.TotalStorage) / (1024 * 1024 * 1024 * 1024)
+	usedStorageTiB := float64(cluster.UsedStorage) / (1024 * 1024 * 1024 * 1024)
 	storagePercent := 0.0
 	if cluster.TotalStorage > 0 {
 		storagePercent = float64(cluster.UsedStorage) / float64(cluster.TotalStorage) * 100
 	}
 
-	// Calculate RAM
+	// Calculate RAM in GiB
 	totalRAMGiB := float64(cluster.TotalRAM) / (1024 * 1024 * 1024)
 	usedRAM := int64(0)
 	for _, node := range cluster.Nodes {
@@ -162,22 +162,22 @@ func renderEnhancedClusterSummary(cluster *proxmox.Cluster, width int) string {
 	ramColor := getUsageColorCode(ramPercent)
 	storageColor := getUsageColorCode(storagePercent)
 
-	// Create aligned table using fixed-width columns
-	// Row 1: Nodes, VMs, vCPUs
-	sb.WriteString(labelStyle.Render("Nodes:   ") + valueStyle.Render(fmt.Sprintf("%-12s", fmt.Sprintf("%d/%d online", onlineNodes, len(cluster.Nodes)))))
-	sb.WriteString("  " + labelStyle.Render("VMs:     ") + valueStyle.Render(fmt.Sprintf("%-10s", fmt.Sprintf("%d total", cluster.TotalVMs))))
-	sb.WriteString(dimStyle.Render("(") + runningStyle.Render(fmt.Sprintf("%d", cluster.RunningVMs)) + dimStyle.Render(" run, "))
-	sb.WriteString(stoppedStyle.Render(fmt.Sprintf("%d", cluster.StoppedVMs)) + dimStyle.Render(" stop)"))
-	sb.WriteString("  " + labelStyle.Render("vCPUs:   ") + valueStyle.Render(fmt.Sprintf("%d", cluster.TotalVCPUs)))
+	// Row 1: Nodes, VMs, vCPUs - left aligned
+	sb.WriteString(labelStyle.Render("Nodes: ") + valueStyle.Render(fmt.Sprintf("%-20s", fmt.Sprintf("%d/%d online", onlineNodes, len(cluster.Nodes)))))
+	sb.WriteString(labelStyle.Render("VMs: ") + valueStyle.Render(fmt.Sprintf("%d ", cluster.TotalVMs)))
+	sb.WriteString(dimStyle.Render("(") + runningStyle.Render(fmt.Sprintf("On: %d", cluster.RunningVMs)) + dimStyle.Render(", "))
+	sb.WriteString(stoppedStyle.Render(fmt.Sprintf("Off: %d", cluster.StoppedVMs)) + dimStyle.Render(")"))
+	sb.WriteString(fmt.Sprintf("%*s", 10, ""))
+	sb.WriteString(labelStyle.Render("vCPUs: ") + valueStyle.Render(fmt.Sprintf("%d", cluster.TotalVCPUs)))
 	sb.WriteString("\n")
 
-	// Row 2: CPU, RAM, Storage - aligned with row 1
-	// Format: "CPU: 15.0% avg    RAM: 123/456 GiB (27%)    Storage: 123/456 GiB (27%)"
-	sb.WriteString(labelStyle.Render("CPU:     ") + lipgloss.NewStyle().Foreground(lipgloss.Color(cpuColor)).Render(fmt.Sprintf("%-12s", fmt.Sprintf("%5.1f%% avg", avgCPU))))
-	sb.WriteString("  " + labelStyle.Render("RAM:     ") + valueStyle.Render(fmt.Sprintf("%.0f/%.0f GiB", usedRAMGiB, totalRAMGiB)))
-	sb.WriteString(" " + lipgloss.NewStyle().Foreground(lipgloss.Color(ramColor)).Render(fmt.Sprintf("(%4.1f%%)", ramPercent)))
-	sb.WriteString("  " + labelStyle.Render("Storage: ") + valueStyle.Render(fmt.Sprintf("%.0f/%.0f GiB", usedStorageGiB, totalStorageGiB)))
-	sb.WriteString(" " + lipgloss.NewStyle().Foreground(lipgloss.Color(storageColor)).Render(fmt.Sprintf("(%4.1f%%)", storagePercent)))
+	// Row 2: CPU, RAM, Storage - left aligned
+	sb.WriteString(labelStyle.Render("CPU:   ") + lipgloss.NewStyle().Foreground(lipgloss.Color(cpuColor)).Render(fmt.Sprintf("%-20s", fmt.Sprintf("%.1f%%", avgCPU))))
+	sb.WriteString(labelStyle.Render("RAM: ") + valueStyle.Render(fmt.Sprintf("%.0f/%.0f GiB", usedRAMGiB, totalRAMGiB)))
+	sb.WriteString(" " + lipgloss.NewStyle().Foreground(lipgloss.Color(ramColor)).Render(fmt.Sprintf("(%.1f%%)", ramPercent)))
+	sb.WriteString(fmt.Sprintf("%*s", 5, ""))
+	sb.WriteString(labelStyle.Render("Storage: ") + valueStyle.Render(fmt.Sprintf("%.0f/%.0f TiB", usedStorageTiB, totalStorageTiB)))
+	sb.WriteString(" " + lipgloss.NewStyle().Foreground(lipgloss.Color(storageColor)).Render(fmt.Sprintf("(%.1f%%)", storagePercent)))
 	sb.WriteString("\n")
 
 	return sb.String()
