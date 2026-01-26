@@ -105,6 +105,13 @@ func CollectClusterDataWithProgress(client ProxmoxClient, progress ProgressCallb
 				UsedDisk: res.Disk,
 				Uptime:   res.Uptime,
 			}
+
+			// Log VMs with missing storage info for debugging
+			if res.MaxDisk == 0 && res.Status == "running" {
+				log.Printf("VM %d (%s) on node %s has MaxDisk=0. API returned: MaxDisk=%d, Disk=%d, Type=%s",
+					res.VMID, res.Name, res.Node, res.MaxDisk, res.Disk, res.Type)
+			}
+
 			vmList = append(vmList, vm)
 			cluster.TotalVMs++
 		}

@@ -153,49 +153,40 @@ func RenderCriteriaFull(state CriteriaState, sourceNode string, node *proxmox.No
 	sb.WriteString("\n")
 	sb.WriteString(borderStyle.Render(strings.Repeat(criteriaBoxThin, width)) + "\n\n")
 
-	// Input field based on selected mode
-	inputLabel := ""
-	inputValue := ""
-	inputSuffix := ""
-	showInput := true
+	// Only show input field after user has selected a mode (InputFocused becomes true)
+	// Or show hint for ModeSpecific
+	if state.InputFocused {
+		// Input field based on selected mode
+		inputLabel := ""
+		inputValue := ""
+		inputSuffix := ""
 
-	switch state.SelectedMode {
-	case analyzer.ModeVMCount:
-		inputLabel = "Number of VMs to migrate"
-		inputValue = state.VMCount
-	case analyzer.ModeVCPU:
-		inputLabel = "Number of vCPUs to migrate"
-		inputValue = state.VCPUCount
-	case analyzer.ModeCPUUsage:
-		inputLabel = "CPU usage percentage to free"
-		inputValue = state.CPUUsage
-		inputSuffix = "%"
-	case analyzer.ModeRAM:
-		inputLabel = "RAM to free (GiB)"
-		inputValue = state.RAMAmount
-	case analyzer.ModeStorage:
-		inputLabel = "Storage to free (GiB)"
-		inputValue = state.StorageAmount
-	case analyzer.ModeSpecific:
-		showInput = false
-		noteStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Italic(true)
-		sb.WriteString(noteStyle.Render("  ℹ Press Enter to select specific VMs on the next screen") + "\n")
-	}
+		switch state.SelectedMode {
+		case analyzer.ModeVMCount:
+			inputLabel = "Number of VMs to migrate"
+			inputValue = state.VMCount
+		case analyzer.ModeVCPU:
+			inputLabel = "Number of vCPUs to migrate"
+			inputValue = state.VCPUCount
+		case analyzer.ModeCPUUsage:
+			inputLabel = "CPU usage percentage to free"
+			inputValue = state.CPUUsage
+			inputSuffix = "%"
+		case analyzer.ModeRAM:
+			inputLabel = "RAM to free (GiB)"
+			inputValue = state.RAMAmount
+		case analyzer.ModeStorage:
+			inputLabel = "Storage to free (GiB)"
+			inputValue = state.StorageAmount
+		}
 
-	if showInput {
 		labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
 		inputStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
 		suffixStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 		errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Bold(true)
 
-		// Display value with cursor when focused
-		displayValue := inputValue
-		if state.InputFocused {
-			displayValue = inputValue + "█"
-		}
-		if displayValue == "" && !state.InputFocused {
-			displayValue = "_"
-		}
+		// Display value with cursor
+		displayValue := inputValue + "█"
 
 		// Inline input after the label
 		sb.WriteString("  " + labelStyle.Render(inputLabel+": ") + inputStyle.Render(displayValue))
@@ -208,6 +199,10 @@ func RenderCriteriaFull(state CriteriaState, sourceNode string, node *proxmox.No
 		if state.ErrorMessage != "" {
 			sb.WriteString("  " + errorStyle.Render("⚠ "+state.ErrorMessage) + "\n")
 		}
+	} else if state.SelectedMode == analyzer.ModeSpecific && state.CursorPosition == 5 {
+		// Show hint only when Specific VMs mode is highlighted
+		noteStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Italic(true)
+		sb.WriteString(noteStyle.Render("  ℹ Press Enter to select specific VMs on the next screen") + "\n")
 	}
 
 	sb.WriteString("\n")
