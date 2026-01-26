@@ -41,7 +41,7 @@ type RefreshProgress struct {
 
 // SortInfo contains sorting information for display
 type SortInfo struct {
-	Column    int  // 0-6 for columns 1-7
+	Column    int // 0-7 for columns 1-8
 	Ascending bool
 }
 

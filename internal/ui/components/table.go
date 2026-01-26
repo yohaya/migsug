@@ -96,7 +96,7 @@ const (
 
 // SortInfo contains sorting information for the table
 type SortInfo struct {
-	Column    int  // 0-6 for columns 1-7
+	Column    int // 0-7 for columns 1-8
 	Ascending bool
 }
 
@@ -130,11 +130,11 @@ func RenderNodeTableWideWithSort(nodes []proxmox.Node, selectedIdx int, width in
 	colName := maxNameLen + 2
 	colStatus := 8
 	colVMs := 6
-	colVCPUs := 13    // e.g., "572 (325%)"
+	colVCPUs := 13 // e.g., "572 (325%)"
 	colCPUPct := 8
-	colLA := 7        // e.g., "12.34"
-	colRAM := 22      // e.g., "1632/2048G (80%)"
-	colDisk := 20     // e.g., "165/205T (80%)"
+	colLA := 7    // e.g., "12.34"
+	colRAM := 22  // e.g., "1632/2048G (80%)"
+	colDisk := 20 // e.g., "165/205T (80%)"
 	// CPU Model gets remaining width - no artificial limit
 	colCPUModel := width - colName - colStatus - colVMs - colVCPUs - colCPUPct - colLA - colRAM - colDisk - 24
 	if colCPUModel < 20 {
