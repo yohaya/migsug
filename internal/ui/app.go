@@ -555,7 +555,7 @@ func (m Model) View() string {
 		return views.RenderDashboardWithSort(m.cluster, m.selectedNodeIdx, m.width, m.refreshCountdown, m.refreshing, m.version, progress, sortInfo)
 	case ViewCriteria:
 		sourceNode := proxmox.GetNodeByName(m.cluster, m.sourceNode)
-		return views.RenderCriteriaWithNode(m.criteriaState, m.sourceNode, sourceNode, m.width)
+		return views.RenderCriteriaFull(m.criteriaState, m.sourceNode, sourceNode, m.cluster, m.version, m.width)
 	case ViewVMSelection:
 		sourceNode := proxmox.GetNodeByName(m.cluster, m.sourceNode)
 		if sourceNode == nil {

@@ -36,6 +36,11 @@ func RenderCriteria(state CriteriaState, sourceNode string, width int) string {
 
 // RenderCriteriaWithNode renders the criteria selection view with node data
 func RenderCriteriaWithNode(state CriteriaState, sourceNode string, node *proxmox.Node, width int) string {
+	return RenderCriteriaFull(state, sourceNode, node, nil, "", width)
+}
+
+// RenderCriteriaFull renders the criteria selection view with full header like dashboard
+func RenderCriteriaFull(state CriteriaState, sourceNode string, node *proxmox.Node, cluster *proxmox.Cluster, version string, width int) string {
 	var sb strings.Builder
 
 	// Ensure minimum width
@@ -43,18 +48,35 @@ func RenderCriteriaWithNode(state CriteriaState, sourceNode string, node *proxmo
 		width = 100
 	}
 
-	// Title with graphical border
+	// Title with version (same as dashboard)
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5"))
+	versionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 
-	sb.WriteString(titleStyle.Render(fmt.Sprintf("Migration Criteria │ Source: %s", sourceNode)) + "\n")
+	title := "KVM Migration Suggester"
+	if version != "" && version != "dev" {
+		title += " " + versionStyle.Render("v"+version)
+	}
+	sb.WriteString(titleStyle.Render(title) + "\n")
+
+	// Graphical top border
 	sb.WriteString(borderStyle.Render(strings.Repeat(criteriaBoxHoriz, width)) + "\n\n")
+
+	// Cluster summary (same as dashboard) if cluster is available
+	if cluster != nil {
+		sb.WriteString(renderClusterSummary(cluster, width))
+		sb.WriteString("\n")
+	}
+
+	// Selected source node instruction
+	instructionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	sb.WriteString(instructionStyle.Render(fmt.Sprintf("Selected source node: %s", sourceNode)) + "\n")
 
 	// Show selected host data if available
 	if node != nil {
 		sb.WriteString(renderNodeSummary(node, width))
-		sb.WriteString("\n")
 	}
+	sb.WriteString("\n")
 
 	// Instructions
 	instructionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
@@ -165,6 +187,104 @@ func RenderCriteriaWithNode(state CriteriaState, sourceNode string, node *proxmo
 	}
 
 	return sb.String()
+}
+
+// renderClusterSummary creates the cluster summary (same as dashboard)
+func renderClusterSummary(cluster *proxmox.Cluster, width int) string {
+	var sb strings.Builder
+
+	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	valueStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	runningStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
+	stoppedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+
+	// Count online nodes
+	onlineNodes := 0
+	for _, node := range cluster.Nodes {
+		if node.Status == "online" {
+			onlineNodes++
+		}
+	}
+
+	// Calculate cluster-wide storage in TiB
+	totalStorageTiB := float64(cluster.TotalStorage) / (1024 * 1024 * 1024 * 1024)
+	usedStorageTiB := float64(cluster.UsedStorage) / (1024 * 1024 * 1024 * 1024)
+	storagePercent := 0.0
+	if cluster.TotalStorage > 0 {
+		storagePercent = float64(cluster.UsedStorage) / float64(cluster.TotalStorage) * 100
+	}
+
+	// Calculate RAM in GiB
+	totalRAMGiB := float64(cluster.TotalRAM) / (1024 * 1024 * 1024)
+	usedRAM := int64(0)
+	for _, node := range cluster.Nodes {
+		usedRAM += node.UsedMem
+	}
+	usedRAMGiB := float64(usedRAM) / (1024 * 1024 * 1024)
+	ramPercent := 0.0
+	if cluster.TotalRAM > 0 {
+		ramPercent = float64(usedRAM) / float64(cluster.TotalRAM) * 100
+	}
+
+	// Calculate average CPU
+	avgCPU := 0.0
+	if len(cluster.Nodes) > 0 {
+		totalCPU := 0.0
+		for _, node := range cluster.Nodes {
+			totalCPU += node.CPUUsage
+		}
+		avgCPU = (totalCPU / float64(len(cluster.Nodes))) * 100
+	}
+
+	// Color codes for usage
+	cpuColor := getUsageColor(avgCPU)
+	ramColor := getUsageColor(ramPercent)
+	storageColor := getUsageColor(storagePercent)
+
+	// Fixed column widths for alignment
+	col1Width := 22
+	col2Width := 35
+
+	// Row 1: Nodes, VMs, vCPUs
+	nodesStr := fmt.Sprintf("%d/%d online", onlineNodes, len(cluster.Nodes))
+	sb.WriteString(labelStyle.Render("Nodes: ") + valueStyle.Render(fmt.Sprintf("%-*s", col1Width-7, nodesStr)))
+	vmStr := fmt.Sprintf("%d ", cluster.TotalVMs)
+	sb.WriteString(labelStyle.Render("VMs: ") + valueStyle.Render(vmStr))
+	sb.WriteString(dimStyle.Render("(") + runningStyle.Render(fmt.Sprintf("On: %d", cluster.RunningVMs)) + dimStyle.Render(", "))
+	sb.WriteString(stoppedStyle.Render(fmt.Sprintf("Off: %d", cluster.StoppedVMs)) + dimStyle.Render(")"))
+	vmFullLen := 5 + len(vmStr) + 1 + 4 + len(fmt.Sprintf("%d", cluster.RunningVMs)) + 2 + 5 + len(fmt.Sprintf("%d", cluster.StoppedVMs)) + 1
+	if vmFullLen < col2Width {
+		sb.WriteString(strings.Repeat(" ", col2Width-vmFullLen))
+	}
+	sb.WriteString(labelStyle.Render("vCPUs: ") + valueStyle.Render(fmt.Sprintf("%d", cluster.TotalVCPUs)))
+	sb.WriteString("\n")
+
+	// Row 2: CPU, RAM, Storage
+	cpuStr := fmt.Sprintf("%.1f%%", avgCPU)
+	sb.WriteString(labelStyle.Render("CPU:   ") + lipgloss.NewStyle().Foreground(lipgloss.Color(cpuColor)).Render(fmt.Sprintf("%-*s", col1Width-7, cpuStr)))
+	ramValStr := fmt.Sprintf("%.0f/%.0f GiB", usedRAMGiB, totalRAMGiB)
+	ramPctStr := fmt.Sprintf("(%.1f%%)", ramPercent)
+	sb.WriteString(labelStyle.Render("RAM: ") + valueStyle.Render(ramValStr) + " " + lipgloss.NewStyle().Foreground(lipgloss.Color(ramColor)).Render(ramPctStr))
+	ramFullLen := 5 + len(ramValStr) + 1 + len(ramPctStr)
+	if ramFullLen < col2Width {
+		sb.WriteString(strings.Repeat(" ", col2Width-ramFullLen))
+	}
+	sb.WriteString(labelStyle.Render("Storage: ") + valueStyle.Render(fmt.Sprintf("%.0f/%.0f TiB", usedStorageTiB, totalStorageTiB)))
+	sb.WriteString(" " + lipgloss.NewStyle().Foreground(lipgloss.Color(storageColor)).Render(fmt.Sprintf("(%.1f%%)", storagePercent)))
+	sb.WriteString("\n")
+
+	return sb.String()
+}
+
+// getUsageColor returns color code based on usage percentage
+func getUsageColor(percent float64) string {
+	if percent >= 87 {
+		return "9" // bright red
+	} else if percent >= 80 {
+		return "3" // yellow
+	}
+	return "2" // green
 }
 
 // renderNodeSummary displays the selected node's summary info
