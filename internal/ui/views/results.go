@@ -96,7 +96,7 @@ func RenderResultsWithSource(result *analyzer.AnalysisResult, cluster *proxmox.C
 		result.TotalStorage,
 		result.ImprovementInfo,
 	))
-	sb.WriteString("\n")
+	sb.WriteString("\n\n")
 
 	// Calculate visible rows based on terminal height and number of target nodes
 	maxVisible := calculateVisibleRowsWithTargets(height, activeTargets)
@@ -169,7 +169,7 @@ func calculateVisibleRowsWithTargets(height, numTargets int) int {
 	// - Title + border + blank: 3 lines
 	// - Cluster summary + blank: 3 lines
 	// - Source node summary + blank: 4 lines
-	// - Migration summary + blank: 2 lines
+	// - Migration summary + 2 blanks: 3 lines
 	// - Table header + separator: 2 lines
 	// - Table closing dashes: 1 line
 	// - Scroll info (below table): 1 line
@@ -179,7 +179,7 @@ func calculateVisibleRowsWithTargets(height, numTargets int) int {
 	// - Each target node state + blank: 2 lines each
 	// - Help text + buffer: 3 lines (extra 1 for safety)
 
-	fixedOverhead := 3 + 3 + 4 + 2 + 2 + 1 + 1 + 2 + 2 + 2 + 3 // = 25 lines
+	fixedOverhead := 3 + 3 + 4 + 3 + 2 + 1 + 1 + 2 + 2 + 2 + 3 // = 26 lines
 	targetLines := numTargets * 2                              // Each target takes 2 lines (state + blank)
 
 	reserved := fixedOverhead + targetLines

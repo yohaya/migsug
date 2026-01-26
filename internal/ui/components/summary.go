@@ -131,17 +131,19 @@ func RenderNodeSummary(node *proxmox.Node) string {
 
 // RenderMigrationSummary creates a summary for migration results (without box)
 func RenderMigrationSummary(totalVMs int, totalVCPUs int, totalRAM int64, totalStorage int64, improvement string) string {
-	// Use regular text color for labels (like the main header)
+	// Use regular text color for labels
 	labelStyle := lipgloss.NewStyle()
 	valueStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
+	// Use grey color for title (same as labels)
+	greyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 
 	var content string
 
-	// Title
-	content = titleStyle.Render("Migration Summary:") + "\n"
+	// Title (grey color like labels)
+	content = greyStyle.Render("Migration Summary:") + "\n"
 
-	// Row 1: VMs, vCPUs, RAM, Storage
-	content += labelStyle.Render("VMs: ") + valueStyle.Render(fmt.Sprintf("%-10d", totalVMs))
+	// Row 1: VMs, vCPUs, RAM, Storage (indented with 2 spaces)
+	content += "  " + labelStyle.Render("VMs: ") + valueStyle.Render(fmt.Sprintf("%-10d", totalVMs))
 	content += labelStyle.Render("vCPUs: ") + valueStyle.Render(fmt.Sprintf("%-10d", totalVCPUs))
 	content += labelStyle.Render("RAM: ") + valueStyle.Render(fmt.Sprintf("%-14s", FormatBytes(totalRAM)))
 	content += labelStyle.Render("Storage: ") + valueStyle.Render(FormatBytes(totalStorage))
