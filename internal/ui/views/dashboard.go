@@ -193,7 +193,6 @@ func renderEnhancedClusterSummary(cluster *proxmox.Cluster, width int) string {
 	sb.WriteString("\n")
 
 	// Row 2: VMs, RAM, Storage
-	vmStr := fmt.Sprintf("%d (On: %d, Off: %d)", cluster.TotalVMs, cluster.RunningVMs, cluster.StoppedVMs)
 	col1Row2 := fmt.Sprintf("VMs:   %d ", cluster.TotalVMs) + fmt.Sprintf("(On: %d, Off: %d)", cluster.RunningVMs, cluster.StoppedVMs)
 	sb.WriteString(labelStyle.Render("VMs:   ") + valueStyle.Render(fmt.Sprintf("%d ", cluster.TotalVMs)))
 	sb.WriteString(dimStyle.Render("(") + runningStyle.Render(fmt.Sprintf("On: %d", cluster.RunningVMs)) + dimStyle.Render(", "))
