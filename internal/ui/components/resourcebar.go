@@ -80,6 +80,10 @@ func RenderResourceBarWithValues(label string, used, total int64, width int) str
 // FormatBytes converts bytes to human-readable format
 func FormatBytes(bytes int64) string {
 	const unit = 1024
+	// Show "-" for 0 bytes (indicates unavailable data, not zero storage)
+	if bytes == 0 {
+		return "-"
+	}
 	if bytes < unit {
 		return fmt.Sprintf("%d B", bytes)
 	}

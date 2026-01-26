@@ -42,6 +42,15 @@ func RenderResultsWithSource(result *analyzer.AnalysisResult, cluster *proxmox.C
 		width = 100
 	}
 
+	// Count active targets (those that receive VMs)
+	activeTargets := 0
+	for targetName, afterState := range result.TargetsAfter {
+		beforeState := result.TargetsBefore[targetName]
+		if afterState.VMCount != beforeState.VMCount {
+			activeTargets++
+		}
+	}
+
 	// Title with version (same as dashboard)
 	versionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
@@ -91,8 +100,8 @@ func RenderResultsWithSource(result *analyzer.AnalysisResult, cluster *proxmox.C
 	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6")).
 		Render("Suggested Migrations:") + " ")
 
-	// Show scroll indicator if there are more suggestions than visible
-	maxVisible := calculateVisibleRows(height)
+	// Calculate visible rows based on terminal height and number of target nodes
+	maxVisible := calculateVisibleRowsWithTargets(height, activeTargets)
 	if len(result.Suggestions) > maxVisible {
 		scrollInfo := fmt.Sprintf("(showing %d-%d of %d, use ↑/↓ to scroll)",
 			scrollPos+1,
@@ -141,16 +150,36 @@ func RenderResultsWithSource(result *analyzer.AnalysisResult, cluster *proxmox.C
 	return sb.String()
 }
 
-// calculateVisibleRows calculates how many suggestion rows can fit on screen
+// calculateVisibleRows calculates how many suggestion rows can fit on screen (legacy)
 func calculateVisibleRows(height int) int {
-	// Reserve space for: title (2), summary (4), section headers (4), node comparison (8), help (2)
-	// Each suggestion takes 1 row
-	reserved := 20
+	return calculateVisibleRowsWithTargets(height, 4) // Assume 4 targets for backwards compat
+}
+
+// calculateVisibleRowsWithTargets calculates visible rows accounting for target nodes
+func calculateVisibleRowsWithTargets(height, numTargets int) int {
+	// Fixed overhead calculation:
+	// - Title + border + blank: 3 lines
+	// - Cluster summary + blank: 3 lines
+	// - Source node summary + blank: 4 lines
+	// - Migration summary + blanks: 3 lines
+	// - Suggestions header + scroll info + blank: 3 lines
+	// - Table header + separator: 2 lines
+	// - Source Node Impact header + blank: 2 lines
+	// - Source node state + blank: 2 lines
+	// - Target Nodes Impact header + blank: 2 lines
+	// - Each target node state + blank: 2 lines each
+	// - Help text: 2 lines
+
+	fixedOverhead := 3 + 3 + 4 + 3 + 3 + 2 + 2 + 2 + 2 + 2 // = 26 lines
+	targetLines := numTargets * 2 // Each target takes 2 lines (state + blank)
+
+	reserved := fixedOverhead + targetLines
 	available := height - reserved
-	if available < 5 {
-		return 5
+
+	if available < 3 {
+		return 3
 	}
-	return available // Each suggestion takes 1 line
+	return available
 }
 
 func min(a, b int) int {
