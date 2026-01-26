@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"time"
 
@@ -27,6 +28,19 @@ const (
 	ViewHelp
 )
 
+// SortColumn represents which column to sort by
+type SortColumn int
+
+const (
+	SortByName SortColumn = iota
+	SortByStatus
+	SortByVMs
+	SortByVCPUs
+	SortByCPUPercent
+	SortByRAM
+	SortByDisk
+)
+
 // Model is the main application model
 type Model struct {
 	cluster     *proxmox.Cluster
@@ -38,6 +52,8 @@ type Model struct {
 	// Dashboard state
 	selectedNodeIdx int
 	sourceNode      string
+	sortColumn      SortColumn // Current sort column
+	sortAsc         bool       // Sort ascending (true) or descending (false)
 
 	// Criteria state
 	criteriaState views.CriteriaState
@@ -264,6 +280,20 @@ func (m Model) handleDashboardKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			SelectedVMs:  make(map[int]bool),
 		}
 		m.currentView = ViewCriteria
+	case "1":
+		m.toggleSort(SortByName)
+	case "2":
+		m.toggleSort(SortByStatus)
+	case "3":
+		m.toggleSort(SortByVMs)
+	case "4":
+		m.toggleSort(SortByVCPUs)
+	case "5":
+		m.toggleSort(SortByCPUPercent)
+	case "6":
+		m.toggleSort(SortByRAM)
+	case "7":
+		m.toggleSort(SortByDisk)
 	case "r":
 		// Manual refresh
 		if !m.refreshing {
@@ -275,6 +305,50 @@ func (m Model) handleDashboardKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+// toggleSort toggles the sort column and direction
+func (m *Model) toggleSort(col SortColumn) {
+	if m.sortColumn == col {
+		// Same column - toggle direction
+		m.sortAsc = !m.sortAsc
+	} else {
+		// New column - set ascending by default
+		m.sortColumn = col
+		m.sortAsc = true
+	}
+	m.sortNodes()
+	m.selectedNodeIdx = 0 // Reset selection after sort
+}
+
+// sortNodes sorts the cluster nodes based on current sort settings
+func (m *Model) sortNodes() {
+	nodes := m.cluster.Nodes
+	sort.Slice(nodes, func(i, j int) bool {
+		var less bool
+		switch m.sortColumn {
+		case SortByName:
+			less = nodes[i].Name < nodes[j].Name
+		case SortByStatus:
+			less = nodes[i].Status < nodes[j].Status
+		case SortByVMs:
+			less = len(nodes[i].VMs) < len(nodes[j].VMs)
+		case SortByVCPUs:
+			less = nodes[i].GetRunningVCPUs() < nodes[j].GetRunningVCPUs()
+		case SortByCPUPercent:
+			less = nodes[i].GetCPUPercent() < nodes[j].GetCPUPercent()
+		case SortByRAM:
+			less = nodes[i].GetMemPercent() < nodes[j].GetMemPercent()
+		case SortByDisk:
+			less = nodes[i].GetDiskPercent() < nodes[j].GetDiskPercent()
+		default:
+			less = nodes[i].Name < nodes[j].Name
+		}
+		if m.sortAsc {
+			return less
+		}
+		return !less
+	})
 }
 
 func (m Model) handleCriteriaKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
