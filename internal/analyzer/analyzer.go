@@ -237,6 +237,12 @@ func GenerateSuggestions(vms []proxmox.VM, targets []proxmox.Node, constraints M
 			vmsPerTarget[targetNode]++
 		}
 
+		// Use MaxDisk (allocated storage) since UsedDisk is often 0 from the API
+		storageValue := vm.MaxDisk
+		if storageValue == 0 {
+			storageValue = vm.UsedDisk
+		}
+
 		suggestion := MigrationSuggestion{
 			VMID:       vm.VMID,
 			VMName:     vm.Name,
@@ -246,8 +252,8 @@ func GenerateSuggestions(vms []proxmox.VM, targets []proxmox.Node, constraints M
 			Score:      score,
 			VCPUs:      vm.CPUCores,
 			CPUUsage:   vm.CPUUsage,
-			RAM:        vm.UsedMem,
-			Storage:    vm.UsedDisk,
+			RAM:        vm.MaxMem, // Use allocated RAM
+			Storage:    storageValue,
 		}
 
 		suggestions = append(suggestions, suggestion)
@@ -367,12 +373,16 @@ func BuildAnalysisResult(sourceNode *proxmox.Node, targets []proxmox.Node, sugge
 		result.TargetsAfter[target.Name] = result.TargetsBefore[target.Name].CalculateAfterMigration(addVMs, nil)
 	}
 
-	// Calculate summary
+	// Calculate summary - use Max values (allocated) since Used values are often 0
 	result.TotalVMs = len(suggestions)
 	for _, vm := range vmsToMigrate {
 		result.TotalVCPUs += vm.CPUCores
-		result.TotalRAM += vm.UsedMem
-		result.TotalStorage += vm.UsedDisk
+		result.TotalRAM += vm.MaxMem // Allocated RAM
+		storageVal := vm.MaxDisk
+		if storageVal == 0 {
+			storageVal = vm.UsedDisk
+		}
+		result.TotalStorage += storageVal
 	}
 
 	// Generate improvement info

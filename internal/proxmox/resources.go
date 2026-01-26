@@ -90,13 +90,14 @@ func CollectClusterData(client ProxmoxClient) (*Cluster, error) {
 		}
 	}
 
-	// Fetch detailed node status for each node (CPU model, sockets, PVE version)
+	// Fetch detailed node status for each node (CPU model, sockets, MHz, PVE version)
 	for nodeName, node := range nodeMap {
 		if node.Status == "online" {
 			status, err := client.GetNodeStatus(nodeName)
 			if err == nil && status != nil {
 				node.CPUModel = status.CPUInfo.Model
 				node.CPUSockets = status.CPUInfo.Sockets
+				node.CPUMHz = status.CPUInfo.MHz
 				// CPUCores from resources is total logical CPUs
 				// If we got more detailed info, we can verify/update
 				if status.CPUInfo.CPUs > 0 {

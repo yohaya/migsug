@@ -85,6 +85,12 @@ func (c *ShellClient) GetNodeStatus(node string) (*NodeStatus, error) {
 		if cores, ok := cpuinfo["cores"].(float64); ok {
 			status.CPUInfo.Cores = int(cores)
 		}
+		// MHz can be float64 or string
+		if mhz, ok := cpuinfo["mhz"].(float64); ok {
+			status.CPUInfo.MHz = mhz
+		} else if mhzStr, ok := cpuinfo["mhz"].(string); ok {
+			fmt.Sscanf(mhzStr, "%f", &status.CPUInfo.MHz)
+		}
 	}
 
 	// Extract uptime

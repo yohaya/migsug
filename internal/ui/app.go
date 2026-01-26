@@ -374,7 +374,8 @@ func (m Model) handleResultsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.result = nil
 		m.resultsScrollPos = 0
 	case "esc":
-		m.currentView = ViewDashboard
+		// Go back to criteria screen (not dashboard)
+		m.currentView = ViewCriteria
 		m.resultsScrollPos = 0
 	case "s":
 		// TODO: Save results to file

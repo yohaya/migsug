@@ -9,6 +9,7 @@ type Node struct {
 	CPUCores   int     // Total logical CPUs (cores * threads)
 	CPUSockets int     // Physical CPU sockets
 	CPUModel   string  // CPU model name
+	CPUMHz     float64 // CPU frequency in MHz
 	CPUUsage   float64 // Percentage 0-100
 	MaxMem     int64   // bytes
 	UsedMem    int64   // bytes

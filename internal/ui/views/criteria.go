@@ -8,6 +8,12 @@ import (
 	"github.com/yourusername/migsug/internal/analyzer"
 )
 
+// Box drawing characters
+const (
+	criteriaBoxHoriz = "━"
+	criteriaBoxThin  = "─"
+)
+
 // CriteriaState holds the state for criteria input
 type CriteriaState struct {
 	SelectedMode   analyzer.MigrationMode
@@ -27,75 +33,76 @@ func RenderCriteria(state CriteriaState, sourceNode string, width int) string {
 	var sb strings.Builder
 
 	// Ensure minimum width
-	if width < 60 {
-		width = 80
+	if width < 80 {
+		width = 100
 	}
 
-	// Title with full width separator
+	// Title with graphical border
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5"))
-	sb.WriteString(titleStyle.Render(fmt.Sprintf("Migration Criteria - Source: %s", sourceNode)) + "\n")
-	sb.WriteString(strings.Repeat("=", width) + "\n\n")
+	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+
+	sb.WriteString(titleStyle.Render(fmt.Sprintf("Migration Criteria │ Source: %s", sourceNode)) + "\n")
+	sb.WriteString(borderStyle.Render(strings.Repeat(criteriaBoxHoriz, width)) + "\n\n")
 
 	// Instructions
 	instructionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	sb.WriteString(instructionStyle.Render("Select migration mode:") + "\n\n")
 
-	// Mode options with descriptions in a table format
+	// Mode options table header
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
+	header := fmt.Sprintf("  %-20s %-50s", "Mode", "Description")
+	sb.WriteString(headerStyle.Render(header) + "\n")
+	sb.WriteString("  " + borderStyle.Render(strings.Repeat(criteriaBoxHoriz, width-4)) + "\n")
+
+	// Mode options with descriptions
 	modes := []struct {
 		mode analyzer.MigrationMode
 		name string
 		desc string
 	}{
-		{analyzer.ModeVMCount, "VM Count", "Migrate N virtual machines"},
-		{analyzer.ModeVCPU, "vCPU Count", "Migrate VMs totaling N vCPUs"},
-		{analyzer.ModeCPUUsage, "CPU Usage", "Migrate VMs using N% CPU"},
-		{analyzer.ModeRAM, "RAM Amount", "Migrate VMs using N GB RAM"},
-		{analyzer.ModeStorage, "Storage Amount", "Migrate VMs using N GB storage"},
-		{analyzer.ModeSpecific, "Specific VMs", "Select specific VMs to migrate"},
+		{analyzer.ModeVMCount, "VM Count", "Migrate a specific number of virtual machines"},
+		{analyzer.ModeVCPU, "vCPU Count", "Migrate VMs until reaching target vCPU count"},
+		{analyzer.ModeCPUUsage, "CPU Usage %", "Migrate VMs to free up target CPU percentage"},
+		{analyzer.ModeRAM, "RAM Amount", "Migrate VMs to free up target RAM (in GB)"},
+		{analyzer.ModeStorage, "Storage Amount", "Migrate VMs to free up target storage (in GB)"},
+		{analyzer.ModeSpecific, "Specific VMs", "Manually select which VMs to migrate"},
 	}
 
-	// Calculate column widths
-	nameWidth := 18
-	descWidth := width - nameWidth - 10 // Account for radio, spaces, padding
-	if descWidth < 30 {
-		descWidth = 30
-	}
-
-	// Styles
-	selectedRowStyle := lipgloss.NewStyle().
-		Background(lipgloss.Color("240")).
+	// Styles for selection
+	selectedBgStyle := lipgloss.NewStyle().
+		Background(lipgloss.Color("236")).
 		Foreground(lipgloss.Color("15")).
 		Bold(true)
-
-	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 
 	for i, m := range modes {
-		// Radio button
-		radio := "( )"
-		if m.mode == state.SelectedMode {
-			radio = "(X)"
-		}
-
-		// Format the row
-		name := fmt.Sprintf("%-*s", nameWidth, m.name)
-		desc := fmt.Sprintf("%-*s", descWidth, m.desc)
+		isSelected := state.CursorPosition == i && !state.InputFocused
 
 		// Build row content
-		rowContent := fmt.Sprintf(" %s  %s  %s", radio, name, dimStyle.Render(desc))
+		name := fmt.Sprintf("%-20s", m.name)
+		desc := fmt.Sprintf("%-50s", m.desc)
 
-		// Apply selection highlighting
-		if state.CursorPosition == i && !state.InputFocused {
-			// Highlight entire row
-			rowContent = fmt.Sprintf(" %s  %s  %s", radio, name, desc)
-			sb.WriteString(selectedRowStyle.Render(rowContent))
-		} else {
-			sb.WriteString(rowContent)
+		// Selector indicator
+		selector := "  "
+		if isSelected {
+			selector = "▶ "
 		}
-		sb.WriteString("\n")
+
+		// Apply styling
+		if isSelected {
+			rowContent := fmt.Sprintf("%s%s", name, desc)
+			// Pad to full width
+			if len(rowContent) < width-4 {
+				rowContent += strings.Repeat(" ", width-4-len(rowContent))
+			}
+			sb.WriteString(selector + selectedBgStyle.Render(rowContent) + "\n")
+		} else {
+			sb.WriteString(selector + name + dimStyle.Render(desc) + "\n")
+		}
 	}
 
 	sb.WriteString("\n")
-	sb.WriteString(strings.Repeat("-", width) + "\n\n")
+	sb.WriteString(borderStyle.Render(strings.Repeat(criteriaBoxThin, width)) + "\n\n")
 
 	// Input field based on selected mode
 	inputLabel := ""
@@ -113,93 +120,85 @@ func RenderCriteria(state CriteriaState, sourceNode string, width int) string {
 	case analyzer.ModeCPUUsage:
 		inputLabel = "CPU usage percentage to free"
 		inputValue = state.CPUUsage
-		inputSuffix = " %"
+		inputSuffix = "%"
 	case analyzer.ModeRAM:
-		inputLabel = "RAM amount to free (GB)"
+		inputLabel = "RAM amount to free"
 		inputValue = state.RAMAmount
-		inputSuffix = " GB"
+		inputSuffix = "GB"
 	case analyzer.ModeStorage:
-		inputLabel = "Storage amount to free (GB)"
+		inputLabel = "Storage amount to free"
 		inputValue = state.StorageAmount
-		inputSuffix = " GB"
+		inputSuffix = "GB"
 	case analyzer.ModeSpecific:
 		showInput = false
 		noteStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Italic(true)
-		sb.WriteString(noteStyle.Render("Press Enter to select specific VMs on the next screen") + "\n")
+		sb.WriteString(noteStyle.Render("  ℹ Press Enter to select specific VMs on the next screen") + "\n")
 	}
 
 	if showInput {
-		// Render input with ASCII-safe box
 		labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
-		sb.WriteString(labelStyle.Render(inputLabel+":") + "\n\n")
-		sb.WriteString(renderInputBox(inputValue, inputSuffix, state.InputFocused, width))
+		sb.WriteString(labelStyle.Render("  "+inputLabel+":") + "\n\n")
+		sb.WriteString(renderUnicodeInputBox(inputValue, inputSuffix, state.InputFocused, width))
 		sb.WriteString("\n")
 	}
 
 	sb.WriteString("\n")
 
-	// Help text - full width
+	// Help text
 	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	if state.InputFocused {
-		sb.WriteString(helpStyle.Render("Type a number and press Enter to confirm, or Esc to cancel"))
+		sb.WriteString(helpStyle.Render("Type value │ Enter: Confirm │ Esc: Cancel input"))
 	} else {
-		sb.WriteString(helpStyle.Render("Up/Down: Navigate modes | Enter: Select mode and input value | Esc: Back | q: Quit"))
+		sb.WriteString(helpStyle.Render("↑/↓: Navigate │ Enter: Select mode │ Esc: Back to host selection │ q: Quit"))
 	}
 
 	return sb.String()
 }
 
-// renderInputBox creates an ASCII-safe input box
-func renderInputBox(value string, suffix string, focused bool, width int) string {
+// renderUnicodeInputBox creates a Unicode input box
+func renderUnicodeInputBox(value string, suffix string, focused bool, width int) string {
 	var sb strings.Builder
 
 	// Input box width
-	boxWidth := 20
-	if boxWidth > width-10 {
-		boxWidth = width - 10
-	}
+	boxWidth := 25
 
-	// Display value or placeholder
+	// Display value with cursor
 	displayValue := value
-	if displayValue == "" {
-		displayValue = "     " // placeholder spaces
-	}
-
-	// Pad or truncate to fit box
-	if len(displayValue) > boxWidth-4 {
-		displayValue = displayValue[:boxWidth-4]
-	}
-
-	// Add cursor if focused
 	if focused {
-		displayValue = displayValue + "_"
+		displayValue = value + "█"
+	}
+	if displayValue == "" && !focused {
+		displayValue = "     " // placeholder
 	}
 
 	// Pad to fill box
-	displayValue = fmt.Sprintf("%-*s", boxWidth-4, displayValue)
+	if len(displayValue) < boxWidth-4 {
+		displayValue = displayValue + strings.Repeat(" ", boxWidth-4-len(displayValue))
+	} else if len(displayValue) > boxWidth-4 {
+		displayValue = displayValue[:boxWidth-4]
+	}
 
 	// Choose colors based on focus
-	borderColor := "240" // dim gray
-	textColor := "7"     // white
+	borderColor := "240"
 	if focused {
-		borderColor = "3" // yellow
-		textColor = "15"  // bright white
+		borderColor = "3" // yellow when focused
 	}
 
 	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(borderColor))
-	textStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(textColor))
+	textStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15")).Bold(true)
 	suffixStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 
-	// Build ASCII box
-	topBorder := "+" + strings.Repeat("-", boxWidth-2) + "+"
-	bottomBorder := topBorder
-	content := "| " + displayValue + " |"
+	// Unicode box
+	topBorder := "┌" + strings.Repeat("─", boxWidth-2) + "┐"
+	bottomBorder := "└" + strings.Repeat("─", boxWidth-2) + "┘"
 
 	sb.WriteString("  " + borderStyle.Render(topBorder) + "\n")
-	sb.WriteString("  " + borderStyle.Render("|") + " " + textStyle.Render(displayValue) + " " + borderStyle.Render("|") + suffixStyle.Render(suffix) + "\n")
+	sb.WriteString("  " + borderStyle.Render("│") + " " + textStyle.Render(displayValue) + " " + borderStyle.Render("│"))
+	if suffix != "" {
+		sb.WriteString(" " + suffixStyle.Render(suffix))
+	}
+	sb.WriteString("\n")
 	sb.WriteString("  " + borderStyle.Render(bottomBorder) + "\n")
-
-	_ = content // unused but kept for reference
 
 	return sb.String()
 }

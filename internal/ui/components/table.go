@@ -153,13 +153,8 @@ func RenderNodeTableWide(nodes []proxmox.Node, selectedIdx int, width int) strin
 		diskUsedStr := FormatBytesShort(node.UsedDisk)
 		diskMaxStr := FormatBytesShort(node.MaxDisk)
 
-		// CPU model - truncate if needed
-		cpuModel := node.CPUModel
-		if cpuModel == "" {
-			cpuModel = "-"
-		} else {
-			cpuModel = shortenCPUModel(cpuModel)
-		}
+		// CPU info - format as "2 x Xeon Platinum (2.5GHz)"
+		cpuInfo := formatCPUInfo(node.CPUSockets, node.CPUModel, node.CPUMHz)
 
 		// Build the row content (plain text for width calculation)
 		rowContent := fmt.Sprintf("%-*s %-*s %*d %*s %*s  %*s/%-*s  %*s/%-*s  %s",
@@ -172,7 +167,7 @@ func RenderNodeTableWide(nodes []proxmox.Node, selectedIdx int, width int) strin
 			colRAMMax, ramMaxStr,
 			colDiskUsed, diskUsedStr,
 			colDiskMax, diskMaxStr,
-			truncate(cpuModel, colCPUModel))
+			truncate(cpuInfo, colCPUModel))
 
 		// Pad row to full width for consistent highlighting
 		if len(rowContent) < width-4 {
@@ -239,7 +234,7 @@ func RenderNodeTableWide(nodes []proxmox.Node, selectedIdx int, width int) strin
 			coloredRow.WriteString(fmt.Sprintf("%-*s  ", colDiskMax, diskMaxStr))
 
 			// CPU model (dimmed)
-			coloredRow.WriteString(dimStyle.Render(truncate(cpuModel, colCPUModel)))
+			coloredRow.WriteString(dimStyle.Render(truncate(cpuInfo, colCPUModel)))
 
 			styledRow = prefix + coloredRow.String()
 		}
@@ -269,6 +264,29 @@ func FormatBytesShort(bytes int64) string {
 	return fmt.Sprintf("%.1f%s", val, units[exp])
 }
 
+// formatCPUInfo formats CPU info as "2 x Xeon (2.5GHz)"
+func formatCPUInfo(sockets int, model string, mhz float64) string {
+	if model == "" {
+		return "-"
+	}
+
+	// Shorten the model name
+	shortModel := shortenCPUModel(model)
+
+	// Format GHz
+	ghzStr := ""
+	if mhz > 0 {
+		ghz := mhz / 1000.0
+		ghzStr = fmt.Sprintf(" (%.1fGHz)", ghz)
+	}
+
+	// Format with socket count if available
+	if sockets > 0 {
+		return fmt.Sprintf("%dx %s%s", sockets, shortModel, ghzStr)
+	}
+	return shortModel + ghzStr
+}
+
 // shortenCPUModel shortens the CPU model name
 func shortenCPUModel(model string) string {
 	// Remove common prefixes/suffixes to make it shorter
@@ -276,13 +294,14 @@ func shortenCPUModel(model string) string {
 		old string
 		new string
 	}{
+		{"Intel(R) Xeon(R) CPU ", "Xeon "},
 		{"Intel(R) Xeon(R) ", "Xeon "},
 		{"Intel(R) Core(TM) ", "Core "},
 		{"AMD EPYC ", "EPYC "},
 		{"AMD Ryzen ", "Ryzen "},
 		{" Processor", ""},
 		{" CPU", ""},
-		{" @ ", "@"},
+		{" @ ", " "},
 		{"  ", " "},
 	}
 
@@ -290,7 +309,22 @@ func shortenCPUModel(model string) string {
 	for _, r := range replacements {
 		result = strings.ReplaceAll(result, r.old, r.new)
 	}
-	return result
+	return strings.TrimSpace(result)
+}
+
+// FormatBytes formats bytes to human-readable format
+func FormatBytes(bytes int64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	units := []string{"KB", "MB", "GB", "TB", "PB"}
+	return fmt.Sprintf("%.1f%s", float64(bytes)/float64(div), units[exp])
 }
 
 // getUsageColor returns color based on usage percentage
