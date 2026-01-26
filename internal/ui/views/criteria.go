@@ -121,7 +121,6 @@ func RenderCriteriaFull(state CriteriaState, sourceNode string, node *proxmox.No
 		Background(lipgloss.Color("236")).
 		Foreground(lipgloss.Color("15")).
 		Bold(true)
-	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 
 	for i, m := range modes {
 		isCurrentMode := state.CursorPosition == i
