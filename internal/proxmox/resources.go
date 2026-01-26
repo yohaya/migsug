@@ -519,9 +519,9 @@ func countVMsWithMissingStorage(vmList []VM) int {
 
 // vmStorageResult holds the result of fetching VM storage details
 type vmStorageResult struct {
-	vmIdx   int
-	status  *VMStatus
-	err     error
+	vmIdx  int
+	status *VMStatus
+	err    error
 }
 
 // fetchVMStorageDetails fetches detailed storage info for VMs with missing data
