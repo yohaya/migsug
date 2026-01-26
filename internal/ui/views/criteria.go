@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/yourusername/migsug/internal/analyzer"
+	"github.com/yourusername/migsug/internal/proxmox"
 )
 
 // Box drawing characters
@@ -28,8 +29,13 @@ type CriteriaState struct {
 	InputFocused   bool
 }
 
-// RenderCriteria renders the criteria selection view
+// RenderCriteria renders the criteria selection view (without node data)
 func RenderCriteria(state CriteriaState, sourceNode string, width int) string {
+	return RenderCriteriaWithNode(state, sourceNode, nil, width)
+}
+
+// RenderCriteriaWithNode renders the criteria selection view with node data
+func RenderCriteriaWithNode(state CriteriaState, sourceNode string, node *proxmox.Node, width int) string {
 	var sb strings.Builder
 
 	// Ensure minimum width
@@ -43,6 +49,12 @@ func RenderCriteria(state CriteriaState, sourceNode string, width int) string {
 
 	sb.WriteString(titleStyle.Render(fmt.Sprintf("Migration Criteria │ Source: %s", sourceNode)) + "\n")
 	sb.WriteString(borderStyle.Render(strings.Repeat(criteriaBoxHoriz, width)) + "\n\n")
+
+	// Show selected host data if available
+	if node != nil {
+		sb.WriteString(renderNodeSummary(node, width))
+		sb.WriteString("\n")
+	}
 
 	// Instructions
 	instructionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
@@ -151,6 +163,76 @@ func RenderCriteria(state CriteriaState, sourceNode string, width int) string {
 	} else {
 		sb.WriteString(helpStyle.Render("↑/↓: Navigate │ Enter: Select mode │ Esc: Back to host selection │ q: Quit"))
 	}
+
+	return sb.String()
+}
+
+// renderNodeSummary displays the selected node's summary info
+func renderNodeSummary(node *proxmox.Node, width int) string {
+	var sb strings.Builder
+
+	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	valueStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+
+	// Count running VMs
+	runningVMs := 0
+	stoppedVMs := 0
+	runningVCPUs := 0
+	for _, vm := range node.VMs {
+		if vm.Status == "running" {
+			runningVMs++
+			runningVCPUs += vm.CPUCores
+		} else {
+			stoppedVMs++
+		}
+	}
+
+	// Format values
+	vmStr := fmt.Sprintf("%d (On: %d, Off: %d)", len(node.VMs), runningVMs, stoppedVMs)
+
+	// vCPU with overcommit percentage
+	vcpuOvercommit := 0.0
+	if node.CPUCores > 0 {
+		vcpuOvercommit = float64(runningVCPUs) / float64(node.CPUCores) * 100
+	}
+	vcpuStr := fmt.Sprintf("%d (%.0f%%)", runningVCPUs, vcpuOvercommit)
+
+	cpuStr := fmt.Sprintf("%.1f%%", node.GetCPUPercent())
+
+	// Load average
+	laStr := "-"
+	if len(node.LoadAverage) > 0 {
+		laStr = fmt.Sprintf("%.2f", node.LoadAverage[0])
+	}
+
+	// RAM
+	ramUsedGiB := float64(node.UsedMem) / (1024 * 1024 * 1024)
+	ramTotalGiB := float64(node.MaxMem) / (1024 * 1024 * 1024)
+	ramStr := fmt.Sprintf("%.0f/%.0fG (%.0f%%)", ramUsedGiB, ramTotalGiB, node.GetMemPercent())
+
+	// Disk
+	diskUsedTiB := float64(node.UsedDisk) / (1024 * 1024 * 1024 * 1024)
+	diskTotalTiB := float64(node.MaxDisk) / (1024 * 1024 * 1024 * 1024)
+	diskStr := fmt.Sprintf("%.0f/%.0fT (%.0f%%)", diskUsedTiB, diskTotalTiB, node.GetDiskPercent())
+
+	// Row 1: VMs and vCPUs
+	sb.WriteString("  ")
+	sb.WriteString(labelStyle.Render("VMs: ") + valueStyle.Render(vmStr))
+	sb.WriteString(dimStyle.Render("  │  "))
+	sb.WriteString(labelStyle.Render("vCPUs: ") + valueStyle.Render(vcpuStr))
+	sb.WriteString("\n")
+
+	// Row 2: CPU, LA, RAM, Disk
+	sb.WriteString("  ")
+	sb.WriteString(labelStyle.Render("CPU: ") + valueStyle.Render(cpuStr))
+	sb.WriteString(dimStyle.Render("  │  "))
+	sb.WriteString(labelStyle.Render("LA: ") + valueStyle.Render(laStr))
+	sb.WriteString(dimStyle.Render("  │  "))
+	sb.WriteString(labelStyle.Render("RAM: ") + valueStyle.Render(ramStr))
+	sb.WriteString(dimStyle.Render("  │  "))
+	sb.WriteString(labelStyle.Render("Disk: ") + valueStyle.Render(diskStr))
+	sb.WriteString("\n")
 
 	return sb.String()
 }
