@@ -77,8 +77,8 @@ type Model struct {
 	impactHostNames  []string // Sorted list of host names in impact table
 
 	// Host detail view state
-	hostDetailSection   int // 0 = Before VMs, 1 = After VMs
-	hostDetailScrollPos int // Scroll position for current section
+	hostDetailScrollPos int // Scroll position for VM list
+	hostDetailCursorPos int // Cursor position in VM list
 
 	// UI state
 	width      int
@@ -836,93 +836,99 @@ func (m *Model) buildImpactHostList() []string {
 }
 
 func (m Model) handleHostDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// Calculate VM counts for scrolling limits
+	// Calculate total VM count for this host
 	isSource := (m.selectedHostName == m.sourceNode || m.selectedHostName == m.result.SourceBefore.Name)
-	var beforeVMCount, afterVMCount int
+	var totalVMCount int
 
 	if isSource {
-		// Source node: Before = all VMs removed, After = empty
-		for _, sug := range m.result.Suggestions {
-			if sug.SourceNode == m.sourceNode {
-				beforeVMCount++
-			}
+		// Source node: count VMs from source node in cluster
+		sourceNode := proxmox.GetNodeByName(m.cluster, m.sourceNode)
+		if sourceNode != nil {
+			totalVMCount = len(sourceNode.VMs)
 		}
-		afterVMCount = 0
 	} else {
-		// Target node: Before = empty (or existing), After = VMs added
-		beforeVMCount = 0
+		// Target node: existing VMs + VMs being migrated in
+		targetNode := proxmox.GetNodeByName(m.cluster, m.selectedHostName)
+		if targetNode != nil {
+			totalVMCount = len(targetNode.VMs)
+		}
+		// Add VMs being migrated in
 		for _, sug := range m.result.Suggestions {
 			if sug.TargetNode == m.selectedHostName {
-				afterVMCount++
+				totalVMCount++
 			}
 		}
 	}
 
 	// Calculate max visible rows (height - overhead for headers, titles, help)
-	maxVisible := m.height - 20
+	maxVisible := m.height - 15
 	if maxVisible < 3 {
 		maxVisible = 3
 	}
 
-	currentVMCount := beforeVMCount
-	if m.hostDetailSection == 1 {
-		currentVMCount = afterVMCount
-	}
-
 	switch msg.String() {
-	case "tab":
-		// Switch between Before and After sections
-		m.hostDetailSection = (m.hostDetailSection + 1) % 2
-		m.hostDetailScrollPos = 0 // Reset scroll when switching sections
-		return m, nil
-
 	case "up", "k":
-		if m.hostDetailScrollPos > 0 {
-			m.hostDetailScrollPos--
+		if m.hostDetailCursorPos > 0 {
+			m.hostDetailCursorPos--
+			if m.hostDetailCursorPos < m.hostDetailScrollPos {
+				m.hostDetailScrollPos = m.hostDetailCursorPos
+			}
 		}
 		return m, nil
 
 	case "down", "j":
-		if m.hostDetailScrollPos < currentVMCount-maxVisible {
-			m.hostDetailScrollPos++
-		}
-		if m.hostDetailScrollPos < 0 {
-			m.hostDetailScrollPos = 0
+		if m.hostDetailCursorPos < totalVMCount-1 {
+			m.hostDetailCursorPos++
+			if m.hostDetailCursorPos >= m.hostDetailScrollPos+maxVisible {
+				m.hostDetailScrollPos = m.hostDetailCursorPos - maxVisible + 1
+			}
 		}
 		return m, nil
 
 	case "pgup":
-		m.hostDetailScrollPos -= maxVisible
-		if m.hostDetailScrollPos < 0 {
-			m.hostDetailScrollPos = 0
+		m.hostDetailCursorPos -= maxVisible
+		if m.hostDetailCursorPos < 0 {
+			m.hostDetailCursorPos = 0
+		}
+		if m.hostDetailCursorPos < m.hostDetailScrollPos {
+			m.hostDetailScrollPos = m.hostDetailCursorPos
 		}
 		return m, nil
 
 	case "pgdown":
-		m.hostDetailScrollPos += maxVisible
-		if m.hostDetailScrollPos > currentVMCount-maxVisible {
-			m.hostDetailScrollPos = currentVMCount - maxVisible
+		m.hostDetailCursorPos += maxVisible
+		if m.hostDetailCursorPos >= totalVMCount {
+			m.hostDetailCursorPos = totalVMCount - 1
 		}
-		if m.hostDetailScrollPos < 0 {
-			m.hostDetailScrollPos = 0
+		if m.hostDetailCursorPos < 0 {
+			m.hostDetailCursorPos = 0
+		}
+		if m.hostDetailCursorPos >= m.hostDetailScrollPos+maxVisible {
+			m.hostDetailScrollPos = m.hostDetailCursorPos - maxVisible + 1
 		}
 		return m, nil
 
 	case "home":
+		m.hostDetailCursorPos = 0
 		m.hostDetailScrollPos = 0
 		return m, nil
 
 	case "end":
-		m.hostDetailScrollPos = currentVMCount - maxVisible
-		if m.hostDetailScrollPos < 0 {
+		m.hostDetailCursorPos = totalVMCount - 1
+		if m.hostDetailCursorPos < 0 {
+			m.hostDetailCursorPos = 0
+		}
+		if totalVMCount > maxVisible {
+			m.hostDetailScrollPos = totalVMCount - maxVisible
+		} else {
 			m.hostDetailScrollPos = 0
 		}
 		return m, nil
 
 	case "esc", "q":
 		m.currentView = ViewResults
-		m.hostDetailSection = 0
 		m.hostDetailScrollPos = 0
+		m.hostDetailCursorPos = 0
 		return m, tea.ClearScreen
 	}
 	return m, nil
@@ -977,7 +983,7 @@ func (m Model) View() string {
 		return "No results available"
 	case ViewHostDetail:
 		if m.result != nil && m.selectedHostName != "" {
-			return views.RenderHostDetailInteractive(m.result, m.selectedHostName, m.sourceNode, m.width, m.height, m.hostDetailSection, m.hostDetailScrollPos)
+			return views.RenderHostDetailBrowseable(m.result, m.cluster, m.selectedHostName, m.sourceNode, m.width, m.height, m.hostDetailScrollPos, m.hostDetailCursorPos)
 		}
 		return "No host selected"
 	case ViewError:

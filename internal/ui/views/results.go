@@ -409,6 +409,250 @@ func RenderHostDetailInteractive(result *analyzer.AnalysisResult, hostName, sour
 	return sb.String()
 }
 
+// VMListItem represents a VM in the host detail view
+type VMListItem struct {
+	VMID      int
+	Name      string
+	Status    string // "running" or "stopped"
+	VCPUs     int
+	RAM       int64
+	Storage   int64
+	Direction string // "←" for out, "→" for in, "" for staying
+	Target    string // Target/Source node for migration
+}
+
+// RenderHostDetailBrowseable renders a browseable list of all VMs on a host
+func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmox.Cluster, hostName, sourceNodeName string, width, height, scrollPos, cursorPos int) string {
+	var sb strings.Builder
+
+	if width < 80 {
+		width = 100
+	}
+
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5"))
+	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
+	labelStyle := lipgloss.NewStyle()
+	valueStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
+	selectedStyle := lipgloss.NewStyle().Background(lipgloss.Color("236")).Foreground(lipgloss.Color("15")).Bold(true)
+	arrowOutStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("1"))  // Red for out
+	arrowInStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2"))   // Green for in
+
+	// Title
+	sb.WriteString(titleStyle.Render("Host Detail: "+hostName) + "\n")
+	sb.WriteString(borderStyle.Render(strings.Repeat("━", width)) + "\n\n")
+
+	// Check if this is the source node
+	isSource := (hostName == sourceNodeName || hostName == result.SourceBefore.Name)
+
+	// Get before/after state
+	var beforeState, afterState analyzer.NodeState
+	if isSource {
+		beforeState = result.SourceBefore
+		afterState = result.SourceAfter
+	} else {
+		beforeState = result.TargetsBefore[hostName]
+		afterState = result.TargetsAfter[hostName]
+	}
+
+	// Show before/after summary
+	sb.WriteString(labelStyle.Render("Before: ") +
+		valueStyle.Render(fmt.Sprintf("VMs: %d, vCPUs: %d, CPU: %.1f%%, RAM: %.1f%%",
+			beforeState.VMCount, beforeState.VCPUs, beforeState.CPUPercent, beforeState.RAMPercent)) + "\n")
+	sb.WriteString(labelStyle.Render("After:  ") +
+		valueStyle.Render(fmt.Sprintf("VMs: %d, vCPUs: %d, CPU: %.1f%%, RAM: %.1f%%",
+			afterState.VMCount, afterState.VCPUs, afterState.CPUPercent, afterState.RAMPercent)) + "\n\n")
+
+	// Build VM list
+	var vmList []VMListItem
+
+	// Create a map of VMs being migrated for quick lookup
+	migratingVMs := make(map[int]analyzer.MigrationSuggestion)
+	for _, sug := range result.Suggestions {
+		migratingVMs[sug.VMID] = sug
+	}
+
+	if isSource {
+		// Source node: show all VMs from the node
+		sourceNode := proxmox.GetNodeByName(cluster, sourceNodeName)
+		if sourceNode != nil {
+			for _, vm := range sourceNode.VMs {
+				item := VMListItem{
+					VMID:    vm.VMID,
+					Name:    vm.Name,
+					Status:  vm.Status,
+					VCPUs:   vm.CPUCores,
+					RAM:     vm.MaxMem,
+					Storage: vm.MaxDisk,
+				}
+				if vm.MaxDisk == 0 {
+					item.Storage = vm.UsedDisk
+				}
+
+				// Check if this VM is being migrated
+				if sug, ok := migratingVMs[vm.VMID]; ok && sug.SourceNode == sourceNodeName {
+					item.Direction = "←"
+					item.Target = sug.TargetNode
+				}
+
+				vmList = append(vmList, item)
+			}
+		}
+	} else {
+		// Target node: show existing VMs + VMs being migrated in
+		targetNode := proxmox.GetNodeByName(cluster, hostName)
+		if targetNode != nil {
+			for _, vm := range targetNode.VMs {
+				item := VMListItem{
+					VMID:    vm.VMID,
+					Name:    vm.Name,
+					Status:  vm.Status,
+					VCPUs:   vm.CPUCores,
+					RAM:     vm.MaxMem,
+					Storage: vm.MaxDisk,
+				}
+				if vm.MaxDisk == 0 {
+					item.Storage = vm.UsedDisk
+				}
+				vmList = append(vmList, item)
+			}
+		}
+
+		// Add VMs being migrated in
+		for _, sug := range result.Suggestions {
+			if sug.TargetNode == hostName {
+				item := VMListItem{
+					VMID:      sug.VMID,
+					Name:      sug.VMName,
+					Status:    sug.Status,
+					VCPUs:     sug.VCPUs,
+					RAM:       sug.RAM,
+					Storage:   sug.Storage,
+					Direction: "→",
+					Target:    sug.SourceNode,
+				}
+				vmList = append(vmList, item)
+			}
+		}
+	}
+
+	// Calculate max visible rows
+	maxVisible := height - 15
+	if maxVisible < 3 {
+		maxVisible = 3
+	}
+
+	// Column widths
+	const (
+		colDir     = 2  // Arrow direction
+		colVMID    = 6
+		colName    = 24
+		colState   = 5
+		colVCPU    = 5
+		colRAM     = 8
+		colStorage = 8
+		colTarget  = 20
+	)
+	totalWidth := colDir + colVMID + colName + colState + colVCPU + colRAM + colStorage + colTarget + 7
+
+	// Header
+	header := fmt.Sprintf("  %*s %*s %-*s %-*s %*s %*s %*s %-*s",
+		colDir, "",
+		colVMID, "VMID",
+		colName, "Name",
+		colState, "State",
+		colVCPU, "vCPU",
+		colRAM, "RAM",
+		colStorage, "Storage",
+		colTarget, "Migration")
+	sb.WriteString(headerStyle.Render(header) + "\n")
+	sb.WriteString("  " + strings.Repeat("─", totalWidth) + "\n")
+
+	// Calculate visible range
+	endPos := scrollPos + maxVisible
+	if endPos > len(vmList) {
+		endPos = len(vmList)
+	}
+
+	// Render VM rows
+	for i := scrollPos; i < endPos; i++ {
+		vm := vmList[i]
+		isSelected := (i == cursorPos)
+
+		// State string
+		stateStr := "Off"
+		if vm.Status == "running" {
+			stateStr = "On"
+		}
+
+		// Direction arrow with color
+		dirStr := "  "
+		if vm.Direction == "←" {
+			dirStr = arrowOutStyle.Render("← ")
+		} else if vm.Direction == "→" {
+			dirStr = arrowInStyle.Render("→ ")
+		}
+
+		// Migration target/source info
+		migrationStr := ""
+		if vm.Direction == "←" {
+			migrationStr = "→ " + vm.Target
+		} else if vm.Direction == "→" {
+			migrationStr = "← " + vm.Target
+		}
+
+		// Build row content
+		rowContent := fmt.Sprintf("%*d %-*s %-*s %*d %*s %*s %-*s",
+			colVMID, vm.VMID,
+			colName, truncateString(vm.Name, colName),
+			colState, stateStr,
+			colVCPU, vm.VCPUs,
+			colRAM, components.FormatBytesShort(vm.RAM),
+			colStorage, components.FormatBytesShort(vm.Storage),
+			colTarget, truncateString(migrationStr, colTarget))
+
+		// Selector prefix
+		selector := "  "
+		if isSelected {
+			selector = "▶ "
+		}
+
+		if isSelected {
+			// Pad row for consistent highlighting
+			if len(rowContent) < totalWidth {
+				rowContent += strings.Repeat(" ", totalWidth-len(rowContent))
+			}
+			sb.WriteString(selector + dirStr + selectedStyle.Render(rowContent) + "\n")
+		} else {
+			sb.WriteString(selector + dirStr + rowContent + "\n")
+		}
+	}
+
+	// Closing line
+	sb.WriteString("  " + strings.Repeat("─", totalWidth) + "\n")
+
+	// Scroll info
+	if len(vmList) > maxVisible {
+		scrollInfo := fmt.Sprintf("Showing %d-%d of %d", scrollPos+1, endPos, len(vmList))
+		padding := totalWidth + 2 - len(scrollInfo)
+		if padding > 0 {
+			scrollInfo = strings.Repeat(" ", padding) + scrollInfo
+		}
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(scrollInfo) + "\n")
+	}
+
+	// Legend
+	sb.WriteString("\n")
+	legendStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	sb.WriteString(legendStyle.Render("  ← Migrating out   → Migrating in") + "\n")
+
+	// Help text
+	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	sb.WriteString("\n" + helpStyle.Render("↑/↓/PgUp/PgDn/Home/End: Navigate  Esc: Back  q: Quit"))
+
+	return sb.String()
+}
+
 // truncateString truncates a string to maxLen characters
 func truncateString(s string, maxLen int) string {
 	if len(s) <= maxLen {
