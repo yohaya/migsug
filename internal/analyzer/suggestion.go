@@ -130,6 +130,7 @@ func NewNodeStateFromVMs(node *proxmox.Node) NodeState {
 }
 
 // CalculateAfterMigration computes node state after migrations
+// Uses VM-aggregated values (MaxMem, MaxDisk) consistent with NewNodeStateFromVMs
 func (ns NodeState) CalculateAfterMigration(addVMs []proxmox.VM, removeVMs []proxmox.VM) NodeState {
 	newState := ns
 
@@ -139,10 +140,16 @@ func (ns NodeState) CalculateAfterMigration(addVMs []proxmox.VM, removeVMs []pro
 		// Only subtract vCPUs/CPU for running VMs (stopped VMs don't contribute)
 		if vm.Status == "running" {
 			newState.VCPUs -= vm.CPUCores
-			newState.CPUUsageTotal -= vm.CPUUsage / 100 // Convert back from percentage
+			// Weighted CPU usage: vm.CPUUsage * vCPUs / 100
+			newState.CPUUsageTotal -= vm.CPUUsage * float64(vm.CPUCores) / 100
 		}
-		newState.RAMUsed -= vm.UsedMem
-		newState.StorageUsed -= vm.UsedDisk
+		newState.RAMUsed -= vm.MaxMem // Use allocated RAM
+		// Use MaxDisk if available, otherwise UsedDisk
+		storage := vm.MaxDisk
+		if storage == 0 {
+			storage = vm.UsedDisk
+		}
+		newState.StorageUsed -= storage
 	}
 
 	// Add VMs
@@ -151,10 +158,16 @@ func (ns NodeState) CalculateAfterMigration(addVMs []proxmox.VM, removeVMs []pro
 		// Only add vCPUs/CPU for running VMs
 		if vm.Status == "running" {
 			newState.VCPUs += vm.CPUCores
-			newState.CPUUsageTotal += vm.CPUUsage / 100
+			// Weighted CPU usage: vm.CPUUsage * vCPUs / 100
+			newState.CPUUsageTotal += vm.CPUUsage * float64(vm.CPUCores) / 100
 		}
-		newState.RAMUsed += vm.UsedMem
-		newState.StorageUsed += vm.UsedDisk
+		newState.RAMUsed += vm.MaxMem // Use allocated RAM
+		// Use MaxDisk if available, otherwise UsedDisk
+		storage := vm.MaxDisk
+		if storage == 0 {
+			storage = vm.UsedDisk
+		}
+		newState.StorageUsed += storage
 	}
 
 	// Ensure values don't go negative
