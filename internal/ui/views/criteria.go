@@ -27,6 +27,7 @@ type CriteriaState struct {
 	ExcludeNodes   []string
 	CursorPosition int
 	InputFocused   bool
+	ErrorMessage   string // Validation error message to display
 }
 
 // RenderCriteria renders the criteria selection view (without node data)
@@ -189,6 +190,7 @@ func RenderCriteriaFull(state CriteriaState, sourceNode string, node *proxmox.No
 		labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
 		inputStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
 		suffixStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+		errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Bold(true)
 
 		// Display value with cursor when focused
 		displayValue := inputValue
@@ -205,6 +207,11 @@ func RenderCriteriaFull(state CriteriaState, sourceNode string, node *proxmox.No
 			sb.WriteString(" " + suffixStyle.Render(inputSuffix))
 		}
 		sb.WriteString("\n")
+
+		// Show error message if present
+		if state.ErrorMessage != "" {
+			sb.WriteString("  " + errorStyle.Render("⚠ "+state.ErrorMessage) + "\n")
+		}
 	}
 
 	sb.WriteString("\n")
