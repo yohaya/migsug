@@ -172,16 +172,17 @@ func calculateVisibleRowsWithTargets(height, numTargets int) int {
 	// - Cluster summary + blank: 3 lines
 	// - Source node summary + blank: 4 lines
 	// - Migration summary + blanks: 3 lines
-	// - Suggestions header + scroll info + blank: 3 lines
+	// - Suggestions header + blank: 2 lines
 	// - Table header + separator: 2 lines
+	// - Scroll info (below table): 1 line
 	// - Source Node Impact header + blank: 2 lines
 	// - Source node state + blank: 2 lines
 	// - Target Nodes Impact header + blank: 2 lines
 	// - Each target node state + blank: 2 lines each
-	// - Help text: 2 lines
+	// - Help text + buffer: 3 lines (extra 1 for safety)
 
-	fixedOverhead := 3 + 3 + 4 + 3 + 3 + 2 + 2 + 2 + 2 + 2 // = 26 lines
-	targetLines := numTargets * 2                          // Each target takes 2 lines (state + blank)
+	fixedOverhead := 3 + 3 + 4 + 3 + 2 + 2 + 1 + 2 + 2 + 2 + 3 // = 27 lines
+	targetLines := numTargets * 2                               // Each target takes 2 lines (state + blank)
 
 	reserved := fixedOverhead + targetLines
 	available := height - reserved
