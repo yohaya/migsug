@@ -864,6 +864,13 @@ func RenderSuggestionTableWithCursor(suggestions []analyzer.MigrationSuggestion,
 		sb.WriteString(strings.Repeat(" ", totalWidth+2) + " " + scrollChar + "\n")
 	}
 
+	// Closing dashes (same as header separator)
+	if needsScrollbar {
+		sb.WriteString("  " + strings.Repeat("─", totalWidth) + "  \n")
+	} else {
+		sb.WriteString("  " + strings.Repeat("─", totalWidth) + "\n")
+	}
+
 	return sb.String()
 }
 

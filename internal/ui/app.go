@@ -636,8 +636,8 @@ func (m Model) handleResultsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Calculate visible area - must match calculateVisibleRowsWithTargets in results.go
-	// Fixed overhead: 27 lines (includes buffer for title visibility), plus 2 lines per target node
-	fixedOverhead := 27
+	// Fixed overhead: 25 lines (includes buffer for title visibility), plus 2 lines per target node
+	fixedOverhead := 25
 	targetLines := activeTargets * 2
 	reserved := fixedOverhead + targetLines
 	maxVisible := m.height - reserved

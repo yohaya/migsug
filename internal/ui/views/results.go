@@ -88,6 +88,7 @@ func RenderResultsWithSource(result *analyzer.AnalysisResult, cluster *proxmox.C
 		return sb.String()
 	}
 
+	// Migration summary (displayed above the table)
 	sb.WriteString(components.RenderMigrationSummary(
 		result.TotalVMs,
 		result.TotalVCPUs,
@@ -95,18 +96,15 @@ func RenderResultsWithSource(result *analyzer.AnalysisResult, cluster *proxmox.C
 		result.TotalStorage,
 		result.ImprovementInfo,
 	))
-	sb.WriteString("\n\n")
-
-	// Suggestions table with scrolling
-	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6")).
-		Render("Suggested Migrations:") + "\n\n")
+	sb.WriteString("\n")
 
 	// Calculate visible rows based on terminal height and number of target nodes
 	maxVisible := calculateVisibleRowsWithTargets(height, activeTargets)
 
+	// Suggestions table with scrolling (includes closing dashes)
 	sb.WriteString(components.RenderSuggestionTableWithCursor(result.Suggestions, scrollPos, maxVisible, cursorPos))
 
-	// Show scroll info below the table if there are more items than visible
+	// Show scroll info after the closing dashes if there are more items than visible
 	if len(result.Suggestions) > maxVisible {
 		scrollInfo := fmt.Sprintf("(showing %d-%d of %d, use ↑/↓ to scroll)",
 			scrollPos+1,
@@ -171,9 +169,9 @@ func calculateVisibleRowsWithTargets(height, numTargets int) int {
 	// - Title + border + blank: 3 lines
 	// - Cluster summary + blank: 3 lines
 	// - Source node summary + blank: 4 lines
-	// - Migration summary + blanks: 3 lines
-	// - Suggestions header + blank: 2 lines
+	// - Migration summary + blank: 2 lines
 	// - Table header + separator: 2 lines
+	// - Table closing dashes: 1 line
 	// - Scroll info (below table): 1 line
 	// - Source Node Impact header + blank: 2 lines
 	// - Source node state + blank: 2 lines
@@ -181,7 +179,7 @@ func calculateVisibleRowsWithTargets(height, numTargets int) int {
 	// - Each target node state + blank: 2 lines each
 	// - Help text + buffer: 3 lines (extra 1 for safety)
 
-	fixedOverhead := 3 + 3 + 4 + 3 + 2 + 2 + 1 + 2 + 2 + 2 + 3 // = 27 lines
+	fixedOverhead := 3 + 3 + 4 + 2 + 2 + 1 + 1 + 2 + 2 + 2 + 3 // = 25 lines
 	targetLines := numTargets * 2                              // Each target takes 2 lines (state + blank)
 
 	reserved := fixedOverhead + targetLines
