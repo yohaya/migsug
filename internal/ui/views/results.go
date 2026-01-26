@@ -153,11 +153,11 @@ func min(a, b int) int {
 func renderResultsClusterSummary(cluster *proxmox.Cluster, width int) string {
 	var sb strings.Builder
 
-	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	labelStyle := lipgloss.NewStyle() // Regular text color
 	valueStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	runningStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
-	stoppedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	stoppedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 
 	// Count online nodes
 	onlineNodes := 0

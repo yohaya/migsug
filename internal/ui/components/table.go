@@ -713,7 +713,7 @@ func max(a, b int) int {
 func RenderNodeStateComparison(nodeName string, before, after analyzer.NodeState) string {
 	var sb strings.Builder
 
-	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	labelStyle := lipgloss.NewStyle() // Regular text color
 	nodeStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5"))
 	valueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
 

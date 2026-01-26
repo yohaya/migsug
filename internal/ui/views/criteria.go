@@ -70,7 +70,6 @@ func RenderCriteriaFull(state CriteriaState, sourceNode string, node *proxmox.No
 	}
 
 	// Selected source node instruction with CPU info
-	instructionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	valueStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 
@@ -85,7 +84,7 @@ func RenderCriteriaFull(state CriteriaState, sourceNode string, node *proxmox.No
 			dimStyle.Render(""),
 			node.CPUCores)
 	}
-	sb.WriteString(instructionStyle.Render("Selected source node: ") + valueStyle.Render(nodeInfoStr) + "\n")
+	sb.WriteString("Selected source node: " + valueStyle.Render(nodeInfoStr) + "\n")
 
 	// Show selected host data if available
 	if node != nil {
@@ -94,7 +93,7 @@ func RenderCriteriaFull(state CriteriaState, sourceNode string, node *proxmox.No
 	sb.WriteString("\n")
 
 	// Instructions
-	sb.WriteString(instructionStyle.Render("Select migration mode:") + "\n\n")
+	sb.WriteString("Select migration mode:\n\n")
 
 	// Mode options table header
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
@@ -228,11 +227,11 @@ func RenderCriteriaFull(state CriteriaState, sourceNode string, node *proxmox.No
 func renderClusterSummary(cluster *proxmox.Cluster, width int) string {
 	var sb strings.Builder
 
-	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	labelStyle := lipgloss.NewStyle() // Regular text color
 	valueStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	runningStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
-	stoppedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	stoppedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 
 	// Count online nodes
 	onlineNodes := 0
@@ -333,7 +332,7 @@ func getUsageColor(percent float64) string {
 func renderNodeSummary(node *proxmox.Node, width int) string {
 	var sb strings.Builder
 
-	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	labelStyle := lipgloss.NewStyle() // Regular text color
 	valueStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
 
 	// Count running VMs

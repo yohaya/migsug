@@ -83,8 +83,7 @@ func RenderDashboardWithSort(cluster *proxmox.Cluster, selectedIdx int, width in
 	sb.WriteString("\n")
 
 	// Instructions
-	instructionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	sb.WriteString(instructionStyle.Render("Select source node to migrate from:") + "\n\n")
+	sb.WriteString("Select source node to migrate from:\n\n")
 
 	// Node table with width - using the updated component that colors whole lines
 	compSortInfo := components.SortInfo{Column: sortInfo.Column, Ascending: sortInfo.Ascending}
@@ -125,11 +124,11 @@ func RenderDashboardWithSort(cluster *proxmox.Cluster, selectedIdx int, width in
 func renderEnhancedClusterSummary(cluster *proxmox.Cluster, width int) string {
 	var sb strings.Builder
 
-	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	labelStyle := lipgloss.NewStyle() // Regular text color
 	valueStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	runningStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
-	stoppedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	stoppedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 
 	// Count online nodes
 	onlineNodes := 0
