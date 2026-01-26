@@ -181,7 +181,18 @@ func RenderNodeTableWideWithSort(nodes []proxmox.Node, selectedIdx int, width in
 		isOffline := node.Status != "online"
 
 		// Format values
+		// Check if CPU% is 0.0% but has running VMs (error condition)
+		runningVMs := 0
+		for _, vm := range node.VMs {
+			if vm.Status == "running" {
+				runningVMs++
+			}
+		}
 		cpuPctStr := fmt.Sprintf("%5.1f%%", node.GetCPUPercent())
+		cpuPctError := node.GetCPUPercent() == 0 && runningVMs > 0
+		if cpuPctError {
+			cpuPctStr = "  err%"
+		}
 		// vCPUs: show running vCPUs with overcommit percentage (vCPUs/threads)
 		runningVCPUs := node.GetRunningVCPUs()
 		vcpuOvercommit := 0.0
@@ -259,8 +270,11 @@ func RenderNodeTableWideWithSort(nodes []proxmox.Node, selectedIdx int, width in
 			// vCPUs (running only)
 			coloredRow.WriteString(fmt.Sprintf("%*s ", colVCPUs, vcpuStr))
 
-			// CPU % with color
+			// CPU % with color (bright red if error)
 			cpuPctColor := getUsageColor(node.GetCPUPercent())
+			if cpuPctError {
+				cpuPctColor = "9" // bright red for error
+			}
 			cpuPctStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(cpuPctColor))
 			coloredRow.WriteString(cpuPctStyle.Render(fmt.Sprintf("%*s", colCPUPct, cpuPctStr)) + " ")
 
