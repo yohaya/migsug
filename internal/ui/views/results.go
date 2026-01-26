@@ -567,11 +567,11 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 
 	// Column widths - increased for full hostnames
 	const (
-		colDir     = 2  // Arrow direction
+		colDir     = 2 // Arrow direction
 		colVMID    = 6
 		colName    = 32 // Increased for longer VM names
 		colState   = 5
-		colCPU     = 6  // CPU%
+		colCPU     = 6 // CPU%
 		colVCPU    = 5
 		colRAM     = 8
 		colStorage = 8

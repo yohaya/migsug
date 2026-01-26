@@ -745,10 +745,10 @@ func RenderSuggestionTableWithCursor(suggestions []analyzer.MigrationSuggestion,
 		colVMID    = 6
 		colName    = 26 // Server name
 		colTo      = 20
-		colState   = 5  // "On" or "Off"
-		colCPU     = 6  // CPU% = VMCPU% * vCPU (total thread consumption)
-		colHCPU    = 6  // HCPU% (host CPU% - normalized)
-		colVMCPU   = 7  // VMCPU% (% of allocated vCPUs)
+		colState   = 5 // "On" or "Off"
+		colCPU     = 6 // CPU% = VMCPU% * vCPU (total thread consumption)
+		colHCPU    = 6 // HCPU% (host CPU% - normalized)
+		colVMCPU   = 7 // VMCPU% (% of allocated vCPUs)
 		colVCPU    = 5
 		colRAM     = 10
 		colStorage = 10
