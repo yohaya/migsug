@@ -37,6 +37,7 @@ const (
 	SortByVMs
 	SortByVCPUs
 	SortByCPUPercent
+	SortByLA
 	SortByRAM
 	SortByDisk
 )
@@ -291,8 +292,10 @@ func (m Model) handleDashboardKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "5":
 		m.toggleSort(SortByCPUPercent)
 	case "6":
-		m.toggleSort(SortByRAM)
+		m.toggleSort(SortByLA)
 	case "7":
+		m.toggleSort(SortByRAM)
+	case "8":
 		m.toggleSort(SortByDisk)
 	case "r":
 		// Manual refresh
@@ -337,6 +340,17 @@ func (m *Model) sortNodes() {
 			less = nodes[i].GetRunningVCPUs() < nodes[j].GetRunningVCPUs()
 		case SortByCPUPercent:
 			less = nodes[i].GetCPUPercent() < nodes[j].GetCPUPercent()
+		case SortByLA:
+			// Compare 1-minute load average
+			laI := 0.0
+			laJ := 0.0
+			if len(nodes[i].LoadAverage) > 0 {
+				laI = nodes[i].LoadAverage[0]
+			}
+			if len(nodes[j].LoadAverage) > 0 {
+				laJ = nodes[j].LoadAverage[0]
+			}
+			less = laI < laJ
 		case SortByRAM:
 			less = nodes[i].GetMemPercent() < nodes[j].GetMemPercent()
 		case SortByDisk:

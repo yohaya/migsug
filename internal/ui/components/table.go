@@ -132,10 +132,11 @@ func RenderNodeTableWideWithSort(nodes []proxmox.Node, selectedIdx int, width in
 	colVMs := 6
 	colVCPUs := 13    // e.g., "572 (325%)"
 	colCPUPct := 8
+	colLA := 7        // e.g., "12.34"
 	colRAM := 22      // e.g., "1632/2048G (80%)"
 	colDisk := 20     // e.g., "165/205T (80%)"
 	// CPU Model gets remaining width - no artificial limit
-	colCPUModel := width - colName - colStatus - colVMs - colVCPUs - colCPUPct - colRAM - colDisk - 20
+	colCPUModel := width - colName - colStatus - colVMs - colVCPUs - colCPUPct - colLA - colRAM - colDisk - 24
 	if colCPUModel < 20 {
 		colCPUModel = 20
 	}
@@ -160,14 +161,15 @@ func RenderNodeTableWideWithSort(nodes []proxmox.Node, selectedIdx int, width in
 
 	// Main header with Unicode separators and sort arrows
 	sep := sepStyle.Render(boxVertical)
-	header1 := fmt.Sprintf("  %-*s %s %-*s %s %*s %s %*s %s %*s %s %-*s %s %-*s %s %s",
+	header1 := fmt.Sprintf("  %-*s %s %-*s %s %*s %s %*s %s %*s %s %*s %s %-*s %s %-*s %s %s",
 		colName, "Host"+getSortArrow(0), sep,
 		colStatus, "Status"+getSortArrow(1), sep,
 		colVMs, "VMs"+getSortArrow(2), sep,
 		colVCPUs, "vCPUs"+getSortArrow(3), sep,
 		colCPUPct, "CPU%"+getSortArrow(4), sep,
-		colRAM, "RAM"+getSortArrow(5), sep,
-		colDisk, "Disk"+getSortArrow(6), sep,
+		colLA, "LA"+getSortArrow(5), sep,
+		colRAM, "RAM"+getSortArrow(6), sep,
+		colDisk, "Disk"+getSortArrow(7), sep,
 		"CPU Model")
 	sb.WriteString(headerStyle.Render(header1) + "\n")
 	// Use graphical separator
@@ -187,6 +189,11 @@ func RenderNodeTableWideWithSort(nodes []proxmox.Node, selectedIdx int, width in
 			vcpuOvercommit = float64(runningVCPUs) / float64(node.CPUCores) * 100
 		}
 		vcpuStr := fmt.Sprintf("%d (%.0f%%)", runningVCPUs, vcpuOvercommit)
+		// Load Average (1 minute)
+		laStr := "-"
+		if len(node.LoadAverage) > 0 {
+			laStr = fmt.Sprintf("%.2f", node.LoadAverage[0])
+		}
 		// RAM: show used/total in G with percentage at end
 		ramStr := FormatRAMWithPercent(node.UsedMem, node.MaxMem, node.GetMemPercent())
 		// Disk: show used/total with percentage
@@ -196,12 +203,13 @@ func RenderNodeTableWideWithSort(nodes []proxmox.Node, selectedIdx int, width in
 		cpuInfo := formatCPUInfo(node.CPUSockets, node.CPUModel, node.CPUMHz, node.CPUCores)
 
 		// Build the row content (plain text for width calculation)
-		rowContent := fmt.Sprintf("%-*s %-*s %*d %*s %*s %-*s %-*s %s",
+		rowContent := fmt.Sprintf("%-*s %-*s %*d %*s %*s %*s %-*s %-*s %s",
 			colName, truncate(node.Name, colName),
 			colStatus, node.Status,
 			colVMs, len(node.VMs),
 			colVCPUs, vcpuStr,
 			colCPUPct, cpuPctStr,
+			colLA, laStr,
 			colRAM, ramStr,
 			colDisk, diskStr,
 			cpuInfo) // Don't truncate CPU info
@@ -255,6 +263,15 @@ func RenderNodeTableWideWithSort(nodes []proxmox.Node, selectedIdx int, width in
 			cpuPctColor := getUsageColor(node.GetCPUPercent())
 			cpuPctStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(cpuPctColor))
 			coloredRow.WriteString(cpuPctStyle.Render(fmt.Sprintf("%*s", colCPUPct, cpuPctStr)) + " ")
+
+			// Load Average with color (based on LA relative to CPU cores)
+			laColor := "2" // green by default
+			if len(node.LoadAverage) > 0 && node.CPUCores > 0 {
+				laRatio := node.LoadAverage[0] / float64(node.CPUCores) * 100
+				laColor = getUsageColor(laRatio)
+			}
+			laStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(laColor))
+			coloredRow.WriteString(laStyle.Render(fmt.Sprintf("%*s", colLA, laStr)) + " ")
 
 			// RAM with color
 			ramColor := getUsageColor(node.GetMemPercent())

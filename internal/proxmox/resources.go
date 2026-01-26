@@ -358,6 +358,7 @@ func fetchNodeDetails(client ProxmoxClient, nodeMap map[string]*Node, progress P
 				node.CPUModel = result.status.CPUInfo.Model
 				node.CPUSockets = result.status.CPUInfo.Sockets
 				node.CPUMHz = result.status.CPUInfo.MHz
+				node.LoadAverage = result.status.LoadAverage
 				// CPUCores from resources is total logical CPUs
 				// If we got more detailed info, we can verify/update
 				if result.status.CPUInfo.CPUs > 0 {

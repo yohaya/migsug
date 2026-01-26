@@ -4,20 +4,21 @@ import "fmt"
 
 // Node represents a Proxmox node in the cluster
 type Node struct {
-	Name       string
-	Status     string
-	CPUCores   int     // Total logical CPUs (cores * threads)
-	CPUSockets int     // Physical CPU sockets
-	CPUModel   string  // CPU model name
-	CPUMHz     float64 // CPU frequency in MHz
-	CPUUsage   float64 // Percentage 0-100
-	MaxMem     int64   // bytes
-	UsedMem    int64   // bytes
-	MaxDisk    int64   // bytes
-	UsedDisk   int64   // bytes
-	VMs        []VM
-	Uptime     int64  // seconds
-	PVEVersion string // Proxmox VE version
+	Name        string
+	Status      string
+	CPUCores    int       // Total logical CPUs (cores * threads)
+	CPUSockets  int       // Physical CPU sockets
+	CPUModel    string    // CPU model name
+	CPUMHz      float64   // CPU frequency in MHz
+	CPUUsage    float64   // Percentage 0-100
+	LoadAverage []float64 // 1, 5, 15 minute load averages
+	MaxMem      int64     // bytes
+	UsedMem     int64     // bytes
+	MaxDisk     int64     // bytes
+	UsedDisk    int64     // bytes
+	VMs         []VM
+	Uptime      int64  // seconds
+	PVEVersion  string // Proxmox VE version
 }
 
 // VM represents a virtual machine
