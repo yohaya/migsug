@@ -77,8 +77,8 @@ type Model struct {
 	impactHostNames  []string // Sorted list of host names in impact table
 
 	// Host detail view state
-	hostDetailSection    int // 0 = Before VMs, 1 = After VMs
-	hostDetailScrollPos  int // Scroll position for current section
+	hostDetailSection   int // 0 = Before VMs, 1 = After VMs
+	hostDetailScrollPos int // Scroll position for current section
 
 	// UI state
 	width      int

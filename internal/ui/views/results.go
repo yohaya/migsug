@@ -356,7 +356,7 @@ func RenderHostDetailInteractive(result *analyzer.AnalysisResult, hostName, sour
 		// Show scroll info if needed
 		if len(beforeVMs) > maxVisible && focusedSection == 0 {
 			scrollInfo := fmt.Sprintf("Showing %d-%d of %d", startIdx+1, endIdx, len(beforeVMs))
-			sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("  " + scrollInfo) + "\n")
+			sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("  "+scrollInfo) + "\n")
 		}
 	} else {
 		sb.WriteString(fmt.Sprintf("%s (0):\n", beforeTitle))
@@ -403,7 +403,7 @@ func RenderHostDetailInteractive(result *analyzer.AnalysisResult, hostName, sour
 		// Show scroll info if needed
 		if len(afterVMs) > maxVisible && focusedSection == 1 {
 			scrollInfo := fmt.Sprintf("Showing %d-%d of %d", startIdx+1, endIdx, len(afterVMs))
-			sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("  " + scrollInfo) + "\n")
+			sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("  "+scrollInfo) + "\n")
 		}
 	}
 	sb.WriteString("\n")
