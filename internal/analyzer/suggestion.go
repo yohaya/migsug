@@ -121,6 +121,14 @@ func (ns NodeState) CalculateAfterMigration(addVMs []proxmox.VM, removeVMs []pro
 		newState.StorageUsed = 0
 	}
 
+	// When all VMs are migrated away, show 0 for VM-related resources
+	if newState.VMCount == 0 {
+		newState.VCPUs = 0
+		newState.CPUUsageTotal = 0
+		newState.RAMUsed = 0
+		newState.StorageUsed = 0
+	}
+
 	// Recalculate percentages
 	if newState.CPUCores > 0 {
 		newState.CPUPercent = (newState.CPUUsageTotal / float64(newState.CPUCores)) * 100
