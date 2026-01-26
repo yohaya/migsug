@@ -2,10 +2,12 @@ package proxmox
 
 import (
 	"fmt"
+	"log"
 	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // Maximum concurrent node status fetches
@@ -117,6 +119,42 @@ func CollectClusterDataWithProgress(client ProxmoxClient, progress ProgressCallb
 				node.UsedDisk = storage.usedDisk
 			}
 		}
+	}
+
+	// Retry logic for nodes with 0 CPU usage but have running VMs
+	// This can happen when the API returns stale data
+	retryNodes := findNodesNeedingCPURetry(nodeMap, vmList)
+	for retry := 0; retry < 2 && len(retryNodes) > 0; retry++ {
+		log.Printf("Retrying CPU data for %d nodes (attempt %d/2): %v", len(retryNodes), retry+1, retryNodes)
+
+		// Wait a short time before retry
+		time.Sleep(500 * time.Millisecond)
+
+		// Re-fetch cluster resources
+		retryResources, err := client.GetClusterResources()
+		if err != nil {
+			log.Printf("Retry failed: %v", err)
+			break
+		}
+
+		// Update CPU usage for problematic nodes
+		for _, res := range retryResources {
+			if res.Type == "node" {
+				if node, exists := nodeMap[res.Node]; exists {
+					// Only update if this node needed retry and we got a non-zero value
+					for _, retryNode := range retryNodes {
+						if retryNode == res.Node && res.CPU > 0 {
+							node.CPUUsage = res.CPU
+							log.Printf("Updated CPU for %s: %.2f%%", res.Node, res.CPU*100)
+							break
+						}
+					}
+				}
+			}
+		}
+
+		// Check if we still have problematic nodes
+		retryNodes = findNodesNeedingCPURetry(nodeMap, vmList)
 	}
 
 	// Fetch detailed node status for each node in parallel (CPU model, sockets, MHz, PVE version)
@@ -281,6 +319,27 @@ type nodeStatusResult struct {
 	nodeName string
 	status   *NodeStatus
 	err      error
+}
+
+// findNodesNeedingCPURetry returns nodes that have 0 CPU usage but have running VMs
+// This indicates the API returned stale/incorrect data
+func findNodesNeedingCPURetry(nodeMap map[string]*Node, vmList []VM) []string {
+	// Count running VMs per node
+	runningVMsPerNode := make(map[string]int)
+	for _, vm := range vmList {
+		if vm.Status == "running" {
+			runningVMsPerNode[vm.Node]++
+		}
+	}
+
+	var retryNodes []string
+	for nodeName, node := range nodeMap {
+		// Node has 0 CPU usage but has running VMs - likely API error
+		if node.Status == "online" && node.CPUUsage == 0 && runningVMsPerNode[nodeName] > 0 {
+			retryNodes = append(retryNodes, nodeName)
+		}
+	}
+	return retryNodes
 }
 
 // fetchNodeDetails fetches detailed status for all online nodes in parallel
