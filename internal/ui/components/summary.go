@@ -129,27 +129,29 @@ func RenderNodeSummary(node *proxmox.Node) string {
 	return boxStyle.Render(content)
 }
 
-// RenderMigrationSummary creates a summary box for migration results
+// RenderMigrationSummary creates a summary for migration results (without box)
 func RenderMigrationSummary(totalVMs int, totalVCPUs int, totalRAM int64, totalStorage int64, improvement string) string {
-	content := titleStyle.Render("Migration Summary") + "\n\n"
+	// Use regular text color for labels (like the main header)
+	labelStyle := lipgloss.NewStyle()
+	valueStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
+	improvementStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Bold(true)
 
-	content += labelStyle.Render("VMs:        ") +
-		valueStyle.Render(fmt.Sprintf("%d", totalVMs)) + "\n"
+	var content string
 
-	content += labelStyle.Render("vCPUs:      ") +
-		valueStyle.Render(fmt.Sprintf("%d", totalVCPUs)) + "\n"
+	// Title
+	content = titleStyle.Render("Migration Summary:") + "\n"
 
-	content += labelStyle.Render("RAM:        ") +
-		valueStyle.Render(FormatBytes(totalRAM)) + "\n"
+	// Row 1: VMs, vCPUs, RAM, Storage
+	content += labelStyle.Render("VMs: ") + valueStyle.Render(fmt.Sprintf("%-10d", totalVMs))
+	content += labelStyle.Render("vCPUs: ") + valueStyle.Render(fmt.Sprintf("%-10d", totalVCPUs))
+	content += labelStyle.Render("RAM: ") + valueStyle.Render(fmt.Sprintf("%-14s", FormatBytes(totalRAM)))
+	content += labelStyle.Render("Storage: ") + valueStyle.Render(FormatBytes(totalStorage))
+	content += "\n\n"
 
-	content += labelStyle.Render("Storage:    ") +
-		valueStyle.Render(FormatBytes(totalStorage)) + "\n\n"
+	// Improvement line
+	content += labelStyle.Render("Improvement: ") + improvementStyle.Render(improvement)
 
-	content += labelStyle.Render("Improvement: ") +
-		lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Bold(true).
-			Render(improvement) + "\n"
-
-	return boxStyle.Render(content)
+	return content
 }
 
 // RenderHelp creates a help box with keyboard shortcuts

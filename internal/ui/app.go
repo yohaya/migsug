@@ -423,6 +423,7 @@ func (m Model) handleCriteriaInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		m.criteriaState.InputFocused = false
 		m.criteriaState.ErrorMessage = ""
+		m.clearCurrentInput() // Clear the input value
 	case "backspace", "ctrl+h", "delete":
 		m.deleteLastChar()
 		m.criteriaState.ErrorMessage = "" // Clear error on edit
@@ -545,6 +546,21 @@ func (m *Model) deleteLastChar() {
 		m.criteriaState.RAMAmount = deleteFrom(m.criteriaState.RAMAmount)
 	case analyzer.ModeStorage:
 		m.criteriaState.StorageAmount = deleteFrom(m.criteriaState.StorageAmount)
+	}
+}
+
+func (m *Model) clearCurrentInput() {
+	switch m.criteriaState.SelectedMode {
+	case analyzer.ModeVMCount:
+		m.criteriaState.VMCount = ""
+	case analyzer.ModeVCPU:
+		m.criteriaState.VCPUCount = ""
+	case analyzer.ModeCPUUsage:
+		m.criteriaState.CPUUsage = ""
+	case analyzer.ModeRAM:
+		m.criteriaState.RAMAmount = ""
+	case analyzer.ModeStorage:
+		m.criteriaState.StorageAmount = ""
 	}
 }
 
