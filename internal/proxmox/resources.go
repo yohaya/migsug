@@ -3,6 +3,7 @@ package proxmox
 import (
 	"fmt"
 	"log"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -12,6 +13,35 @@ import (
 
 // Maximum concurrent node status fetches
 const maxConcurrentFetches = 32
+
+// storageLogger is a dedicated logger for VMs with missing storage info
+// This always writes to migsug.log regardless of debug mode
+var storageLogger *log.Logger
+var storageLogFile *os.File
+var storageLogOnce sync.Once
+
+// initStorageLogger initializes the storage logger (called once)
+func initStorageLogger() {
+	storageLogOnce.Do(func() {
+		var err error
+		storageLogFile, err = os.OpenFile("migsug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+		if err != nil {
+			// If we can't open the log file, use a no-op logger
+			storageLogger = log.New(os.Stderr, "", 0)
+			return
+		}
+		storageLogger = log.New(storageLogFile, "", log.LstdFlags)
+	})
+}
+
+// logMissingStorage logs VMs with missing storage info to migsug.log
+func logMissingStorage(vmid int, name, node, vmType, status string, maxDisk, disk int64) {
+	initStorageLogger()
+	if storageLogger != nil {
+		storageLogger.Printf("VM with missing storage: VMID=%d Name=%s Node=%s Type=%s Status=%s MaxDisk=%d Disk=%d (source: /cluster/resources API)",
+			vmid, name, node, vmType, status, maxDisk, disk)
+	}
+}
 
 // ProgressCallback is called to report progress during data collection
 // stage: current stage name (e.g., "resources", "nodes", "storage")
@@ -26,6 +56,12 @@ func CollectClusterData(client ProxmoxClient) (*Cluster, error) {
 
 // CollectClusterDataWithProgress gathers complete cluster information with progress reporting
 func CollectClusterDataWithProgress(client ProxmoxClient, progress ProgressCallback) (*Cluster, error) {
+	// Initialize storage logger and write header
+	initStorageLogger()
+	if storageLogger != nil {
+		storageLogger.Printf("=== Starting cluster data collection ===")
+	}
+
 	// Report initial stage
 	if progress != nil {
 		progress("Fetching cluster resources", 0, 1)
@@ -49,6 +85,7 @@ func CollectClusterDataWithProgress(client ProxmoxClient, progress ProgressCallb
 	// Map to organize data
 	nodeMap := make(map[string]*Node)
 	vmList := []VM{}
+	missingStorageCount := 0 // Track VMs with missing storage
 
 	// Track storage per node (aggregated from storage type resources)
 	nodeStorage := make(map[string]struct {
@@ -106,10 +143,13 @@ func CollectClusterDataWithProgress(client ProxmoxClient, progress ProgressCallb
 				Uptime:   res.Uptime,
 			}
 
-			// Log VMs with missing storage info for debugging
+			// Log VMs with missing storage info to migsug.log (always, not just debug mode)
 			if res.MaxDisk == 0 && res.Status == "running" {
 				log.Printf("VM %d (%s) on node %s has MaxDisk=0. API returned: MaxDisk=%d, Disk=%d, Type=%s",
 					res.VMID, res.Name, res.Node, res.MaxDisk, res.Disk, res.Type)
+				// Also log to dedicated storage log file
+				logMissingStorage(res.VMID, res.Name, res.Node, res.Type, res.Status, res.MaxDisk, res.Disk)
+				missingStorageCount++
 			}
 
 			vmList = append(vmList, vm)
@@ -198,6 +238,12 @@ func CollectClusterDataWithProgress(client ProxmoxClient, progress ProgressCallb
 	sort.Slice(cluster.Nodes, func(i, j int) bool {
 		return cluster.Nodes[i].Name < cluster.Nodes[j].Name
 	})
+
+	// Log summary of collection
+	if storageLogger != nil {
+		storageLogger.Printf("=== Collection complete: %d nodes, %d VMs (%d running, %d stopped), %d VMs with missing storage ===",
+			len(cluster.Nodes), cluster.TotalVMs, cluster.RunningVMs, cluster.StoppedVMs, missingStorageCount)
+	}
 
 	return cluster, nil
 }
