@@ -595,7 +595,29 @@ func RenderSuggestionTableWithCursor(suggestions []analyzer.MigrationSuggestion,
 		Foreground(lipgloss.Color("15")).
 		Bold(true)
 
-	// Header (with 2-char prefix for alignment)
+	// Scrollbar styles
+	scrollTrackStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	scrollThumbStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+
+	totalItems := len(suggestions)
+	needsScrollbar := totalItems > maxVisible
+
+	// Calculate scrollbar thumb position
+	thumbPos := 0
+	thumbSize := maxVisible
+	if needsScrollbar && totalItems > 0 {
+		// Calculate thumb position (0 to maxVisible-thumbSize)
+		thumbSize = max(1, maxVisible*maxVisible/totalItems)
+		if thumbSize > maxVisible {
+			thumbSize = maxVisible
+		}
+		scrollRange := maxVisible - thumbSize
+		if scrollRange > 0 && totalItems > maxVisible {
+			thumbPos = scrollPos * scrollRange / (totalItems - maxVisible)
+		}
+	}
+
+	// Header (with 2-char prefix for alignment, +2 for scrollbar)
 	header := fmt.Sprintf("  %*s %-*s %-*s %-*s %*s %*s %*s",
 		colVMID, "VMID",
 		colName, "Name",
@@ -604,21 +626,21 @@ func RenderSuggestionTableWithCursor(suggestions []analyzer.MigrationSuggestion,
 		colVCPU, "vCPU",
 		colRAM, "RAM",
 		colStorage, "Storage")
-	sb.WriteString(headerStyle.Render(header) + "\n")
-	sb.WriteString("  " + strings.Repeat("─", totalWidth) + "\n")
-
-	// Show scroll up indicator if not at top
-	if scrollPos > 0 {
-		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("  ↑ more above...") + "\n")
+	if needsScrollbar {
+		sb.WriteString(headerStyle.Render(header) + "  \n")
+		sb.WriteString("  " + strings.Repeat("─", totalWidth) + "  \n")
+	} else {
+		sb.WriteString(headerStyle.Render(header) + "\n")
+		sb.WriteString("  " + strings.Repeat("─", totalWidth) + "\n")
 	}
 
 	// Calculate visible range
 	endPos := scrollPos + maxVisible
-	if endPos > len(suggestions) {
-		endPos = len(suggestions)
+	if endPos > totalItems {
+		endPos = totalItems
 	}
 
-	// Rows (only visible portion) - all on single line
+	// Rows (only visible portion) - all on single line with scrollbar
 	for i := scrollPos; i < endPos; i++ {
 		sug := suggestions[i]
 		isSelected := (i == cursorPos)
@@ -633,28 +655,58 @@ func RenderSuggestionTableWithCursor(suggestions []analyzer.MigrationSuggestion,
 			colStorage, FormatBytes(sug.Storage),
 		)
 
+		// Scrollbar character for this row
+		scrollChar := ""
+		if needsScrollbar {
+			rowIdx := i - scrollPos
+			if rowIdx >= thumbPos && rowIdx < thumbPos+thumbSize {
+				scrollChar = scrollThumbStyle.Render("█")
+			} else {
+				scrollChar = scrollTrackStyle.Render("│")
+			}
+		}
+
 		// Selector indicator and styling
 		if isSelected {
 			// Pad the row to full width for consistent highlighting
 			if len(row) < totalWidth {
 				row += strings.Repeat(" ", totalWidth-len(row))
 			}
-			sb.WriteString("▶ " + selectedStyle.Render(row) + "\n")
+			sb.WriteString("▶ " + selectedStyle.Render(row))
 		} else {
 			style := normalStyle
 			if sug.TargetNode == "NONE" {
 				style = offlineStyle
 			}
-			sb.WriteString("  " + style.Render(row) + "\n")
+			sb.WriteString("  " + style.Render(row))
 		}
+
+		if needsScrollbar {
+			sb.WriteString(" " + scrollChar)
+		}
+		sb.WriteString("\n")
 	}
 
-	// Show scroll down indicator if not at bottom
-	if endPos < len(suggestions) {
-		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("  ↓ more below...") + "\n")
+	// Pad remaining rows if we have fewer items than maxVisible
+	for i := endPos - scrollPos; i < maxVisible && needsScrollbar; i++ {
+		rowIdx := i
+		scrollChar := ""
+		if rowIdx >= thumbPos && rowIdx < thumbPos+thumbSize {
+			scrollChar = scrollThumbStyle.Render("█")
+		} else {
+			scrollChar = scrollTrackStyle.Render("│")
+		}
+		sb.WriteString(strings.Repeat(" ", totalWidth+2) + " " + scrollChar + "\n")
 	}
 
 	return sb.String()
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // RenderNodeStateComparison shows before/after comparison for a node on a single line
