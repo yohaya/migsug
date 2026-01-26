@@ -569,6 +569,11 @@ func RenderSuggestionTable(suggestions []analyzer.MigrationSuggestion) string {
 
 // RenderSuggestionTableWithScroll creates a scrollable table of migration suggestions
 func RenderSuggestionTableWithScroll(suggestions []analyzer.MigrationSuggestion, scrollPos, maxVisible int) string {
+	return RenderSuggestionTableWithCursor(suggestions, scrollPos, maxVisible, -1)
+}
+
+// RenderSuggestionTableWithCursor creates a scrollable table with cursor highlighting
+func RenderSuggestionTableWithCursor(suggestions []analyzer.MigrationSuggestion, scrollPos, maxVisible, cursorPos int) string {
 	var sb strings.Builder
 
 	// Column widths
@@ -582,6 +587,14 @@ func RenderSuggestionTableWithScroll(suggestions []analyzer.MigrationSuggestion,
 		colStorage = 10
 	)
 
+	totalWidth := colVMID + colName + colFrom + colTo + colVCPU + colRAM + colStorage + 6
+
+	// Highlight style for selected row
+	selectedStyle := lipgloss.NewStyle().
+		Background(lipgloss.Color("236")).
+		Foreground(lipgloss.Color("15")).
+		Bold(true)
+
 	// Header (with 2-char prefix for alignment)
 	header := fmt.Sprintf("  %*s %-*s %-*s %-*s %*s %*s %*s",
 		colVMID, "VMID",
@@ -592,7 +605,7 @@ func RenderSuggestionTableWithScroll(suggestions []analyzer.MigrationSuggestion,
 		colRAM, "RAM",
 		colStorage, "Storage")
 	sb.WriteString(headerStyle.Render(header) + "\n")
-	sb.WriteString("  " + strings.Repeat("─", colVMID+colName+colFrom+colTo+colVCPU+colRAM+colStorage+6) + "\n")
+	sb.WriteString("  " + strings.Repeat("─", totalWidth) + "\n")
 
 	// Show scroll up indicator if not at top
 	if scrollPos > 0 {
@@ -608,10 +621,7 @@ func RenderSuggestionTableWithScroll(suggestions []analyzer.MigrationSuggestion,
 	// Rows (only visible portion) - all on single line
 	for i := scrollPos; i < endPos; i++ {
 		sug := suggestions[i]
-		style := normalStyle
-		if sug.TargetNode == "NONE" {
-			style = offlineStyle
-		}
+		isSelected := (i == cursorPos)
 
 		row := fmt.Sprintf("%*d %-*s %-*s %-*s %*d %*s %*s",
 			colVMID, sug.VMID,
@@ -623,7 +633,20 @@ func RenderSuggestionTableWithScroll(suggestions []analyzer.MigrationSuggestion,
 			colStorage, FormatBytes(sug.Storage),
 		)
 
-		sb.WriteString("  " + style.Render(row) + "\n")
+		// Selector indicator and styling
+		if isSelected {
+			// Pad the row to full width for consistent highlighting
+			if len(row) < totalWidth {
+				row += strings.Repeat(" ", totalWidth-len(row))
+			}
+			sb.WriteString("▶ " + selectedStyle.Render(row) + "\n")
+		} else {
+			style := normalStyle
+			if sug.TargetNode == "NONE" {
+				style = offlineStyle
+			}
+			sb.WriteString("  " + style.Render(row) + "\n")
+		}
 	}
 
 	// Show scroll down indicator if not at bottom

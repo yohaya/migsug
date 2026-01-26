@@ -67,6 +67,7 @@ type Model struct {
 
 	// Results view scroll state
 	resultsScrollPos int
+	resultsCursorPos int // Current cursor position in results list
 
 	// UI state
 	width      int
@@ -196,6 +197,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.result = msg.result
 		m.currentView = ViewResults
 		m.loading = false
+		m.resultsScrollPos = 0
+		m.resultsCursorPos = 0
 		return m, nil
 	}
 
@@ -580,31 +583,87 @@ func (m Model) handleVMSelectionKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleResultsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.result == nil || len(m.result.Suggestions) == 0 {
+		switch msg.String() {
+		case "r":
+			m.currentView = ViewCriteria
+			m.result = nil
+			m.resultsScrollPos = 0
+			m.resultsCursorPos = 0
+		case "esc":
+			m.currentView = ViewCriteria
+			m.resultsScrollPos = 0
+			m.resultsCursorPos = 0
+		}
+		return m, nil
+	}
+
+	// Calculate visible area for window-style scrolling
+	maxVisible := m.height - 20 // Reserve space for header, summary, etc.
+	if maxVisible < 5 {
+		maxVisible = 5
+	}
+	totalItems := len(m.result.Suggestions)
+
 	switch msg.String() {
 	case "up", "k":
-		if m.resultsScrollPos > 0 {
-			m.resultsScrollPos--
+		if m.resultsCursorPos > 0 {
+			m.resultsCursorPos--
+			// Window-style scrolling: scroll up when cursor goes above visible area
+			if m.resultsCursorPos < m.resultsScrollPos {
+				m.resultsScrollPos = m.resultsCursorPos
+			}
 		}
 	case "down", "j":
-		// Allow scrolling if there are more suggestions than fit on screen
-		if m.result != nil {
-			maxScroll := len(m.result.Suggestions) - 1
-			if maxScroll < 0 {
-				maxScroll = 0
+		if m.resultsCursorPos < totalItems-1 {
+			m.resultsCursorPos++
+			// Window-style scrolling: scroll down when cursor goes below visible area
+			if m.resultsCursorPos >= m.resultsScrollPos+maxVisible {
+				m.resultsScrollPos = m.resultsCursorPos - maxVisible + 1
 			}
-			if m.resultsScrollPos < maxScroll {
-				m.resultsScrollPos++
-			}
+		}
+	case "home":
+		m.resultsCursorPos = 0
+		m.resultsScrollPos = 0
+	case "end":
+		m.resultsCursorPos = totalItems - 1
+		// Scroll to show the last item at the bottom of visible area
+		if totalItems > maxVisible {
+			m.resultsScrollPos = totalItems - maxVisible
+		} else {
+			m.resultsScrollPos = 0
+		}
+	case "pgup":
+		// Move cursor up by page size
+		m.resultsCursorPos -= maxVisible
+		if m.resultsCursorPos < 0 {
+			m.resultsCursorPos = 0
+		}
+		// Scroll to keep cursor visible
+		if m.resultsCursorPos < m.resultsScrollPos {
+			m.resultsScrollPos = m.resultsCursorPos
+		}
+	case "pgdown":
+		// Move cursor down by page size
+		m.resultsCursorPos += maxVisible
+		if m.resultsCursorPos >= totalItems {
+			m.resultsCursorPos = totalItems - 1
+		}
+		// Scroll to keep cursor visible
+		if m.resultsCursorPos >= m.resultsScrollPos+maxVisible {
+			m.resultsScrollPos = m.resultsCursorPos - maxVisible + 1
 		}
 	case "r":
 		// Reset and start new analysis
 		m.currentView = ViewCriteria
 		m.result = nil
 		m.resultsScrollPos = 0
+		m.resultsCursorPos = 0
 	case "esc":
 		// Go back to criteria screen (not dashboard)
 		m.currentView = ViewCriteria
 		m.resultsScrollPos = 0
+		m.resultsCursorPos = 0
 	case "s":
 		// TODO: Save results to file
 		// For now, just ignore
@@ -654,7 +713,7 @@ func (m Model) View() string {
 		return views.RenderVMSelection(sourceNode.VMs, m.criteriaState.SelectedVMs, m.vmCursorIdx, m.width)
 	case ViewResults:
 		if m.result != nil {
-			return views.RenderResultsFull(m.result, m.cluster, m.version, m.width, m.height, m.resultsScrollPos)
+			return views.RenderResultsWithCursor(m.result, m.cluster, m.version, m.width, m.height, m.resultsScrollPos, m.resultsCursorPos)
 		}
 		return "No results available"
 	case ViewError:

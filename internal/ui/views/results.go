@@ -25,6 +25,11 @@ func RenderResultsWithScroll(result *analyzer.AnalysisResult, width, height, scr
 
 // RenderResultsFull renders the migration results view with full header
 func RenderResultsFull(result *analyzer.AnalysisResult, cluster *proxmox.Cluster, version string, width, height, scrollPos int) string {
+	return RenderResultsWithCursor(result, cluster, version, width, height, scrollPos, -1)
+}
+
+// RenderResultsWithCursor renders the migration results view with cursor navigation
+func RenderResultsWithCursor(result *analyzer.AnalysisResult, cluster *proxmox.Cluster, version string, width, height, scrollPos, cursorPos int) string {
 	var sb strings.Builder
 
 	// Ensure minimum width
@@ -86,7 +91,7 @@ func RenderResultsFull(result *analyzer.AnalysisResult, cluster *proxmox.Cluster
 	}
 	sb.WriteString("\n\n")
 
-	sb.WriteString(components.RenderSuggestionTableWithScroll(result.Suggestions, scrollPos, maxVisible))
+	sb.WriteString(components.RenderSuggestionTableWithCursor(result.Suggestions, scrollPos, maxVisible, cursorPos))
 	sb.WriteString("\n")
 
 	// Before/After comparison
@@ -120,7 +125,7 @@ func RenderResultsFull(result *analyzer.AnalysisResult, cluster *proxmox.Cluster
 
 	// Help text
 	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	sb.WriteString("\n" + helpStyle.Render("↑/↓: Scroll  s: Save  r: New Analysis  Esc: Back  q: Quit"))
+	sb.WriteString("\n" + helpStyle.Render("↑/↓/PgUp/PgDn/Home/End: Navigate  s: Save  r: New Analysis  Esc: Back  q: Quit"))
 
 	return sb.String()
 }
