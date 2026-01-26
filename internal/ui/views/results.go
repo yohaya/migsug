@@ -171,7 +171,7 @@ func calculateVisibleRowsWithTargets(height, numTargets int) int {
 	// - Help text: 2 lines
 
 	fixedOverhead := 3 + 3 + 4 + 3 + 3 + 2 + 2 + 2 + 2 + 2 // = 26 lines
-	targetLines := numTargets * 2 // Each target takes 2 lines (state + blank)
+	targetLines := numTargets * 2                          // Each target takes 2 lines (state + blank)
 
 	reserved := fixedOverhead + targetLines
 	available := height - reserved
