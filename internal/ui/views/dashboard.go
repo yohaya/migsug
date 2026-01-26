@@ -104,7 +104,7 @@ func RenderDashboardWithProgress(cluster *proxmox.Cluster, selectedIdx int, widt
 
 	// Help text
 	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	sb.WriteString(helpStyle.Render("↑/↓: Navigate │ Enter: Select node │ r: Refresh │ q: Quit │ ?: Help"))
+	sb.WriteString(helpStyle.Render("↑/↓/PgUp/PgDn/Home/End: Navigate │ Enter: Select │ r: Refresh │ q: Quit │ ?: Help"))
 
 	return sb.String()
 }

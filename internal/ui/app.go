@@ -230,14 +230,31 @@ func (m Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleDashboardKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	nodeCount := len(m.cluster.Nodes)
+	pageSize := 10 // Number of nodes to jump with PgUp/PgDown
+
 	switch msg.String() {
 	case "up", "k":
 		if m.selectedNodeIdx > 0 {
 			m.selectedNodeIdx--
 		}
 	case "down", "j":
-		if m.selectedNodeIdx < len(m.cluster.Nodes)-1 {
+		if m.selectedNodeIdx < nodeCount-1 {
 			m.selectedNodeIdx++
+		}
+	case "home":
+		m.selectedNodeIdx = 0
+	case "end":
+		m.selectedNodeIdx = nodeCount - 1
+	case "pgup":
+		m.selectedNodeIdx -= pageSize
+		if m.selectedNodeIdx < 0 {
+			m.selectedNodeIdx = 0
+		}
+	case "pgdown":
+		m.selectedNodeIdx += pageSize
+		if m.selectedNodeIdx >= nodeCount {
+			m.selectedNodeIdx = nodeCount - 1
 		}
 	case "enter":
 		// Select source node and move to criteria

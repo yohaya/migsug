@@ -111,16 +111,14 @@ func RenderNodeTableWide(nodes []proxmox.Node, selectedIdx int, width int) strin
 	colVMs := 5
 	colCPUs := 6
 	colCPUPct := 7
-	colRAMUsed := 12
-	colRAMMax := 10
+	colRAMUsed := 14 // e.g., "1.6T (80%)"
+	colRAMMax := 6   // e.g., "2.0T"
 	colDiskUsed := 12
 	colDiskMax := 10
+	// CPU Model gets remaining width - no artificial limit
 	colCPUModel := width - colName - colStatus - colVMs - colCPUs - colCPUPct - colRAMUsed - colRAMMax - colDiskUsed - colDiskMax - 15
 	if colCPUModel < 15 {
 		colCPUModel = 15
-	}
-	if colCPUModel > 35 {
-		colCPUModel = 35
 	}
 
 	// Styles
@@ -148,8 +146,9 @@ func RenderNodeTableWide(nodes []proxmox.Node, selectedIdx int, width int) strin
 
 		// Format values
 		cpuPctStr := fmt.Sprintf("%5.1f%%", node.GetCPUPercent())
-		ramUsedStr := FormatBytesShort(node.UsedMem)
-		ramMaxStr := FormatBytesShort(node.MaxMem)
+		// RAM: show used with percentage, then max
+		ramUsedStr := FormatRAMGiB(node.UsedMem, node.GetMemPercent())
+		ramMaxStr := FormatRAMGiBSimple(node.MaxMem)
 		diskUsedStr := FormatBytesShort(node.UsedDisk)
 		diskMaxStr := FormatBytesShort(node.MaxDisk)
 
@@ -167,7 +166,7 @@ func RenderNodeTableWide(nodes []proxmox.Node, selectedIdx int, width int) strin
 			colRAMMax, ramMaxStr,
 			colDiskUsed, diskUsedStr,
 			colDiskMax, diskMaxStr,
-			truncate(cpuInfo, colCPUModel))
+			cpuInfo) // Don't truncate CPU info
 
 		// Pad row to full width for consistent highlighting
 		if len(rowContent) < width-4 {
@@ -219,7 +218,7 @@ func RenderNodeTableWide(nodes []proxmox.Node, selectedIdx int, width int) strin
 			cpuPctStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(cpuPctColor))
 			coloredRow.WriteString(cpuPctStyle.Render(fmt.Sprintf("%*s", colCPUPct, cpuPctStr)) + "  ")
 
-			// RAM with color
+			// RAM with color (used with %, then max)
 			ramColor := getUsageColor(node.GetMemPercent())
 			ramStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ramColor))
 			coloredRow.WriteString(ramStyle.Render(fmt.Sprintf("%*s", colRAMUsed, ramUsedStr)))
@@ -233,8 +232,8 @@ func RenderNodeTableWide(nodes []proxmox.Node, selectedIdx int, width int) strin
 			coloredRow.WriteString(dimStyle.Render("/"))
 			coloredRow.WriteString(fmt.Sprintf("%-*s  ", colDiskMax, diskMaxStr))
 
-			// CPU model (dimmed)
-			coloredRow.WriteString(dimStyle.Render(truncate(cpuInfo, colCPUModel)))
+			// CPU model (dimmed) - don't truncate unless terminal is too narrow
+			coloredRow.WriteString(dimStyle.Render(cpuInfo))
 
 			styledRow = prefix + coloredRow.String()
 		}
@@ -262,6 +261,38 @@ func FormatBytesShort(bytes int64) string {
 		return fmt.Sprintf("%.0f%s", val, units[exp])
 	}
 	return fmt.Sprintf("%.1f%s", val, units[exp])
+}
+
+// FormatRAMGiB formats bytes to GiB with percentage (e.g., "1.6T (80%)")
+func FormatRAMGiB(bytes int64, percent float64) string {
+	const gib = 1024 * 1024 * 1024
+	const tib = gib * 1024
+
+	if bytes >= tib {
+		val := float64(bytes) / float64(tib)
+		return fmt.Sprintf("%.1fT (%d%%)", val, int(percent))
+	}
+	val := float64(bytes) / float64(gib)
+	if val >= 100 {
+		return fmt.Sprintf("%.0fG (%d%%)", val, int(percent))
+	}
+	return fmt.Sprintf("%.1fG (%d%%)", val, int(percent))
+}
+
+// FormatRAMGiBSimple formats bytes to GiB without percentage (e.g., "2.0T")
+func FormatRAMGiBSimple(bytes int64) string {
+	const gib = 1024 * 1024 * 1024
+	const tib = gib * 1024
+
+	if bytes >= tib {
+		val := float64(bytes) / float64(tib)
+		return fmt.Sprintf("%.1fT", val)
+	}
+	val := float64(bytes) / float64(gib)
+	if val >= 100 {
+		return fmt.Sprintf("%.0fG", val)
+	}
+	return fmt.Sprintf("%.1fG", val)
 }
 
 // formatCPUInfo formats CPU info as "2 x Xeon (2.5GHz)"

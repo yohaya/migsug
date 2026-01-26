@@ -56,6 +56,7 @@ type ClusterResource struct {
 	Node     string  `json:"node"`
 	Status   string  `json:"status"`
 	Name     string  `json:"name"`
+	Storage  string  `json:"storage,omitempty"`
 	VMID     int     `json:"vmid,omitempty"`
 	MaxCPU   int     `json:"maxcpu,omitempty"`
 	CPU      float64 `json:"cpu,omitempty"`

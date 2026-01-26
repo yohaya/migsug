@@ -3,6 +3,7 @@ package proxmox
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 )
@@ -72,8 +73,11 @@ func CollectClusterDataWithProgress(client ProxmoxClient, progress ProgressCallb
 			nodeMap[res.Node] = &node
 
 		case "storage":
-			// Aggregate storage from all storage resources per node
-			// Only count local storage (not shared across nodes)
+			// Only count storage arrays that start with "kv"
+			if !strings.HasPrefix(res.Storage, "kv") {
+				continue
+			}
+			// Aggregate storage from matching storage resources per node
 			storage := nodeStorage[res.Node]
 			storage.maxDisk += res.MaxDisk
 			storage.usedDisk += res.Disk
