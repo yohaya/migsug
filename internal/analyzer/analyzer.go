@@ -279,6 +279,7 @@ func GenerateSuggestions(vms []proxmox.VM, targets []proxmox.Node, constraints M
 			TargetNode: targetNode,
 			Reason:     reason,
 			Score:      score,
+			Status:     vm.Status,
 			VCPUs:      vm.CPUCores,
 			CPUUsage:   vm.CPUUsage,
 			RAM:        vm.MaxMem, // Use allocated RAM
@@ -522,6 +523,7 @@ func GenerateSuggestionsBalanced(vms []proxmox.VM, targets []proxmox.Node, clust
 			TargetNode: targetName,
 			Reason:     reason,
 			Score:      score,
+			Status:     vm.Status,
 			VCPUs:      vm.CPUCores,
 			CPUUsage:   vm.CPUUsage,
 			RAM:        vm.MaxMem,

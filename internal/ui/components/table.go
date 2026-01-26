@@ -728,15 +728,16 @@ func RenderSuggestionTableWithCursor(suggestions []analyzer.MigrationSuggestion,
 		colVMID    = 6
 		colName    = 26 // Server name
 		colTo      = 20
-		colCPU     = 6 // CPU% = VMCPU% * vCPU (total thread consumption)
-		colHCPU    = 6 // HCPU% (host CPU% - normalized)
-		colVMCPU   = 7 // VMCPU% (% of allocated vCPUs)
+		colState   = 5  // "On" or "Off"
+		colCPU     = 6  // CPU% = VMCPU% * vCPU (total thread consumption)
+		colHCPU    = 6  // HCPU% (host CPU% - normalized)
+		colVMCPU   = 7  // VMCPU% (% of allocated vCPUs)
 		colVCPU    = 5
 		colRAM     = 10
 		colStorage = 10
 	)
 
-	totalWidth := colVMID + colName + colTo + colCPU + colHCPU + colVMCPU + colVCPU + colRAM + colStorage + 8
+	totalWidth := colVMID + colName + colTo + colState + colCPU + colHCPU + colVMCPU + colVCPU + colRAM + colStorage + 9
 
 	// Highlight style for selected row
 	selectedStyle := lipgloss.NewStyle().
@@ -767,10 +768,11 @@ func RenderSuggestionTableWithCursor(suggestions []analyzer.MigrationSuggestion,
 	}
 
 	// Header (with 2-char prefix for alignment, +2 for scrollbar)
-	header := fmt.Sprintf("  %*s %-*s %-*s %*s %*s %*s %*s %*s %*s",
+	header := fmt.Sprintf("  %*s %-*s %-*s %-*s %*s %*s %*s %*s %*s %*s",
 		colVMID, "VMID",
 		colName, "Name",
 		colTo, "To",
+		colState, "State",
 		colHCPU, "HCPU%",
 		colVMCPU, "VMCPU%",
 		colCPU, "CPU%",
@@ -796,6 +798,12 @@ func RenderSuggestionTableWithCursor(suggestions []analyzer.MigrationSuggestion,
 		sug := suggestions[i]
 		isSelected := (i == cursorPos)
 
+		// State: "On" for running, "Off" for stopped
+		stateStr := "Off"
+		if sug.Status == "running" {
+			stateStr = "On"
+		}
+
 		// VMCPU%: percentage of allocated vCPUs (already in 0-100 from resources.go)
 		vmCpuStr := fmt.Sprintf("%.1f", sug.CPUUsage)
 
@@ -809,10 +817,11 @@ func RenderSuggestionTableWithCursor(suggestions []analyzer.MigrationSuggestion,
 		hCpuPercent := sug.CPUUsage * float64(sug.VCPUs) / 100
 		hCpuStr := fmt.Sprintf("%.1f", hCpuPercent)
 
-		row := fmt.Sprintf("%*d %-*s %-*s %*s %*s %*s %*d %*s %*s",
+		row := fmt.Sprintf("%*d %-*s %-*s %-*s %*s %*s %*s %*d %*s %*s",
 			colVMID, sug.VMID,
 			colName, truncate(sug.VMName, colName),
 			colTo, truncate(sug.TargetNode, colTo),
+			colState, stateStr,
 			colHCPU, hCpuStr,
 			colVMCPU, vmCpuStr,
 			colCPU, cpuStr,

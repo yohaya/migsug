@@ -10,6 +10,7 @@ type MigrationSuggestion struct {
 	TargetNode string
 	Reason     string
 	Score      float64 // Target selection score
+	Status     string  // VM status: "running" or "stopped"
 
 	// VM resources
 	VCPUs    int
