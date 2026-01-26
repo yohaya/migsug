@@ -456,13 +456,17 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 		afterState = result.TargetsAfter[hostName]
 	}
 
-	// Show before/after summary
+	// Show before/after summary with storage
 	sb.WriteString(labelStyle.Render("Before: ") +
-		valueStyle.Render(fmt.Sprintf("VMs: %d, vCPUs: %d, CPU: %.1f%%, RAM: %.1f%%",
-			beforeState.VMCount, beforeState.VCPUs, beforeState.CPUPercent, beforeState.RAMPercent)) + "\n")
+		valueStyle.Render(fmt.Sprintf("VMs: %d, vCPUs: %d, CPU: %.1f%%, RAM: %s, Storage: %s",
+			beforeState.VMCount, beforeState.VCPUs, beforeState.CPUPercent,
+			components.FormatBytesShort(beforeState.RAMUsed),
+			components.FormatBytesShort(beforeState.StorageUsed))) + "\n")
 	sb.WriteString(labelStyle.Render("After:  ") +
-		valueStyle.Render(fmt.Sprintf("VMs: %d, vCPUs: %d, CPU: %.1f%%, RAM: %.1f%%",
-			afterState.VMCount, afterState.VCPUs, afterState.CPUPercent, afterState.RAMPercent)) + "\n\n")
+		valueStyle.Render(fmt.Sprintf("VMs: %d, vCPUs: %d, CPU: %.1f%%, RAM: %s, Storage: %s",
+			afterState.VMCount, afterState.VCPUs, afterState.CPUPercent,
+			components.FormatBytesShort(afterState.RAMUsed),
+			components.FormatBytesShort(afterState.StorageUsed))) + "\n\n")
 
 	// Build VM list
 	var vmList []VMListItem
