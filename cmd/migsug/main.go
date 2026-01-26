@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"syscall"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yourusername/migsug/internal/proxmox"
@@ -178,7 +179,9 @@ func main() {
 
 	// Collect cluster data with progress bar
 	fmt.Println("Loading cluster data...")
+	startTime := time.Now()
 	cluster, err := proxmox.CollectClusterDataWithProgress(client, func(stage string, current, total int) {
+		elapsed := time.Since(startTime).Seconds()
 		if total > 0 {
 			// Calculate percentage
 			percent := float64(current) / float64(total) * 100
@@ -186,10 +189,10 @@ func main() {
 			barWidth := 30
 			filled := int(float64(barWidth) * float64(current) / float64(total))
 			bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
-			// Print progress (use \r to overwrite line)
-			fmt.Printf("\r  %s: [%s] %d/%d (%.0f%%)  ", stage, bar, current, total, percent)
+			// Print progress with elapsed time (use \r to overwrite line)
+			fmt.Printf("\r  %s: [%s] %d/%d (%.0f%%) %.0fs  ", stage, bar, current, total, percent, elapsed)
 		} else {
-			fmt.Printf("\r  %s...                                        ", stage)
+			fmt.Printf("\r  %s... %.0fs                                    ", stage, elapsed)
 		}
 	})
 	fmt.Println() // New line after progress

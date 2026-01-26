@@ -77,11 +77,21 @@ func RenderNodeTable(nodes []proxmox.Node, selectedIdx int) string {
 	return sb.String()
 }
 
-// Box drawing characters
+// Box drawing characters for table
 const (
 	boxHeavyHoriz  = "━"
 	boxLightHoriz  = "─"
 	boxDoubleHoriz = "═"
+	boxVertical    = "│"
+	boxTopLeft     = "┌"
+	boxTopRight    = "┐"
+	boxBottomLeft  = "└"
+	boxBottomRight = "┘"
+	boxTeeDown     = "┬"
+	boxTeeUp       = "┴"
+	boxTeeRight    = "├"
+	boxTeeLeft     = "┤"
+	boxCross       = "┼"
 )
 
 // RenderNodeTableWide creates a full-width table of nodes with detailed info
@@ -124,16 +134,18 @@ func RenderNodeTableWide(nodes []proxmox.Node, selectedIdx int, width int) strin
 	// Styles
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+	sepStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 
-	// Main header
-	header1 := fmt.Sprintf("  %-*s %-*s %*s %*s %*s  %-*s  %-*s  %s",
-		colName, "Host",
-		colStatus, "Status",
-		colVMs, "VMs",
-		colVCPUs, "vCPUs",
-		colCPUPct, "CPU%",
-		colRAMUsed+colRAMMax+1, "RAM (Used/Total)",
-		colDiskUsed+colDiskMax+1, "Disk (Used/Total)",
+	// Main header with Unicode separators
+	sep := sepStyle.Render(boxVertical)
+	header1 := fmt.Sprintf("  %-*s %s %-*s %s %*s %s %*s %s %*s %s %-*s %s %-*s %s %s",
+		colName, "Host", sep,
+		colStatus, "Status", sep,
+		colVMs, "VMs", sep,
+		colVCPUs, "vCPUs", sep,
+		colCPUPct, "CPU%", sep,
+		colRAMUsed+colRAMMax+1, "RAM (Used/Total)", sep,
+		colDiskUsed+colDiskMax+1, "Disk (Used/Total)", sep,
 		"CPU Model")
 	sb.WriteString(headerStyle.Render(header1) + "\n")
 	// Use graphical separator
