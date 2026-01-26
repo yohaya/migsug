@@ -79,7 +79,6 @@ func RenderCriteriaFull(state CriteriaState, sourceNode string, node *proxmox.No
 	sb.WriteString("\n")
 
 	// Instructions
-	instructionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	sb.WriteString(instructionStyle.Render("Select migration mode:") + "\n\n")
 
 	// Mode options table header
