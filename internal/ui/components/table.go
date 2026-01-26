@@ -593,18 +593,19 @@ func RenderSuggestionTableWithScroll(suggestions []analyzer.MigrationSuggestion,
 func RenderSuggestionTableWithCursor(suggestions []analyzer.MigrationSuggestion, scrollPos, maxVisible, cursorPos int) string {
 	var sb strings.Builder
 
-	// Column widths - removed From, added CPU%
+	// Column widths
 	const (
 		colVMID    = 6
-		colName    = 30 // Wider for full server name
-		colTo      = 22
-		colCPU     = 6 // CPU usage %
+		colName    = 28 // Server name
+		colTo      = 20
+		colCPU     = 6  // Host CPU% (threads consumed)
+		colVMCPU   = 7  // VM CPU% (% of allocated vCPUs)
 		colVCPU    = 5
 		colRAM     = 10
 		colStorage = 10
 	)
 
-	totalWidth := colVMID + colName + colTo + colCPU + colVCPU + colRAM + colStorage + 6
+	totalWidth := colVMID + colName + colTo + colCPU + colVMCPU + colVCPU + colRAM + colStorage + 7
 
 	// Highlight style for selected row
 	selectedStyle := lipgloss.NewStyle().
@@ -635,11 +636,12 @@ func RenderSuggestionTableWithCursor(suggestions []analyzer.MigrationSuggestion,
 	}
 
 	// Header (with 2-char prefix for alignment, +2 for scrollbar)
-	header := fmt.Sprintf("  %*s %-*s %-*s %*s %*s %*s %*s",
+	header := fmt.Sprintf("  %*s %-*s %-*s %*s %*s %*s %*s %*s",
 		colVMID, "VMID",
 		colName, "Name",
 		colTo, "To",
 		colCPU, "CPU%",
+		colVMCPU, "VM CPU%",
 		colVCPU, "vCPU",
 		colRAM, "RAM",
 		colStorage, "Storage")
@@ -662,14 +664,20 @@ func RenderSuggestionTableWithCursor(suggestions []analyzer.MigrationSuggestion,
 		sug := suggestions[i]
 		isSelected := (i == cursorPos)
 
-		// Format CPU usage as percentage (already in 0-100 from resources.go)
-		cpuStr := fmt.Sprintf("%.1f", sug.CPUUsage)
+		// VM CPU%: percentage of allocated vCPUs (already in 0-100 from resources.go)
+		vmCpuStr := fmt.Sprintf("%.1f", sug.CPUUsage)
 
-		row := fmt.Sprintf("%*d %-*s %-*s %*s %*d %*s %*s",
+		// CPU%: actual host thread consumption = VM CPU% * vCPUs / 100
+		// e.g., if VM CPU% is 10% and VM has 16 vCPUs, it consumes 1.6 threads = 160%
+		hostCpuPercent := sug.CPUUsage * float64(sug.VCPUs) / 100
+		cpuStr := fmt.Sprintf("%.1f", hostCpuPercent)
+
+		row := fmt.Sprintf("%*d %-*s %-*s %*s %*s %*d %*s %*s",
 			colVMID, sug.VMID,
 			colName, truncate(sug.VMName, colName),
 			colTo, truncate(sug.TargetNode, colTo),
 			colCPU, cpuStr,
+			colVMCPU, vmCpuStr,
 			colVCPU, sug.VCPUs,
 			colRAM, FormatBytes(sug.RAM),
 			colStorage, FormatBytes(sug.Storage),
