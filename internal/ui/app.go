@@ -692,9 +692,6 @@ func (m Model) handleResultsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.resultsScrollPos = 0
 		m.resultsCursorPos = 0
 		return m, tea.ClearScreen
-	case "s":
-		// TODO: Save results to file
-		// For now, just ignore
 	}
 	return m, nil
 }
@@ -742,7 +739,8 @@ func (m Model) View() string {
 		return views.RenderVMSelection(sourceNode.VMs, m.criteriaState.SelectedVMs, m.vmCursorIdx, m.width)
 	case ViewResults:
 		if m.result != nil {
-			return views.RenderResultsWithCursor(m.result, m.cluster, m.version, m.width, m.height, m.resultsScrollPos, m.resultsCursorPos)
+			sourceNode := proxmox.GetNodeByName(m.cluster, m.sourceNode)
+			return views.RenderResultsWithSource(m.result, m.cluster, sourceNode, m.version, m.width, m.height, m.resultsScrollPos, m.resultsCursorPos)
 		}
 		return "No results available"
 	case ViewError:

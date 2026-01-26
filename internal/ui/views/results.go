@@ -30,6 +30,11 @@ func RenderResultsFull(result *analyzer.AnalysisResult, cluster *proxmox.Cluster
 
 // RenderResultsWithCursor renders the migration results view with cursor navigation
 func RenderResultsWithCursor(result *analyzer.AnalysisResult, cluster *proxmox.Cluster, version string, width, height, scrollPos, cursorPos int) string {
+	return RenderResultsWithSource(result, cluster, nil, version, width, height, scrollPos, cursorPos)
+}
+
+// RenderResultsWithSource renders the migration results view with source node info
+func RenderResultsWithSource(result *analyzer.AnalysisResult, cluster *proxmox.Cluster, sourceNode *proxmox.Node, version string, width, height, scrollPos, cursorPos int) string {
 	var sb strings.Builder
 
 	// Ensure minimum width
@@ -53,6 +58,12 @@ func RenderResultsWithCursor(result *analyzer.AnalysisResult, cluster *proxmox.C
 	// Cluster summary if available
 	if cluster != nil {
 		sb.WriteString(renderResultsClusterSummary(cluster, width))
+		sb.WriteString("\n")
+	}
+
+	// Source node info (same as criteria view)
+	if sourceNode != nil {
+		sb.WriteString(renderSourceNodeSummary(sourceNode, width))
 		sb.WriteString("\n")
 	}
 
@@ -125,7 +136,7 @@ func RenderResultsWithCursor(result *analyzer.AnalysisResult, cluster *proxmox.C
 
 	// Help text
 	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	sb.WriteString("\n" + helpStyle.Render("↑/↓/PgUp/PgDn/Home/End: Navigate  s: Save  r: New Analysis  Esc: Back  q: Quit"))
+	sb.WriteString("\n" + helpStyle.Render("↑/↓/PgUp/PgDn/Home/End: Navigate  r: New Analysis  Esc: Back  q: Quit"))
 
 	return sb.String()
 }
@@ -234,6 +245,115 @@ func renderResultsClusterSummary(cluster *proxmox.Cluster, width int) string {
 
 	sb.WriteString(labelStyle.Render("Storage: ") + valueStyle.Render(fmt.Sprintf("%.0f/%.0f TiB", usedStorageTiB, totalStorageTiB)))
 	sb.WriteString(" " + valueStyle.Render(fmt.Sprintf("(%.1f%%)", storagePercent)))
+	sb.WriteString("\n")
+
+	return sb.String()
+}
+
+// renderSourceNodeSummary displays the source node summary (same as criteria view)
+func renderSourceNodeSummary(node *proxmox.Node, width int) string {
+	var sb strings.Builder
+
+	labelStyle := lipgloss.NewStyle() // Regular text color
+	valueStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+
+	// Node name with CPU info
+	nodeInfoStr := node.Name
+	if node.CPUModel != "" {
+		nodeInfoStr = fmt.Sprintf("%s %s(%s, %d threads)", node.Name,
+			dimStyle.Render(""),
+			dimStyle.Render(node.CPUModel),
+			node.CPUCores)
+	} else {
+		nodeInfoStr = fmt.Sprintf("%s %s(%d threads)", node.Name,
+			dimStyle.Render(""),
+			node.CPUCores)
+	}
+	sb.WriteString("Selected source node: " + valueStyle.Render(nodeInfoStr) + "\n")
+
+	// Count running VMs
+	runningVMs := 0
+	stoppedVMs := 0
+	runningVCPUs := 0
+	for _, vm := range node.VMs {
+		if vm.Status == "running" {
+			runningVMs++
+			runningVCPUs += vm.CPUCores
+		} else {
+			stoppedVMs++
+		}
+	}
+
+	// Fixed column widths for vertical alignment
+	col1Width := 30
+	col2Width := 24
+
+	// Format values
+	vmStr := fmt.Sprintf("%d (On: %d, Off: %d)", len(node.VMs), runningVMs, stoppedVMs)
+	cpuStr := fmt.Sprintf("%.1f%%", node.GetCPUPercent())
+
+	// vCPU with overcommit percentage
+	vcpuOvercommit := 0.0
+	if node.CPUCores > 0 {
+		vcpuOvercommit = float64(runningVCPUs) / float64(node.CPUCores) * 100
+	}
+	vcpuStr := fmt.Sprintf("%d (%.0f%%)", runningVCPUs, vcpuOvercommit)
+
+	// Load average with percentage
+	laStr := "-"
+	if len(node.LoadAverage) > 0 {
+		la := node.LoadAverage[0]
+		if node.CPUCores > 0 {
+			laPercent := la / float64(node.CPUCores) * 100
+			laStr = fmt.Sprintf("%.2f (%.1f%%)", la, laPercent)
+		} else {
+			laStr = fmt.Sprintf("%.2f", la)
+		}
+	}
+
+	// RAM
+	ramUsedGiB := float64(node.UsedMem) / (1024 * 1024 * 1024)
+	ramTotalGiB := float64(node.MaxMem) / (1024 * 1024 * 1024)
+	ramStr := fmt.Sprintf("%.0f/%.0fG (%.0f%%)", ramUsedGiB, ramTotalGiB, node.GetMemPercent())
+
+	// Disk
+	diskUsedTiB := float64(node.UsedDisk) / (1024 * 1024 * 1024 * 1024)
+	diskTotalTiB := float64(node.MaxDisk) / (1024 * 1024 * 1024 * 1024)
+	diskStr := fmt.Sprintf("%.0f/%.0fT (%.0f%%)", diskUsedTiB, diskTotalTiB, node.GetDiskPercent())
+
+	// Row 1: VMs, CPU, vCPUs
+	sb.WriteString("  ")
+	col1Row1 := fmt.Sprintf("VMs: %s", vmStr)
+	sb.WriteString(labelStyle.Render("VMs: ") + valueStyle.Render(vmStr))
+	if len(col1Row1) < col1Width {
+		sb.WriteString(strings.Repeat(" ", col1Width-len(col1Row1)))
+	}
+
+	col2Row1 := fmt.Sprintf("CPU: %s", cpuStr)
+	sb.WriteString(labelStyle.Render("CPU: ") + valueStyle.Render(cpuStr))
+	if len(col2Row1) < col2Width {
+		sb.WriteString(strings.Repeat(" ", col2Width-len(col2Row1)))
+	}
+
+	sb.WriteString(labelStyle.Render("vCPUs: ") + valueStyle.Render(vcpuStr))
+	sb.WriteString("\n")
+
+	// Row 2: LA, RAM, Disk
+	sb.WriteString("  ")
+	col1Row2 := fmt.Sprintf("LA: %s", laStr)
+	sb.WriteString(labelStyle.Render("LA: ") + valueStyle.Render(laStr))
+	if len(col1Row2) < col1Width {
+		sb.WriteString(strings.Repeat(" ", col1Width-len(col1Row2)))
+	}
+
+	col2Row2 := fmt.Sprintf("RAM: %s", ramStr)
+	sb.WriteString(labelStyle.Render("RAM: ") + valueStyle.Render(ramStr))
+	if len(col2Row2) < col2Width {
+		sb.WriteString(strings.Repeat(" ", col2Width-len(col2Row2)))
+	}
+
+	sb.WriteString(labelStyle.Render("Disk: ") + valueStyle.Render(diskStr))
 	sb.WriteString("\n")
 
 	return sb.String()
