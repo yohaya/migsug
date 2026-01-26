@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -574,6 +576,8 @@ func fetchVMStorageDetails(client ProxmoxClient, vmList []VM, vmIndices []int, p
 	}()
 
 	// Collect results and update VM list
+	// Track VMs that still need config-based lookup
+	var vmsNeedingConfig []int
 	for result := range results {
 		current := int(atomic.AddInt32(&completed, 1))
 		if progress != nil {
@@ -586,13 +590,174 @@ func fetchVMStorageDetails(client ProxmoxClient, vmList []VM, vmIndices []int, p
 			if result.status.MaxDisk > 0 {
 				vm.MaxDisk = result.status.MaxDisk
 				if storageLogger != nil {
-					storageLogger.Printf("VM %d (%s): Got storage from detailed status: MaxDisk=%d, Disk=%d",
-						vm.VMID, vm.Name, result.status.MaxDisk, result.status.Disk)
+					storageLogger.Printf("VM %d (%s): Got storage from status: MaxDisk=%d",
+						vm.VMID, vm.Name, result.status.MaxDisk)
 				}
+			} else {
+				// Still no MaxDisk, will try config
+				vmsNeedingConfig = append(vmsNeedingConfig, result.vmIdx)
 			}
 			if result.status.Disk > 0 {
 				vm.UsedDisk = result.status.Disk
 			}
 		}
 	}
+
+	// For VMs still missing storage, try to parse from config
+	if len(vmsNeedingConfig) > 0 {
+		fetchVMStorageFromConfig(client, vmList, vmsNeedingConfig, progress)
+	}
+}
+
+// fetchVMStorageFromConfig fetches VM config and parses disk sizes
+func fetchVMStorageFromConfig(client ProxmoxClient, vmList []VM, vmIndices []int, progress ProgressCallback) {
+	if len(vmIndices) == 0 {
+		return
+	}
+
+	if progress != nil {
+		progress("Parsing VM configs for storage", 0, len(vmIndices))
+	}
+
+	var completed int32 = 0
+	totalVMs := len(vmIndices)
+
+	// Create channels for work distribution
+	type configResult struct {
+		vmIdx  int
+		config map[string]interface{}
+		err    error
+	}
+
+	jobs := make(chan int, len(vmIndices))
+	results := make(chan configResult, len(vmIndices))
+
+	// Determine number of workers
+	numWorkers := maxConcurrentFetches
+	if len(vmIndices) < numWorkers {
+		numWorkers = len(vmIndices)
+	}
+
+	// Start worker goroutines
+	var wg sync.WaitGroup
+	for i := 0; i < numWorkers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for vmIdx := range jobs {
+				vm := vmList[vmIdx]
+				config, err := client.GetVMConfig(vm.Node, vm.VMID)
+				results <- configResult{
+					vmIdx:  vmIdx,
+					config: config,
+					err:    err,
+				}
+			}
+		}()
+	}
+
+	// Send jobs
+	for _, vmIdx := range vmIndices {
+		jobs <- vmIdx
+	}
+	close(jobs)
+
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	// Process results
+	for result := range results {
+		current := int(atomic.AddInt32(&completed, 1))
+		if progress != nil {
+			progress("Parsing VM configs for storage", current, totalVMs)
+		}
+
+		if result.err == nil && result.config != nil {
+			vm := &vmList[result.vmIdx]
+			totalSize := parseDiskSizesFromConfig(result.config)
+			if totalSize > 0 {
+				vm.MaxDisk = totalSize
+				if storageLogger != nil {
+					storageLogger.Printf("VM %d (%s): Parsed storage from config: MaxDisk=%d bytes (%.1f GB)",
+						vm.VMID, vm.Name, totalSize, float64(totalSize)/(1024*1024*1024))
+				}
+			}
+		}
+	}
+}
+
+// diskSizeRegex matches size specifications like "100G", "500M", "1T"
+var diskSizeRegex = regexp.MustCompile(`size=(\d+)([KMGT]?)`)
+
+// parseDiskSizesFromConfig extracts total disk size from VM config
+// Looks for scsi*, ide*, virtio*, sata* entries and sums their sizes
+func parseDiskSizesFromConfig(config map[string]interface{}) int64 {
+	var totalSize int64 = 0
+
+	// Disk prefixes to look for
+	diskPrefixes := []string{"scsi", "ide", "virtio", "sata", "efidisk", "tpmstate"}
+
+	for key, value := range config {
+		// Check if this is a disk entry
+		isDisk := false
+		for _, prefix := range diskPrefixes {
+			if strings.HasPrefix(key, prefix) {
+				isDisk = true
+				break
+			}
+		}
+
+		if !isDisk {
+			continue
+		}
+
+		// Parse the value string
+		valueStr, ok := value.(string)
+		if !ok {
+			continue
+		}
+
+		// Skip CD-ROM and empty drives
+		if strings.Contains(valueStr, "media=cdrom") || valueStr == "none" {
+			continue
+		}
+
+		// Extract size from the disk specification
+		matches := diskSizeRegex.FindStringSubmatch(valueStr)
+		if len(matches) >= 2 {
+			sizeNum, err := strconv.ParseInt(matches[1], 10, 64)
+			if err != nil {
+				continue
+			}
+
+			// Apply unit multiplier
+			var multiplier int64 = 1
+			if len(matches) >= 3 {
+				switch matches[2] {
+				case "K":
+					multiplier = 1024
+				case "M":
+					multiplier = 1024 * 1024
+				case "G":
+					multiplier = 1024 * 1024 * 1024
+				case "T":
+					multiplier = 1024 * 1024 * 1024 * 1024
+				case "":
+					// No unit means bytes, but Proxmox usually uses G
+					multiplier = 1024 * 1024 * 1024 // Assume GB if no unit
+				}
+			}
+
+			diskSize := sizeNum * multiplier
+			totalSize += diskSize
+
+			if storageLogger != nil {
+				storageLogger.Printf("  Disk %s: size=%d%s (%d bytes)", key, sizeNum, matches[2], diskSize)
+			}
+		}
+	}
+
+	return totalSize
 }

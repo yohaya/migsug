@@ -12,6 +12,9 @@ type ProxmoxClient interface {
 	// GetVMStatus retrieves detailed status for a specific VM
 	GetVMStatus(node string, vmid int) (*VMStatus, error)
 
+	// GetVMConfig retrieves VM configuration (for parsing disk sizes)
+	GetVMConfig(node string, vmid int) (map[string]interface{}, error)
+
 	// GetNodes retrieves a list of all nodes in the cluster
 	GetNodes() ([]string, error)
 

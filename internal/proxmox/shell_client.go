@@ -160,6 +160,22 @@ func (c *ShellClient) GetVMStatus(node string, vmid int) (*VMStatus, error) {
 	return &status, nil
 }
 
+// GetVMConfig retrieves VM configuration
+func (c *ShellClient) GetVMConfig(node string, vmid int) (map[string]interface{}, error) {
+	path := fmt.Sprintf("/nodes/%s/qemu/%d/config", node, vmid)
+	output, err := c.pvesh("get", path)
+	if err != nil {
+		return nil, err
+	}
+
+	var config map[string]interface{}
+	if err := json.Unmarshal(output, &config); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal VM config: %w", err)
+	}
+
+	return config, nil
+}
+
 // GetNodes retrieves a list of all nodes in the cluster
 func (c *ShellClient) GetNodes() ([]string, error) {
 	output, err := c.pvesh("get", "/nodes")

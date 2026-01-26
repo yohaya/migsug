@@ -259,6 +259,28 @@ func (c *Client) GetVMStatus(node string, vmid int) (*VMStatus, error) {
 	return &status, nil
 }
 
+// GetVMConfig retrieves VM configuration
+func (c *Client) GetVMConfig(node string, vmid int) (map[string]interface{}, error) {
+	path := fmt.Sprintf("/api2/json/nodes/%s/qemu/%d/config", node, vmid)
+	resp, err := c.doRequest("GET", path)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var result APIResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	config, ok := result.Data.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("unexpected config format")
+	}
+
+	return config, nil
+}
+
 // GetNodes retrieves a list of all nodes in the cluster
 func (c *Client) GetNodes() ([]string, error) {
 	resp, err := c.doRequest("GET", "/api2/json/nodes")
