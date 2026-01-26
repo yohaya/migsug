@@ -181,11 +181,17 @@ func renderEnhancedClusterSummary(cluster *proxmox.Cluster, width int) string {
 	sb.WriteString(labelStyle.Render("vCPUs: ") + valueStyle.Render(fmt.Sprintf("%d", cluster.TotalVCPUs)))
 	sb.WriteString("\n")
 
-	// Row 2: CPU, RAM, Storage - aligned columns
+	// Row 2: CPU, RAM, Storage - aligned columns with usage colors
 	cpuStr := fmt.Sprintf("%.1f%%", avgCPU)
 	sb.WriteString(labelStyle.Render("CPU:   ") + lipgloss.NewStyle().Foreground(lipgloss.Color(cpuColor)).Render(fmt.Sprintf("%-*s", col1Width-7, cpuStr)))
-	ramStr := fmt.Sprintf("%.0f/%.0f GiB (%.1f%%)", usedRAMGiB, totalRAMGiB, ramPercent)
-	sb.WriteString(labelStyle.Render("RAM: ") + valueStyle.Render(fmt.Sprintf("%-*s", col2Width-5, ramStr)))
+	ramValStr := fmt.Sprintf("%.0f/%.0f GiB", usedRAMGiB, totalRAMGiB)
+	ramPctStr := fmt.Sprintf("(%.1f%%)", ramPercent)
+	sb.WriteString(labelStyle.Render("RAM: ") + valueStyle.Render(ramValStr) + " " + lipgloss.NewStyle().Foreground(lipgloss.Color(ramColor)).Render(ramPctStr))
+	// Pad to align with Storage
+	ramFullLen := 5 + len(ramValStr) + 1 + len(ramPctStr)
+	if ramFullLen < col2Width {
+		sb.WriteString(strings.Repeat(" ", col2Width-ramFullLen))
+	}
 	sb.WriteString(labelStyle.Render("Storage: ") + valueStyle.Render(fmt.Sprintf("%.0f/%.0f TiB", usedStorageTiB, totalStorageTiB)))
 	sb.WriteString(" " + lipgloss.NewStyle().Foreground(lipgloss.Color(storageColor)).Render(fmt.Sprintf("(%.1f%%)", storagePercent)))
 	sb.WriteString("\n")
