@@ -123,20 +123,23 @@ func RenderCriteriaFull(state CriteriaState, sourceNode string, node *proxmox.No
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 
 	for i, m := range modes {
-		isSelected := state.CursorPosition == i && !state.InputFocused
+		isCurrentMode := state.CursorPosition == i
+		isNavigating := !state.InputFocused
 
 		// Build row content
 		name := fmt.Sprintf("%-20s", m.name)
 		desc := fmt.Sprintf("%-50s", m.desc)
 
-		// Selector indicator
+		// Selector indicator - show arrow when navigating, checkmark when mode is selected
 		selector := "  "
-		if isSelected {
+		if isCurrentMode && isNavigating {
 			selector = "▶ "
+		} else if isCurrentMode && state.InputFocused {
+			selector = "✓ "
 		}
 
-		// Apply styling
-		if isSelected {
+		// Apply styling - highlight current mode even when input is focused
+		if isCurrentMode {
 			rowContent := fmt.Sprintf("%s%s", name, desc)
 			// Pad to full width
 			if len(rowContent) < width-4 {
@@ -184,8 +187,23 @@ func RenderCriteriaFull(state CriteriaState, sourceNode string, node *proxmox.No
 
 	if showInput {
 		labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
-		sb.WriteString(labelStyle.Render("  "+inputLabel+":") + "\n\n")
-		sb.WriteString(renderUnicodeInputBox(inputValue, inputSuffix, state.InputFocused, width))
+		inputStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
+		suffixStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+
+		// Display value with cursor when focused
+		displayValue := inputValue
+		if state.InputFocused {
+			displayValue = inputValue + "█"
+		}
+		if displayValue == "" && !state.InputFocused {
+			displayValue = "_"
+		}
+
+		// Inline input after the label
+		sb.WriteString("  " + labelStyle.Render(inputLabel+": ") + inputStyle.Render(displayValue))
+		if inputSuffix != "" {
+			sb.WriteString(" " + suffixStyle.Render(inputSuffix))
+		}
 		sb.WriteString("\n")
 	}
 
