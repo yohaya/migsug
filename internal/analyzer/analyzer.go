@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"sync"
 
 	"github.com/yourusername/migsug/internal/proxmox"
 )
@@ -33,8 +34,14 @@ func Analyze(cluster *proxmox.Cluster, constraints MigrationConstraints) (*Analy
 		return nil, fmt.Errorf("no VMs selected for migration based on given constraints")
 	}
 
-	// Generate migration suggestions
-	suggestions := GenerateSuggestions(vmsToMigrate, targets, constraints)
+	var suggestions []MigrationSuggestion
+
+	// Use specialized algorithm for ModeAll to ensure balanced distribution
+	if constraints.MigrateAll {
+		suggestions = GenerateSuggestionsBalanced(vmsToMigrate, targets, cluster, constraints)
+	} else {
+		suggestions = GenerateSuggestions(vmsToMigrate, targets, constraints)
+	}
 
 	// Calculate before/after states
 	result := BuildAnalysisResult(sourceNode, targets, suggestions, vmsToMigrate)
@@ -47,6 +54,8 @@ func SelectVMsToMigrate(node *proxmox.Node, constraints MigrationConstraints) []
 	mode := constraints.GetMode()
 
 	switch mode {
+	case ModeAll:
+		return selectAllVMs(node)
 	case ModeSpecific:
 		return selectSpecificVMs(node, constraints.SpecificVMs)
 	case ModeVMCount:
@@ -62,6 +71,21 @@ func SelectVMsToMigrate(node *proxmox.Node, constraints MigrationConstraints) []
 	default:
 		return []proxmox.VM{}
 	}
+}
+
+// selectAllVMs returns all running VMs from the node for "Migrate All" mode
+func selectAllVMs(node *proxmox.Node) []proxmox.VM {
+	// Return all running VMs sorted by resource usage (largest first for better distribution)
+	vms := filterRunningVMs(node.VMs)
+
+	// Sort by combined resource score (descending - distribute largest VMs first)
+	sort.Slice(vms, func(i, j int) bool {
+		scoreI := float64(vms[i].CPUCores)*10 + vms[i].CPUUsage + float64(vms[i].MaxMem)/(1024*1024*1024)
+		scoreJ := float64(vms[j].CPUCores)*10 + vms[j].CPUUsage + float64(vms[j].MaxMem)/(1024*1024*1024)
+		return scoreI > scoreJ
+	})
+
+	return vms
 }
 
 func selectSpecificVMs(node *proxmox.Node, vmids []int) []proxmox.VM {
@@ -391,4 +415,345 @@ func BuildAnalysisResult(sourceNode *proxmox.Node, targets []proxmox.Node, sugge
 	result.ImprovementInfo = fmt.Sprintf("CPU: -%.1f%%, RAM: -%.1f%%", cpuImprovement, ramImprovement)
 
 	return result
+}
+
+// ClusterAverages holds the target average resource usage for the cluster
+type ClusterAverages struct {
+	CPUPercent     float64
+	RAMPercent     float64
+	StoragePercent float64
+}
+
+// CalculateTargetAverages calculates what the cluster average should be after
+// all VMs from source are distributed (excluding the source node from calculation)
+func CalculateTargetAverages(cluster *proxmox.Cluster, sourceNode string, vmsToMigrate []proxmox.VM) ClusterAverages {
+	// Calculate total resources of all target nodes (excluding source)
+	var totalCPUCores int
+	var totalCPUUsage float64
+	var totalRAM, usedRAM int64
+	var totalStorage, usedStorage int64
+	var nodeCount int
+
+	for _, node := range cluster.Nodes {
+		if node.Name == sourceNode || node.Status != "online" {
+			continue
+		}
+		nodeCount++
+		totalCPUCores += node.CPUCores
+		totalCPUUsage += node.CPUUsage * float64(node.CPUCores)
+		totalRAM += node.MaxMem
+		usedRAM += node.UsedMem
+		totalStorage += node.MaxDisk
+		usedStorage += node.UsedDisk
+	}
+
+	// Add resources from VMs being migrated to the pool
+	for _, vm := range vmsToMigrate {
+		totalCPUUsage += vm.CPUUsage / 100 * float64(vm.CPUCores)
+		usedRAM += vm.UsedMem
+		storage := vm.MaxDisk
+		if storage == 0 {
+			storage = vm.UsedDisk
+		}
+		usedStorage += storage
+	}
+
+	// Calculate target averages
+	averages := ClusterAverages{}
+	if totalCPUCores > 0 {
+		averages.CPUPercent = (totalCPUUsage / float64(totalCPUCores)) * 100
+	}
+	if totalRAM > 0 {
+		averages.RAMPercent = float64(usedRAM) / float64(totalRAM) * 100
+	}
+	if totalStorage > 0 {
+		averages.StoragePercent = float64(usedStorage) / float64(totalStorage) * 100
+	}
+
+	return averages
+}
+
+// vmPlacement represents a VM placement decision
+type vmPlacement struct {
+	vmIndex    int
+	targetName string
+	score      float64
+	reason     string
+}
+
+// GenerateSuggestionsBalanced creates migration suggestions using a multi-threaded
+// algorithm that ensures no target node exceeds the cluster average usage.
+// This is used for "Migrate All" mode.
+func GenerateSuggestionsBalanced(vms []proxmox.VM, targets []proxmox.Node, cluster *proxmox.Cluster, constraints MigrationConstraints) []MigrationSuggestion {
+	// Calculate target averages for the cluster after migration
+	targetAverages := CalculateTargetAverages(cluster, constraints.SourceNode, vms)
+
+	// Initialize target states with mutex for thread-safe updates
+	type targetState struct {
+		state NodeState
+		mu    sync.Mutex
+	}
+
+	targetStates := make(map[string]*targetState)
+	vmsPerTarget := make(map[string]int)
+	var statesMu sync.RWMutex
+
+	for _, target := range targets {
+		targetStates[target.Name] = &targetState{
+			state: NewNodeState(&target),
+		}
+		vmsPerTarget[target.Name] = len(target.VMs)
+	}
+
+	// Process VMs in parallel batches for optimal performance
+	suggestions := make([]MigrationSuggestion, len(vms))
+	var wg sync.WaitGroup
+
+	// Use a worker pool with number of workers based on VM count
+	numWorkers := 4
+	if len(vms) < numWorkers {
+		numWorkers = len(vms)
+	}
+
+	vmChan := make(chan int, len(vms))
+	resultChan := make(chan vmPlacement, len(vms))
+
+	// Start workers
+	for w := 0; w < numWorkers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for vmIdx := range vmChan {
+				vm := vms[vmIdx]
+				placement := findBestTargetBalanced(vm, targetStates, vmsPerTarget, &statesMu, targetAverages, constraints)
+				placement.vmIndex = vmIdx
+				resultChan <- placement
+			}
+		}()
+	}
+
+	// Send VMs to workers
+	go func() {
+		for i := range vms {
+			vmChan <- i
+		}
+		close(vmChan)
+	}()
+
+	// Collect results in a separate goroutine
+	go func() {
+		wg.Wait()
+		close(resultChan)
+	}()
+
+	// Process placements and update states atomically
+	for placement := range resultChan {
+		vm := vms[placement.vmIndex]
+
+		if placement.targetName != "" && placement.targetName != "NONE" {
+			// Update target state atomically
+			ts := targetStates[placement.targetName]
+			ts.mu.Lock()
+			ts.state = ts.state.CalculateAfterMigration([]proxmox.VM{vm}, nil)
+			ts.mu.Unlock()
+
+			statesMu.Lock()
+			vmsPerTarget[placement.targetName]++
+			statesMu.Unlock()
+		}
+
+		// Build suggestion
+		storageValue := vm.MaxDisk
+		if storageValue == 0 {
+			storageValue = vm.UsedDisk
+		}
+
+		targetNode := placement.targetName
+		reason := placement.reason
+		if targetNode == "" {
+			targetNode = "NONE"
+			reason = "No suitable target (all targets would exceed cluster average)"
+		}
+
+		suggestions[placement.vmIndex] = MigrationSuggestion{
+			VMID:       vm.VMID,
+			VMName:     vm.Name,
+			SourceNode: vm.Node,
+			TargetNode: targetNode,
+			Reason:     reason,
+			Score:      placement.score,
+			VCPUs:      vm.CPUCores,
+			CPUUsage:   vm.CPUUsage,
+			RAM:        vm.MaxMem,
+			Storage:    storageValue,
+		}
+	}
+
+	return suggestions
+}
+
+// findBestTargetBalanced finds the best target for a VM ensuring the target
+// doesn't exceed cluster average after adding the VM
+func findBestTargetBalanced(vm proxmox.VM, targetStates map[string]*targetState, vmsPerTarget map[string]int, statesMu *sync.RWMutex, averages ClusterAverages, constraints MigrationConstraints) vmPlacement {
+	type candidate struct {
+		name   string
+		score  float64
+		reason string
+		state  NodeState
+	}
+
+	var candidates []candidate
+	var candidatesMu sync.Mutex
+	var wg sync.WaitGroup
+
+	// Evaluate all targets in parallel
+	for name, ts := range targetStates {
+		wg.Add(1)
+		go func(targetName string, targetState *targetState) {
+			defer wg.Done()
+
+			targetState.mu.Lock()
+			currentState := targetState.state
+			targetState.mu.Unlock()
+
+			// Check capacity
+			if !currentState.HasCapacity(vm, constraints) {
+				return
+			}
+
+			// Check MaxVMsPerHost constraint
+			statesMu.RLock()
+			currentVMs := vmsPerTarget[targetName]
+			statesMu.RUnlock()
+
+			if constraints.MaxVMsPerHost != nil {
+				if currentVMs >= *constraints.MaxVMsPerHost {
+					return
+				}
+			}
+
+			// Calculate state after adding this VM
+			newState := currentState.CalculateAfterMigration([]proxmox.VM{vm}, nil)
+
+			// Check if adding this VM would exceed cluster averages
+			// Allow a small margin (5%) above average for flexibility
+			margin := 5.0
+			if newState.CPUPercent > averages.CPUPercent+margin ||
+				newState.RAMPercent > averages.RAMPercent+margin {
+				// Skip this target - would exceed average
+				return
+			}
+
+			// Calculate score - prefer targets that stay well below average
+			score := calculateBalancedScore(newState, averages)
+
+			reason := fmt.Sprintf("Balanced (CPU: %.1f%%, RAM: %.1f%% - below avg)",
+				newState.CPUPercent, newState.RAMPercent)
+
+			candidatesMu.Lock()
+			candidates = append(candidates, candidate{
+				name:   targetName,
+				score:  score,
+				reason: reason,
+				state:  newState,
+			})
+			candidatesMu.Unlock()
+		}(name, ts)
+	}
+
+	wg.Wait()
+
+	if len(candidates) == 0 {
+		// No target found below average, try to find any target with capacity
+		// This is a fallback for edge cases
+		return findFallbackTarget(vm, targetStates, vmsPerTarget, statesMu, constraints)
+	}
+
+	// Sort by score (higher is better)
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].score > candidates[j].score
+	})
+
+	best := candidates[0]
+	return vmPlacement{
+		targetName: best.name,
+		score:      best.score,
+		reason:     best.reason,
+	}
+}
+
+// calculateBalancedScore computes a score that prefers targets further below average
+func calculateBalancedScore(state NodeState, averages ClusterAverages) float64 {
+	// Calculate how far below average this target is
+	cpuHeadroom := averages.CPUPercent - state.CPUPercent
+	ramHeadroom := averages.RAMPercent - state.RAMPercent
+
+	// Prefer more headroom (positive values mean below average)
+	headroomScore := cpuHeadroom*0.4 + ramHeadroom*0.4
+
+	// Also consider balance between resources
+	resources := []float64{state.CPUPercent, state.RAMPercent, state.StoragePercent}
+	mean := (resources[0] + resources[1] + resources[2]) / 3
+	variance := 0.0
+	for _, r := range resources {
+		variance += math.Pow(r-mean, 2)
+	}
+	balanceScore := 100 - math.Sqrt(variance/3)
+
+	// Combine scores
+	return headroomScore + balanceScore*0.2
+}
+
+// findFallbackTarget finds any target with capacity when no target is below average
+func findFallbackTarget(vm proxmox.VM, targetStates map[string]*targetState, vmsPerTarget map[string]int, statesMu *sync.RWMutex, constraints MigrationConstraints) vmPlacement {
+	type fallback struct {
+		name  string
+		score float64
+		state NodeState
+	}
+
+	var fallbacks []fallback
+
+	for name, ts := range targetStates {
+		ts.mu.Lock()
+		currentState := ts.state
+		ts.mu.Unlock()
+
+		if !currentState.HasCapacity(vm, constraints) {
+			continue
+		}
+
+		statesMu.RLock()
+		currentVMs := vmsPerTarget[name]
+		statesMu.RUnlock()
+
+		if constraints.MaxVMsPerHost != nil && currentVMs >= *constraints.MaxVMsPerHost {
+			continue
+		}
+
+		newState := currentState.CalculateAfterMigration([]proxmox.VM{vm}, nil)
+		score := 100 - newState.GetUtilizationScore()
+
+		fallbacks = append(fallbacks, fallback{
+			name:  name,
+			score: score,
+			state: newState,
+		})
+	}
+
+	if len(fallbacks) == 0 {
+		return vmPlacement{targetName: "NONE", reason: "No suitable target with capacity"}
+	}
+
+	// Sort by score
+	sort.Slice(fallbacks, func(i, j int) bool {
+		return fallbacks[i].score > fallbacks[j].score
+	})
+
+	best := fallbacks[0]
+	return vmPlacement{
+		targetName: best.name,
+		score:      best.score,
+		reason:     fmt.Sprintf("Best available (CPU: %.1f%%, RAM: %.1f%%)", best.state.CPUPercent, best.state.RAMPercent),
+	}
 }

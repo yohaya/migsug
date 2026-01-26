@@ -11,6 +11,7 @@ type MigrationConstraints struct {
 	RAMAmount     *int64   // migrate VMs using N GB RAM (in bytes)
 	StorageAmount *int64   // migrate VMs using N GB storage (in bytes)
 	SpecificVMs   []int    // migrate these specific VMIDs
+	MigrateAll    bool     // migrate all VMs from host, spread across cluster
 
 	// Additional constraints
 	ExcludeNodes  []string // don't migrate to these nodes
@@ -29,10 +30,14 @@ const (
 	ModeRAM
 	ModeStorage
 	ModeSpecific
+	ModeAll // Migrate all VMs from host, spread across cluster below average
 )
 
 // GetMode returns the migration mode based on what's set in constraints
 func (c *MigrationConstraints) GetMode() MigrationMode {
+	if c.MigrateAll {
+		return ModeAll
+	}
 	if len(c.SpecificVMs) > 0 {
 		return ModeSpecific
 	}
@@ -66,7 +71,8 @@ func (c *MigrationConstraints) Validate() error {
 		c.CPUUsage != nil ||
 		c.RAMAmount != nil ||
 		c.StorageAmount != nil ||
-		len(c.SpecificVMs) > 0
+		len(c.SpecificVMs) > 0 ||
+		c.MigrateAll
 
 	if !hasConstraint {
 		return &ValidationError{

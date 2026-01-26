@@ -107,6 +107,7 @@ func RenderCriteriaFull(state CriteriaState, sourceNode string, node *proxmox.No
 		name string
 		desc string
 	}{
+		{analyzer.ModeAll, "Migrate All", "Migrate all VMs from host and spread them across cluster"},
 		{analyzer.ModeVMCount, "VM", "Migrate a specific number of VMs"},
 		{analyzer.ModeVCPU, "vCPU", "Migrate VMs based on the count of vCPUs to migrate"},
 		{analyzer.ModeCPUUsage, "CPU Usage (%)", "Migrate VMs based on the CPU Usage Percentage to migrate from the Host"},
@@ -199,8 +200,12 @@ func RenderCriteriaFull(state CriteriaState, sourceNode string, node *proxmox.No
 		if state.ErrorMessage != "" {
 			sb.WriteString("  " + errorStyle.Render("⚠ "+state.ErrorMessage) + "\n")
 		}
-	} else if state.SelectedMode == analyzer.ModeSpecific && state.CursorPosition == 5 {
-		// Show hint only when Specific VMs mode is highlighted
+	} else if state.SelectedMode == analyzer.ModeAll && state.CursorPosition == 0 {
+		// Show hint for Migrate All mode
+		noteStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Italic(true)
+		sb.WriteString(noteStyle.Render("  ℹ Press Enter to migrate all VMs, balanced across cluster (no target exceeds average)") + "\n")
+	} else if state.SelectedMode == analyzer.ModeSpecific && state.CursorPosition == 6 {
+		// Show hint only when Specific VMs mode is highlighted (now at position 6)
 		noteStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Italic(true)
 		sb.WriteString(noteStyle.Render("  ℹ Press Enter to select specific VMs on the next screen") + "\n")
 	}

@@ -98,7 +98,7 @@ func NewModelWithVersion(cluster *proxmox.Cluster, client proxmox.ProxmoxClient,
 		selectedNodeIdx: 0,
 		version:         version,
 		criteriaState: views.CriteriaState{
-			SelectedMode: analyzer.ModeVMCount,
+			SelectedMode: analyzer.ModeAll, // Default to first mode in list
 			SelectedVMs:  make(map[int]bool),
 		},
 		width:            80,
@@ -283,7 +283,7 @@ func (m Model) handleDashboardKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Select source node and move to criteria
 		m.sourceNode = m.cluster.Nodes[m.selectedNodeIdx].Name
 		m.criteriaState = views.CriteriaState{
-			SelectedMode: analyzer.ModeVMCount,
+			SelectedMode: analyzer.ModeAll, // Default to first mode in list
 			SelectedVMs:  make(map[int]bool),
 		}
 		m.currentView = ViewCriteria
@@ -383,12 +383,27 @@ func (m Model) handleCriteriaKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.criteriaState.CursorPosition--
 		}
 	case "down", "j":
-		if m.criteriaState.CursorPosition < 5 {
+		if m.criteriaState.CursorPosition < 6 { // 7 modes total (0-6)
 			m.criteriaState.CursorPosition++
 		}
 	case "enter":
-		// Select mode
-		m.criteriaState.SelectedMode = analyzer.MigrationMode(m.criteriaState.CursorPosition)
+		// Select mode based on cursor position
+		// Mode order: ModeAll, ModeVMCount, ModeVCPU, ModeCPUUsage, ModeRAM, ModeStorage, ModeSpecific
+		modeMap := []analyzer.MigrationMode{
+			analyzer.ModeAll,
+			analyzer.ModeVMCount,
+			analyzer.ModeVCPU,
+			analyzer.ModeCPUUsage,
+			analyzer.ModeRAM,
+			analyzer.ModeStorage,
+			analyzer.ModeSpecific,
+		}
+		m.criteriaState.SelectedMode = modeMap[m.criteriaState.CursorPosition]
+
+		// ModeAll - go directly to analysis (no input needed)
+		if m.criteriaState.SelectedMode == analyzer.ModeAll {
+			return m, tea.Batch(tea.ClearScreen, m.startAnalysis())
+		}
 
 		// If specific VMs mode, go to VM selection
 		if m.criteriaState.SelectedMode == analyzer.ModeSpecific {
@@ -838,6 +853,8 @@ func (m Model) startAnalysis() tea.Cmd {
 			for vmid := range m.criteriaState.SelectedVMs {
 				constraints.SpecificVMs = append(constraints.SpecificVMs, vmid)
 			}
+		case analyzer.ModeAll:
+			constraints.MigrateAll = true
 		}
 
 		// Run analysis
