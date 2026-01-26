@@ -596,16 +596,17 @@ func RenderSuggestionTableWithCursor(suggestions []analyzer.MigrationSuggestion,
 	// Column widths
 	const (
 		colVMID    = 6
-		colName    = 28 // Server name
+		colName    = 26 // Server name
 		colTo      = 20
-		colCPU     = 6 // Host CPU% (threads consumed)
-		colVMCPU   = 7 // VM CPU% (% of allocated vCPUs)
+		colCPU     = 6  // CPU% = VMCPU% * vCPU (total thread consumption)
+		colHCPU    = 6  // HCPU% (host CPU% - normalized)
+		colVMCPU   = 7  // VMCPU% (% of allocated vCPUs)
 		colVCPU    = 5
 		colRAM     = 10
 		colStorage = 10
 	)
 
-	totalWidth := colVMID + colName + colTo + colCPU + colVMCPU + colVCPU + colRAM + colStorage + 7
+	totalWidth := colVMID + colName + colTo + colCPU + colHCPU + colVMCPU + colVCPU + colRAM + colStorage + 8
 
 	// Highlight style for selected row
 	selectedStyle := lipgloss.NewStyle().
@@ -636,12 +637,13 @@ func RenderSuggestionTableWithCursor(suggestions []analyzer.MigrationSuggestion,
 	}
 
 	// Header (with 2-char prefix for alignment, +2 for scrollbar)
-	header := fmt.Sprintf("  %*s %-*s %-*s %*s %*s %*s %*s %*s",
+	header := fmt.Sprintf("  %*s %-*s %-*s %*s %*s %*s %*s %*s %*s",
 		colVMID, "VMID",
 		colName, "Name",
 		colTo, "To",
 		colCPU, "CPU%",
-		colVMCPU, "VM CPU%",
+		colHCPU, "HCPU%",
+		colVMCPU, "VMCPU%",
 		colVCPU, "vCPU",
 		colRAM, "RAM",
 		colStorage, "Storage")
@@ -664,19 +666,25 @@ func RenderSuggestionTableWithCursor(suggestions []analyzer.MigrationSuggestion,
 		sug := suggestions[i]
 		isSelected := (i == cursorPos)
 
-		// VM CPU%: percentage of allocated vCPUs (already in 0-100 from resources.go)
+		// VMCPU%: percentage of allocated vCPUs (already in 0-100 from resources.go)
 		vmCpuStr := fmt.Sprintf("%.1f", sug.CPUUsage)
 
-		// CPU%: actual host thread consumption = VM CPU% * vCPUs / 100
-		// e.g., if VM CPU% is 10% and VM has 16 vCPUs, it consumes 1.6 threads = 160%
-		hostCpuPercent := sug.CPUUsage * float64(sug.VCPUs) / 100
-		cpuStr := fmt.Sprintf("%.1f", hostCpuPercent)
+		// CPU%: total thread consumption = VMCPU% * vCPUs
+		// e.g., if VMCPU% is 10% and VM has 16 vCPUs, CPU% = 160 (1.6 threads worth)
+		cpuPercent := sug.CPUUsage * float64(sug.VCPUs)
+		cpuStr := fmt.Sprintf("%.0f", cpuPercent)
 
-		row := fmt.Sprintf("%*d %-*s %-*s %*s %*s %*d %*s %*s",
+		// HCPU%: host CPU percentage (thread consumption as fraction)
+		// = VMCPU% * vCPUs / 100 (e.g., 10% * 16 / 100 = 1.6% of host capacity per thread)
+		hCpuPercent := sug.CPUUsage * float64(sug.VCPUs) / 100
+		hCpuStr := fmt.Sprintf("%.1f", hCpuPercent)
+
+		row := fmt.Sprintf("%*d %-*s %-*s %*s %*s %*s %*d %*s %*s",
 			colVMID, sug.VMID,
 			colName, truncate(sug.VMName, colName),
 			colTo, truncate(sug.TargetNode, colTo),
 			colCPU, cpuStr,
+			colHCPU, hCpuStr,
 			colVMCPU, vmCpuStr,
 			colVCPU, sug.VCPUs,
 			colRAM, FormatBytes(sug.RAM),
