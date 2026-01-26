@@ -130,7 +130,7 @@ func RenderNodeTableWideWithSort(nodes []proxmox.Node, selectedIdx int, width in
 	colName := maxNameLen + 2
 	colStatus := 8
 	colVMs := 6
-	colVCPUs := 8
+	colVCPUs := 13    // e.g., "572 (325%)"
 	colCPUPct := 8
 	colRAM := 22      // e.g., "1632/2048G (80%)"
 	colDisk := 20     // e.g., "165/205T (80%)"
@@ -180,9 +180,13 @@ func RenderNodeTableWideWithSort(nodes []proxmox.Node, selectedIdx int, width in
 
 		// Format values
 		cpuPctStr := fmt.Sprintf("%5.1f%%", node.GetCPUPercent())
-		// vCPUs: show only running vCPUs
+		// vCPUs: show running vCPUs with overcommit percentage (vCPUs/threads)
 		runningVCPUs := node.GetRunningVCPUs()
-		vcpuStr := fmt.Sprintf("%d", runningVCPUs)
+		vcpuOvercommit := 0.0
+		if node.CPUCores > 0 {
+			vcpuOvercommit = float64(runningVCPUs) / float64(node.CPUCores) * 100
+		}
+		vcpuStr := fmt.Sprintf("%d (%.0f%%)", runningVCPUs, vcpuOvercommit)
 		// RAM: show used/total in G with percentage at end
 		ramStr := FormatRAMWithPercent(node.UsedMem, node.MaxMem, node.GetMemPercent())
 		// Disk: show used/total with percentage
