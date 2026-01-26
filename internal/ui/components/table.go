@@ -598,8 +598,8 @@ func RenderSuggestionTableWithCursor(suggestions []analyzer.MigrationSuggestion,
 		colVMID    = 6
 		colName    = 28 // Server name
 		colTo      = 20
-		colCPU     = 6  // Host CPU% (threads consumed)
-		colVMCPU   = 7  // VM CPU% (% of allocated vCPUs)
+		colCPU     = 6 // Host CPU% (threads consumed)
+		colVMCPU   = 7 // VM CPU% (% of allocated vCPUs)
 		colVCPU    = 5
 		colRAM     = 10
 		colStorage = 10
