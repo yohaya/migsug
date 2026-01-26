@@ -83,8 +83,11 @@ func (ns NodeState) CalculateAfterMigration(addVMs []proxmox.VM, removeVMs []pro
 	// Remove VMs
 	for _, vm := range removeVMs {
 		newState.VMCount--
-		newState.VCPUs -= vm.CPUCores
-		newState.CPUUsageTotal -= vm.CPUUsage / 100 // Convert back from percentage
+		// Only subtract vCPUs/CPU for running VMs (stopped VMs don't contribute)
+		if vm.Status == "running" {
+			newState.VCPUs -= vm.CPUCores
+			newState.CPUUsageTotal -= vm.CPUUsage / 100 // Convert back from percentage
+		}
 		newState.RAMUsed -= vm.UsedMem
 		newState.StorageUsed -= vm.UsedDisk
 	}
@@ -92,10 +95,30 @@ func (ns NodeState) CalculateAfterMigration(addVMs []proxmox.VM, removeVMs []pro
 	// Add VMs
 	for _, vm := range addVMs {
 		newState.VMCount++
-		newState.VCPUs += vm.CPUCores
-		newState.CPUUsageTotal += vm.CPUUsage / 100
+		// Only add vCPUs/CPU for running VMs
+		if vm.Status == "running" {
+			newState.VCPUs += vm.CPUCores
+			newState.CPUUsageTotal += vm.CPUUsage / 100
+		}
 		newState.RAMUsed += vm.UsedMem
 		newState.StorageUsed += vm.UsedDisk
+	}
+
+	// Ensure values don't go negative
+	if newState.VMCount < 0 {
+		newState.VMCount = 0
+	}
+	if newState.VCPUs < 0 {
+		newState.VCPUs = 0
+	}
+	if newState.CPUUsageTotal < 0 {
+		newState.CPUUsageTotal = 0
+	}
+	if newState.RAMUsed < 0 {
+		newState.RAMUsed = 0
+	}
+	if newState.StorageUsed < 0 {
+		newState.StorageUsed = 0
 	}
 
 	// Recalculate percentages
@@ -107,6 +130,17 @@ func (ns NodeState) CalculateAfterMigration(addVMs []proxmox.VM, removeVMs []pro
 	}
 	if newState.StorageTotal > 0 {
 		newState.StoragePercent = float64(newState.StorageUsed) / float64(newState.StorageTotal) * 100
+	}
+
+	// Ensure percentages don't go negative
+	if newState.CPUPercent < 0 {
+		newState.CPUPercent = 0
+	}
+	if newState.RAMPercent < 0 {
+		newState.RAMPercent = 0
+	}
+	if newState.StoragePercent < 0 {
+		newState.StoragePercent = 0
 	}
 
 	return newState
