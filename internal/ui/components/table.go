@@ -888,13 +888,13 @@ func RenderImpactTable(sourceBefore, sourceAfter analyzer.NodeState, targetsBefo
 
 	// Column widths
 	const (
-		colHost     = 28 // Extended to support "kv0002-123-250-123-123 (src)"
-		colVMs      = 5
-		colVCPUs    = 6
-		colCPU      = 6
-		colRAM      = 8
-		colStorage  = 8
-		colSep      = 3 // " | "
+		colHost    = 28 // Extended to support "kv0002-123-250-123-123 (src)"
+		colVMs     = 5
+		colVCPUs   = 6
+		colCPU     = 6
+		colRAM     = 8
+		colStorage = 8
+		colSep     = 3 // " | "
 	)
 
 	// Styles
