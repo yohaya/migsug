@@ -73,8 +73,8 @@ func CollectClusterDataWithProgress(client ProxmoxClient, progress ProgressCallb
 			nodeMap[res.Node] = &node
 
 		case "storage":
-			// Only count storage that starts with "kv" or "local"
-			if !strings.HasPrefix(res.Storage, "kv") && !strings.HasPrefix(res.Storage, "local") {
+			// Only count storage that matches kv*storage* pattern
+			if !strings.HasPrefix(res.Storage, "kv") || !strings.Contains(res.Storage, "storage") {
 				continue
 			}
 			// Aggregate storage from matching storage resources per node

@@ -182,6 +182,7 @@ func main() {
 	startTime := time.Now()
 	cluster, err := proxmox.CollectClusterDataWithProgress(client, func(stage string, current, total int) {
 		elapsed := time.Since(startTime).Seconds()
+		// Use \r to return to start of line and \033[K to clear to end of line
 		if total > 0 {
 			// Calculate percentage
 			percent := float64(current) / float64(total) * 100
@@ -189,10 +190,10 @@ func main() {
 			barWidth := 30
 			filled := int(float64(barWidth) * float64(current) / float64(total))
 			bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
-			// Print progress with elapsed time inside percentage (use \r to overwrite line)
-			fmt.Printf("\r  %s: [%s] %d/%d (%.0f%%, %.0fs)  ", stage, bar, current, total, percent, elapsed)
+			// Print progress with elapsed time inside percentage
+			fmt.Printf("\r\033[K  %s: [%s] %d/%d (%.0f%%, %.0fs)", stage, bar, current, total, percent, elapsed)
 		} else {
-			fmt.Printf("\r  %s... (%.0fs)                                  ", stage, elapsed)
+			fmt.Printf("\r\033[K  %s... (%.0fs)", stage, elapsed)
 		}
 	})
 	fmt.Println() // New line after progress
