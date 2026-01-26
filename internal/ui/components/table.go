@@ -119,16 +119,14 @@ func RenderNodeTableWide(nodes []proxmox.Node, selectedIdx int, width int) strin
 	colName := maxNameLen + 2
 	colStatus := 8
 	colVMs := 5
-	colVCPUs := 10 // e.g., "45/176" (used/total)
+	colVCPUs := 7  // e.g., "572" (just running vCPUs)
 	colCPUPct := 7
-	colRAMUsed := 14 // e.g., "1.6T (80%)"
-	colRAMMax := 6   // e.g., "2.0T"
-	colDiskUsed := 12
-	colDiskMax := 10
+	colRAM := 22   // e.g., "1632/2048G (80%)"
+	colDisk := 14  // e.g., "165T/205T"
 	// CPU Model gets remaining width - no artificial limit
-	colCPUModel := width - colName - colStatus - colVMs - colVCPUs - colCPUPct - colRAMUsed - colRAMMax - colDiskUsed - colDiskMax - 15
-	if colCPUModel < 15 {
-		colCPUModel = 15
+	colCPUModel := width - colName - colStatus - colVMs - colVCPUs - colCPUPct - colRAM - colDisk - 20
+	if colCPUModel < 20 {
+		colCPUModel = 20
 	}
 
 	// Styles
@@ -144,8 +142,8 @@ func RenderNodeTableWide(nodes []proxmox.Node, selectedIdx int, width int) strin
 		colVMs, "VMs", sep,
 		colVCPUs, "vCPUs", sep,
 		colCPUPct, "CPU%", sep,
-		colRAMUsed+colRAMMax+1, "RAM (Used/Total)", sep,
-		colDiskUsed+colDiskMax+1, "Disk (Used/Total)", sep,
+		colRAM, "RAM", sep,
+		colDisk, "Disk", sep,
 		"CPU Model")
 	sb.WriteString(headerStyle.Render(header1) + "\n")
 	// Use graphical separator
@@ -158,29 +156,28 @@ func RenderNodeTableWide(nodes []proxmox.Node, selectedIdx int, width int) strin
 
 		// Format values
 		cpuPctStr := fmt.Sprintf("%5.1f%%", node.GetCPUPercent())
-		// vCPUs: show running vCPUs / total cores
+		// vCPUs: show only running vCPUs
 		runningVCPUs := node.GetRunningVCPUs()
-		vcpuStr := fmt.Sprintf("%d/%d", runningVCPUs, node.CPUCores)
-		// RAM: show used with percentage, then max
-		ramUsedStr := FormatRAMGiB(node.UsedMem, node.GetMemPercent())
-		ramMaxStr := FormatRAMGiBSimple(node.MaxMem)
+		vcpuStr := fmt.Sprintf("%d", runningVCPUs)
+		// RAM: show used/total in G with percentage at end
+		ramStr := FormatRAMWithPercent(node.UsedMem, node.MaxMem, node.GetMemPercent())
+		// Disk: show used/total
 		diskUsedStr := FormatBytesShort(node.UsedDisk)
 		diskMaxStr := FormatBytesShort(node.MaxDisk)
+		diskStr := fmt.Sprintf("%s/%s", diskUsedStr, diskMaxStr)
 
-		// CPU info - format as "2 x Xeon Platinum (2.5GHz)"
-		cpuInfo := formatCPUInfo(node.CPUSockets, node.CPUModel, node.CPUMHz)
+		// CPU info - format as "2x Xeon (2.5GHz, 176 threads)"
+		cpuInfo := formatCPUInfo(node.CPUSockets, node.CPUModel, node.CPUMHz, node.CPUCores)
 
 		// Build the row content (plain text for width calculation)
-		rowContent := fmt.Sprintf("%-*s %-*s %*d %*s %*s  %*s/%-*s  %*s/%-*s  %s",
+		rowContent := fmt.Sprintf("%-*s %-*s %*d %*s %*s  %-*s  %-*s  %s",
 			colName, truncate(node.Name, colName),
 			colStatus, node.Status,
 			colVMs, len(node.VMs),
 			colVCPUs, vcpuStr,
 			colCPUPct, cpuPctStr,
-			colRAMUsed, ramUsedStr,
-			colRAMMax, ramMaxStr,
-			colDiskUsed, diskUsedStr,
-			colDiskMax, diskMaxStr,
+			colRAM, ramStr,
+			colDisk, diskStr,
 			cpuInfo) // Don't truncate CPU info
 
 		// Pad row to full width for consistent highlighting
@@ -225,7 +222,7 @@ func RenderNodeTableWide(nodes []proxmox.Node, selectedIdx int, width int) strin
 			// VMs
 			coloredRow.WriteString(fmt.Sprintf("%*d ", colVMs, len(node.VMs)))
 
-			// vCPUs (running/total)
+			// vCPUs (running only)
 			coloredRow.WriteString(fmt.Sprintf("%*s ", colVCPUs, vcpuStr))
 
 			// CPU % with color
@@ -233,19 +230,15 @@ func RenderNodeTableWide(nodes []proxmox.Node, selectedIdx int, width int) strin
 			cpuPctStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(cpuPctColor))
 			coloredRow.WriteString(cpuPctStyle.Render(fmt.Sprintf("%*s", colCPUPct, cpuPctStr)) + "  ")
 
-			// RAM with color (used with %, then max)
+			// RAM with color
 			ramColor := getUsageColor(node.GetMemPercent())
 			ramStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ramColor))
-			coloredRow.WriteString(ramStyle.Render(fmt.Sprintf("%*s", colRAMUsed, ramUsedStr)))
-			coloredRow.WriteString(dimStyle.Render("/"))
-			coloredRow.WriteString(fmt.Sprintf("%-*s  ", colRAMMax, ramMaxStr))
+			coloredRow.WriteString(ramStyle.Render(fmt.Sprintf("%-*s", colRAM, ramStr)) + "  ")
 
 			// Disk with color
 			diskColor := getUsageColor(node.GetDiskPercent())
 			diskStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(diskColor))
-			coloredRow.WriteString(diskStyle.Render(fmt.Sprintf("%*s", colDiskUsed, diskUsedStr)))
-			coloredRow.WriteString(dimStyle.Render("/"))
-			coloredRow.WriteString(fmt.Sprintf("%-*s  ", colDiskMax, diskMaxStr))
+			coloredRow.WriteString(diskStyle.Render(fmt.Sprintf("%-*s", colDisk, diskStr)) + "  ")
 
 			// CPU model (dimmed) - don't truncate unless terminal is too narrow
 			coloredRow.WriteString(dimStyle.Render(cpuInfo))
@@ -276,6 +269,15 @@ func FormatBytesShort(bytes int64) string {
 		return fmt.Sprintf("%.0f%s", val, units[exp])
 	}
 	return fmt.Sprintf("%.1f%s", val, units[exp])
+}
+
+// FormatRAMWithPercent formats used/total RAM in G with percentage at end
+// e.g., "1232/2320G (52%)"
+func FormatRAMWithPercent(usedBytes, totalBytes int64, percent float64) string {
+	const gib = 1024 * 1024 * 1024
+	usedG := float64(usedBytes) / float64(gib)
+	totalG := float64(totalBytes) / float64(gib)
+	return fmt.Sprintf("%.0f/%.0fG (%.0f%%)", usedG, totalG, percent)
 }
 
 // FormatRAMGiB formats bytes to GiB with percentage (e.g., "1.6T (80%)")
@@ -310,8 +312,8 @@ func FormatRAMGiBSimple(bytes int64) string {
 	return fmt.Sprintf("%.1fG", val)
 }
 
-// formatCPUInfo formats CPU info as "2 x Xeon (2.5GHz)"
-func formatCPUInfo(sockets int, model string, mhz float64) string {
+// formatCPUInfo formats CPU info as "2x Xeon (2.5GHz, 176 threads)"
+func formatCPUInfo(sockets int, model string, mhz float64, threads int) string {
 	if model == "" {
 		return "-"
 	}
@@ -319,18 +321,23 @@ func formatCPUInfo(sockets int, model string, mhz float64) string {
 	// Shorten the model name
 	shortModel := shortenCPUModel(model)
 
-	// Format GHz
-	ghzStr := ""
-	if mhz > 0 {
+	// Format GHz and threads
+	suffix := ""
+	if mhz > 0 && threads > 0 {
 		ghz := mhz / 1000.0
-		ghzStr = fmt.Sprintf(" (%.1fGHz)", ghz)
+		suffix = fmt.Sprintf(" (%.1fGHz, %d threads)", ghz, threads)
+	} else if mhz > 0 {
+		ghz := mhz / 1000.0
+		suffix = fmt.Sprintf(" (%.1fGHz)", ghz)
+	} else if threads > 0 {
+		suffix = fmt.Sprintf(" (%d threads)", threads)
 	}
 
 	// Format with socket count if available
 	if sockets > 0 {
-		return fmt.Sprintf("%dx %s%s", sockets, shortModel, ghzStr)
+		return fmt.Sprintf("%dx %s%s", sockets, shortModel, suffix)
 	}
-	return shortModel + ghzStr
+	return shortModel + suffix
 }
 
 // shortenCPUModel shortens the CPU model name
