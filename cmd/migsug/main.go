@@ -189,10 +189,10 @@ func main() {
 			barWidth := 30
 			filled := int(float64(barWidth) * float64(current) / float64(total))
 			bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
-			// Print progress with elapsed time (use \r to overwrite line)
-			fmt.Printf("\r  %s: [%s] %d/%d (%.0f%%) %.0fs  ", stage, bar, current, total, percent, elapsed)
+			// Print progress with elapsed time inside percentage (use \r to overwrite line)
+			fmt.Printf("\r  %s: [%s] %d/%d (%.0f%%, %.0fs)  ", stage, bar, current, total, percent, elapsed)
 		} else {
-			fmt.Printf("\r  %s... %.0fs                                    ", stage, elapsed)
+			fmt.Printf("\r  %s... (%.0fs)                                  ", stage, elapsed)
 		}
 	})
 	fmt.Println() // New line after progress

@@ -13,7 +13,7 @@ import (
 	"github.com/yourusername/migsug/internal/ui/views"
 )
 
-const refreshInterval = 60 // seconds
+const refreshInterval = 180 // seconds
 
 // ViewType represents the current view
 type ViewType int
