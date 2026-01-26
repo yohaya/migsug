@@ -138,6 +138,17 @@ func (n *Node) GetCPUPercent() float64 {
 	return n.CPUUsage * 100
 }
 
+// GetRunningVCPUs returns the total vCPUs allocated to running VMs
+func (n *Node) GetRunningVCPUs() int {
+	total := 0
+	for _, vm := range n.VMs {
+		if vm.Status == "running" {
+			total += vm.CPUCores
+		}
+	}
+	return total
+}
+
 // GetMemPercent returns memory usage as a percentage
 func (n *Node) GetMemPercent() float64 {
 	if n.MaxMem == 0 {

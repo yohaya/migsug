@@ -109,14 +109,14 @@ func RenderNodeTableWide(nodes []proxmox.Node, selectedIdx int, width int) strin
 	colName := maxNameLen + 2
 	colStatus := 8
 	colVMs := 5
-	colCPUs := 6
+	colVCPUs := 10 // e.g., "45/176" (used/total)
 	colCPUPct := 7
 	colRAMUsed := 14 // e.g., "1.6T (80%)"
 	colRAMMax := 6   // e.g., "2.0T"
 	colDiskUsed := 12
 	colDiskMax := 10
 	// CPU Model gets remaining width - no artificial limit
-	colCPUModel := width - colName - colStatus - colVMs - colCPUs - colCPUPct - colRAMUsed - colRAMMax - colDiskUsed - colDiskMax - 15
+	colCPUModel := width - colName - colStatus - colVMs - colVCPUs - colCPUPct - colRAMUsed - colRAMMax - colDiskUsed - colDiskMax - 15
 	if colCPUModel < 15 {
 		colCPUModel = 15
 	}
@@ -130,7 +130,7 @@ func RenderNodeTableWide(nodes []proxmox.Node, selectedIdx int, width int) strin
 		colName, "Host",
 		colStatus, "Status",
 		colVMs, "VMs",
-		colCPUs, "CPUs",
+		colVCPUs, "vCPUs",
 		colCPUPct, "CPU%",
 		colRAMUsed+colRAMMax+1, "RAM (Used/Total)",
 		colDiskUsed+colDiskMax+1, "Disk (Used/Total)",
@@ -146,6 +146,9 @@ func RenderNodeTableWide(nodes []proxmox.Node, selectedIdx int, width int) strin
 
 		// Format values
 		cpuPctStr := fmt.Sprintf("%5.1f%%", node.GetCPUPercent())
+		// vCPUs: show running vCPUs / total cores
+		runningVCPUs := node.GetRunningVCPUs()
+		vcpuStr := fmt.Sprintf("%d/%d", runningVCPUs, node.CPUCores)
 		// RAM: show used with percentage, then max
 		ramUsedStr := FormatRAMGiB(node.UsedMem, node.GetMemPercent())
 		ramMaxStr := FormatRAMGiBSimple(node.MaxMem)
@@ -160,7 +163,7 @@ func RenderNodeTableWide(nodes []proxmox.Node, selectedIdx int, width int) strin
 			colName, truncate(node.Name, colName),
 			colStatus, node.Status,
 			colVMs, len(node.VMs),
-			colCPUs, fmt.Sprintf("%d", node.CPUCores),
+			colVCPUs, vcpuStr,
 			colCPUPct, cpuPctStr,
 			colRAMUsed, ramUsedStr,
 			colRAMMax, ramMaxStr,
@@ -210,8 +213,8 @@ func RenderNodeTableWide(nodes []proxmox.Node, selectedIdx int, width int) strin
 			// VMs
 			coloredRow.WriteString(fmt.Sprintf("%*d ", colVMs, len(node.VMs)))
 
-			// CPUs
-			coloredRow.WriteString(fmt.Sprintf("%*s ", colCPUs, fmt.Sprintf("%d", node.CPUCores)))
+			// vCPUs (running/total)
+			coloredRow.WriteString(fmt.Sprintf("%*s ", colVCPUs, vcpuStr))
 
 			// CPU % with color
 			cpuPctColor := getUsageColor(node.GetCPUPercent())
