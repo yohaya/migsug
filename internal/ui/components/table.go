@@ -130,10 +130,10 @@ func RenderNodeTableWideWithSort(nodes []proxmox.Node, selectedIdx int, width in
 	colName := maxNameLen + 2
 	colStatus := 8
 	colVMs := 6
-	colVCPUs := 13  // e.g., "572 (325%)"
+	colVCPUs := 13 // e.g., "572 (325%)"
 	colCPUPct := 8
-	colLA := 14     // e.g., "62.56 (35.5%)"
-	colRAM := 22    // e.g., "1632/2048G (80%)"
+	colLA := 14   // e.g., "62.56 (35.5%)"
+	colRAM := 22  // e.g., "1632/2048G (80%)"
 	colDisk := 20 // e.g., "165/205T (80%)"
 	// CPU Model gets remaining width - no artificial limit
 	colCPUModel := width - colName - colStatus - colVMs - colVCPUs - colCPUPct - colLA - colRAM - colDisk - 24
