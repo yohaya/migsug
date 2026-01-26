@@ -625,10 +625,23 @@ func (m Model) handleResultsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Calculate visible area for window-style scrolling
-	maxVisible := m.height - 20 // Reserve space for header, summary, etc.
-	if maxVisible < 5 {
-		maxVisible = 5
+	// Count active targets (those that receive VMs) - must match results.go calculation
+	activeTargets := 0
+	for targetName, afterState := range m.result.TargetsAfter {
+		beforeState := m.result.TargetsBefore[targetName]
+		if afterState.VMCount != beforeState.VMCount {
+			activeTargets++
+		}
+	}
+
+	// Calculate visible area - must match calculateVisibleRowsWithTargets in results.go
+	// Fixed overhead: 26 lines, plus 2 lines per target node
+	fixedOverhead := 26
+	targetLines := activeTargets * 2
+	reserved := fixedOverhead + targetLines
+	maxVisible := m.height - reserved
+	if maxVisible < 3 {
+		maxVisible = 3
 	}
 	totalItems := len(m.result.Suggestions)
 
