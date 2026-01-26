@@ -144,7 +144,6 @@ func RenderNodeTableWideWithSort(nodes []proxmox.Node, selectedIdx int, width in
 	// Styles
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
-	sepStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 
 	// Sort arrows
 	upArrow := "▲"
@@ -430,10 +429,11 @@ func shortenCPUModel(model string) string {
 }
 
 // getUsageColor returns color based on usage percentage
+// Up to 79%: green, 80-86%: yellow, 87%+: red
 func getUsageColor(percent float64) string {
-	if percent > 80 {
+	if percent >= 87 {
 		return "9" // bright red (readable on black background)
-	} else if percent > 60 {
+	} else if percent >= 80 {
 		return "3" // yellow
 	}
 	return "2" // green

@@ -212,10 +212,11 @@ func renderEnhancedClusterSummary(cluster *proxmox.Cluster, width int) string {
 }
 
 // getUsageColorCode returns color code based on usage percentage
+// Up to 79%: green, 80-86%: yellow, 87%+: red
 func getUsageColorCode(percent float64) string {
-	if percent > 80 {
+	if percent >= 87 {
 		return "9" // bright red (readable on black background)
-	} else if percent > 60 {
+	} else if percent >= 80 {
 		return "3" // yellow
 	}
 	return "2" // green
