@@ -423,7 +423,12 @@ func (m Model) handleCriteriaInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		m.criteriaState.InputFocused = false
 		m.criteriaState.ErrorMessage = ""
-		m.clearCurrentInput() // Clear the input value
+		// Clear all input fields to reset the form
+		m.criteriaState.VMCount = ""
+		m.criteriaState.VCPUCount = ""
+		m.criteriaState.CPUUsage = ""
+		m.criteriaState.RAMAmount = ""
+		m.criteriaState.StorageAmount = ""
 	case "backspace", "ctrl+h", "delete":
 		m.deleteLastChar()
 		m.criteriaState.ErrorMessage = "" // Clear error on edit
