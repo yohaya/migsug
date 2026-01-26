@@ -71,10 +71,10 @@ type Model struct {
 	resultsCursorPos int // Current cursor position in results list
 
 	// Results view section focus (0 = suggestions table, 1 = impact table)
-	resultsSection    int
-	impactCursorPos   int    // Cursor position in impact table
-	selectedHostName  string // Selected host for detail view
-	impactHostNames   []string // Sorted list of host names in impact table
+	resultsSection   int
+	impactCursorPos  int      // Cursor position in impact table
+	selectedHostName string   // Selected host for detail view
+	impactHostNames  []string // Sorted list of host names in impact table
 
 	// UI state
 	width      int
