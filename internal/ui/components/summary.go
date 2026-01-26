@@ -134,7 +134,6 @@ func RenderMigrationSummary(totalVMs int, totalVCPUs int, totalRAM int64, totalS
 	// Use regular text color for labels (like the main header)
 	labelStyle := lipgloss.NewStyle()
 	valueStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
-	improvementStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Bold(true)
 
 	var content string
 
@@ -146,10 +145,6 @@ func RenderMigrationSummary(totalVMs int, totalVCPUs int, totalRAM int64, totalS
 	content += labelStyle.Render("vCPUs: ") + valueStyle.Render(fmt.Sprintf("%-10d", totalVCPUs))
 	content += labelStyle.Render("RAM: ") + valueStyle.Render(fmt.Sprintf("%-14s", FormatBytes(totalRAM)))
 	content += labelStyle.Render("Storage: ") + valueStyle.Render(FormatBytes(totalStorage))
-	content += "\n\n"
-
-	// Improvement line
-	content += labelStyle.Render("Improvement: ") + improvementStyle.Render(improvement)
 
 	return content
 }

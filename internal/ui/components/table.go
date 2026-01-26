@@ -576,18 +576,18 @@ func RenderSuggestionTableWithScroll(suggestions []analyzer.MigrationSuggestion,
 func RenderSuggestionTableWithCursor(suggestions []analyzer.MigrationSuggestion, scrollPos, maxVisible, cursorPos int) string {
 	var sb strings.Builder
 
-	// Column widths
+	// Column widths - removed From, added CPU%
 	const (
 		colVMID    = 6
-		colName    = 20
-		colFrom    = 12
-		colTo      = 12
+		colName    = 30 // Wider for full server name
+		colTo      = 22
+		colCPU     = 6  // CPU usage %
 		colVCPU    = 5
 		colRAM     = 10
 		colStorage = 10
 	)
 
-	totalWidth := colVMID + colName + colFrom + colTo + colVCPU + colRAM + colStorage + 6
+	totalWidth := colVMID + colName + colTo + colCPU + colVCPU + colRAM + colStorage + 6
 
 	// Highlight style for selected row
 	selectedStyle := lipgloss.NewStyle().
@@ -618,11 +618,11 @@ func RenderSuggestionTableWithCursor(suggestions []analyzer.MigrationSuggestion,
 	}
 
 	// Header (with 2-char prefix for alignment, +2 for scrollbar)
-	header := fmt.Sprintf("  %*s %-*s %-*s %-*s %*s %*s %*s",
+	header := fmt.Sprintf("  %*s %-*s %-*s %*s %*s %*s %*s",
 		colVMID, "VMID",
 		colName, "Name",
-		colFrom, "From",
 		colTo, "To",
+		colCPU, "CPU%",
 		colVCPU, "vCPU",
 		colRAM, "RAM",
 		colStorage, "Storage")
@@ -645,11 +645,14 @@ func RenderSuggestionTableWithCursor(suggestions []analyzer.MigrationSuggestion,
 		sug := suggestions[i]
 		isSelected := (i == cursorPos)
 
-		row := fmt.Sprintf("%*d %-*s %-*s %-*s %*d %*s %*s",
+		// Format CPU usage as percentage
+		cpuStr := fmt.Sprintf("%.1f", sug.CPUUsage*100)
+
+		row := fmt.Sprintf("%*d %-*s %-*s %*s %*d %*s %*s",
 			colVMID, sug.VMID,
 			colName, truncate(sug.VMName, colName),
-			colFrom, truncate(sug.SourceNode, colFrom),
 			colTo, truncate(sug.TargetNode, colTo),
+			colCPU, cpuStr,
 			colVCPU, sug.VCPUs,
 			colRAM, FormatBytes(sug.RAM),
 			colStorage, FormatBytes(sug.Storage),
