@@ -109,8 +109,9 @@ func RenderResultsWithSource(result *analyzer.AnalysisResult, cluster *proxmox.C
 			scrollPos+1,
 			min(scrollPos+maxVisible, len(result.Suggestions)),
 			len(result.Suggestions))
-		// Right-align to match table width (approximately 100 characters)
-		tableWidth := 100
+		// Right-align so last digit is below last "-" of the table
+		// Table width = 2 (prefix) + 104 (totalWidth) = 106 characters for the dashes
+		tableWidth := 106
 		padding := tableWidth - len(scrollInfo)
 		if padding > 0 {
 			scrollInfo = strings.Repeat(" ", padding) + scrollInfo

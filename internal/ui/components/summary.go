@@ -134,13 +134,11 @@ func RenderMigrationSummary(totalVMs int, totalVCPUs int, totalRAM int64, totalS
 	// Use regular text color for labels
 	labelStyle := lipgloss.NewStyle()
 	valueStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
-	// Use grey color for title (same as labels)
-	greyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 
 	var content string
 
-	// Title (grey color like labels)
-	content = greyStyle.Render("Migration Summary:") + "\n"
+	// Title (regular white color like "Nodes:" text)
+	content = labelStyle.Render("Migration Summary:") + "\n"
 
 	// Row 1: VMs, vCPUs, RAM, Storage (indented with 2 spaces)
 	content += "  " + labelStyle.Render("VMs: ") + valueStyle.Render(fmt.Sprintf("%-10d", totalVMs))
