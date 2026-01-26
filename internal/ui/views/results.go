@@ -2,6 +2,7 @@ package views
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -124,12 +125,20 @@ func RenderResultsWithSource(result *analyzer.AnalysisResult, cluster *proxmox.C
 	))
 	sb.WriteString("\n")
 
-	// Target nodes
+	// Target nodes (sorted for consistent display)
 	if len(result.TargetsAfter) > 0 {
 		sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6")).
 			Render("Target Nodes Impact:") + "\n\n")
 
-		for targetName, afterState := range result.TargetsAfter {
+		// Sort target names for consistent ordering
+		var targetNames []string
+		for targetName := range result.TargetsAfter {
+			targetNames = append(targetNames, targetName)
+		}
+		sort.Strings(targetNames)
+
+		for _, targetName := range targetNames {
+			afterState := result.TargetsAfter[targetName]
 			beforeState := result.TargetsBefore[targetName]
 			// Only show targets that actually receive VMs
 			if afterState.VMCount != beforeState.VMCount {
