@@ -68,9 +68,23 @@ func RenderCriteriaFull(state CriteriaState, sourceNode string, node *proxmox.No
 		sb.WriteString("\n")
 	}
 
-	// Selected source node instruction
+	// Selected source node instruction with CPU info
 	instructionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	sb.WriteString(instructionStyle.Render(fmt.Sprintf("Selected source node: %s", sourceNode)) + "\n")
+	valueStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+
+	nodeInfoStr := sourceNode
+	if node != nil && node.CPUModel != "" {
+		nodeInfoStr = fmt.Sprintf("%s %s(%s, %d threads)", sourceNode,
+			dimStyle.Render(""),
+			dimStyle.Render(node.CPUModel),
+			node.CPUCores)
+	} else if node != nil {
+		nodeInfoStr = fmt.Sprintf("%s %s(%d threads)", sourceNode,
+			dimStyle.Render(""),
+			node.CPUCores)
+	}
+	sb.WriteString(instructionStyle.Render("Selected source node: ") + valueStyle.Render(nodeInfoStr) + "\n")
 
 	// Show selected host data if available
 	if node != nil {
@@ -299,7 +313,6 @@ func renderNodeSummary(node *proxmox.Node, width int) string {
 
 	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	valueStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
-	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 
 	// Count running VMs
 	runningVMs := 0
@@ -314,8 +327,13 @@ func renderNodeSummary(node *proxmox.Node, width int) string {
 		}
 	}
 
+	// Fixed column widths for vertical alignment
+	col1Width := 28 // "VMs: 57 (On: 41, Off: 16)"
+	col2Width := 14 // "CPU: 19.0%"
+
 	// Format values
 	vmStr := fmt.Sprintf("%d (On: %d, Off: %d)", len(node.VMs), runningVMs, stoppedVMs)
+	cpuStr := fmt.Sprintf("%.1f%%", node.GetCPUPercent())
 
 	// vCPU with overcommit percentage
 	vcpuOvercommit := 0.0
@@ -324,12 +342,16 @@ func renderNodeSummary(node *proxmox.Node, width int) string {
 	}
 	vcpuStr := fmt.Sprintf("%d (%.0f%%)", runningVCPUs, vcpuOvercommit)
 
-	cpuStr := fmt.Sprintf("%.1f%%", node.GetCPUPercent())
-
-	// Load average
+	// Load average with percentage
 	laStr := "-"
 	if len(node.LoadAverage) > 0 {
-		laStr = fmt.Sprintf("%.2f", node.LoadAverage[0])
+		la := node.LoadAverage[0]
+		if node.CPUCores > 0 {
+			laPercent := la / float64(node.CPUCores) * 100
+			laStr = fmt.Sprintf("%.2f (%.1f%%)", la, laPercent)
+		} else {
+			laStr = fmt.Sprintf("%.2f", la)
+		}
 	}
 
 	// RAM
@@ -342,21 +364,37 @@ func renderNodeSummary(node *proxmox.Node, width int) string {
 	diskTotalTiB := float64(node.MaxDisk) / (1024 * 1024 * 1024 * 1024)
 	diskStr := fmt.Sprintf("%.0f/%.0fT (%.0f%%)", diskUsedTiB, diskTotalTiB, node.GetDiskPercent())
 
-	// Row 1: VMs and vCPUs
+	// Row 1: VMs, CPU, vCPUs
 	sb.WriteString("  ")
+	col1Row1 := fmt.Sprintf("VMs: %s", vmStr)
 	sb.WriteString(labelStyle.Render("VMs: ") + valueStyle.Render(vmStr))
-	sb.WriteString(dimStyle.Render("  │  "))
+	if len(col1Row1) < col1Width {
+		sb.WriteString(strings.Repeat(" ", col1Width-len(col1Row1)))
+	}
+
+	col2Row1 := fmt.Sprintf("CPU: %s", cpuStr)
+	sb.WriteString(labelStyle.Render("CPU: ") + valueStyle.Render(cpuStr))
+	if len(col2Row1) < col2Width {
+		sb.WriteString(strings.Repeat(" ", col2Width-len(col2Row1)))
+	}
+
 	sb.WriteString(labelStyle.Render("vCPUs: ") + valueStyle.Render(vcpuStr))
 	sb.WriteString("\n")
 
-	// Row 2: CPU, LA, RAM, Disk
+	// Row 2: LA, RAM, Disk
 	sb.WriteString("  ")
-	sb.WriteString(labelStyle.Render("CPU: ") + valueStyle.Render(cpuStr))
-	sb.WriteString(dimStyle.Render("  │  "))
+	col1Row2 := fmt.Sprintf("LA: %s", laStr)
 	sb.WriteString(labelStyle.Render("LA: ") + valueStyle.Render(laStr))
-	sb.WriteString(dimStyle.Render("  │  "))
+	if len(col1Row2) < col1Width {
+		sb.WriteString(strings.Repeat(" ", col1Width-len(col1Row2)))
+	}
+
+	col2Row2 := fmt.Sprintf("RAM: %s", ramStr)
 	sb.WriteString(labelStyle.Render("RAM: ") + valueStyle.Render(ramStr))
-	sb.WriteString(dimStyle.Render("  │  "))
+	if len(col2Row2) < col2Width {
+		sb.WriteString(strings.Repeat(" ", col2Width-len(col2Row2)))
+	}
+
 	sb.WriteString(labelStyle.Render("Disk: ") + valueStyle.Render(diskStr))
 	sb.WriteString("\n")
 
