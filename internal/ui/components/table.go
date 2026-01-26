@@ -581,7 +581,7 @@ func RenderSuggestionTableWithCursor(suggestions []analyzer.MigrationSuggestion,
 		colVMID    = 6
 		colName    = 30 // Wider for full server name
 		colTo      = 22
-		colCPU     = 6  // CPU usage %
+		colCPU     = 6 // CPU usage %
 		colVCPU    = 5
 		colRAM     = 10
 		colStorage = 10

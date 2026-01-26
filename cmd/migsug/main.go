@@ -225,8 +225,14 @@ func main() {
 	}
 
 	p := tea.NewProgram(model, tea.WithAltScreen())
-	if _, err := p.Run(); err != nil {
+	finalModel, err := p.Run()
+	if err != nil {
 		fmt.Printf("Error running application: %v\n", err)
 		os.Exit(1)
+	}
+
+	// Print the final view so it stays visible after quitting
+	if m, ok := finalModel.(ui.Model); ok {
+		fmt.Println(m.View())
 	}
 }
