@@ -64,8 +64,8 @@ func CollectClusterDataWithProgress(client ProxmoxClient, progress ProgressCallb
 				CPUUsage: res.CPU,
 				MaxMem:   res.MaxMem,
 				UsedMem:  res.Mem,
-				MaxDisk:  res.MaxDisk,  // This is just rootfs, will be updated
-				UsedDisk: res.Disk,     // This is just rootfs, will be updated
+				MaxDisk:  res.MaxDisk, // This is just rootfs, will be updated
+				UsedDisk: res.Disk,    // This is just rootfs, will be updated
 				Uptime:   res.Uptime,
 				VMs:      []VM{},
 			}

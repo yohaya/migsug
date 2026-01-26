@@ -79,8 +79,8 @@ func RenderNodeTable(nodes []proxmox.Node, selectedIdx int) string {
 
 // Box drawing characters
 const (
-	boxHeavyHoriz = "━"
-	boxLightHoriz = "─"
+	boxHeavyHoriz  = "━"
+	boxLightHoriz  = "─"
 	boxDoubleHoriz = "═"
 )
 
@@ -311,7 +311,6 @@ func shortenCPUModel(model string) string {
 	}
 	return strings.TrimSpace(result)
 }
-
 
 // getUsageColor returns color based on usage percentage
 func getUsageColor(percent float64) string {
