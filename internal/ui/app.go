@@ -174,6 +174,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.refreshTotal = 0
 		if msg.err == nil && msg.cluster != nil {
 			m.cluster = msg.cluster
+			// Re-apply current sort order to new data
+			m.sortNodes()
 			// Keep selection valid
 			if m.selectedNodeIdx >= len(m.cluster.Nodes) {
 				m.selectedNodeIdx = len(m.cluster.Nodes) - 1
