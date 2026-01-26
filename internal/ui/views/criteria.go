@@ -97,7 +97,7 @@ func RenderCriteriaFull(state CriteriaState, sourceNode string, node *proxmox.No
 
 	// Mode options table header
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
-	header := fmt.Sprintf("  %-20s %-50s", "Mode", "Description")
+	header := fmt.Sprintf("  %-20s%s", "Mode", "Description")
 	sb.WriteString(headerStyle.Render(header) + "\n")
 	sb.WriteString("  " + borderStyle.Render(strings.Repeat(criteriaBoxHoriz, width-4)) + "\n")
 

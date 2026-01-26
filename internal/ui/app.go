@@ -429,6 +429,7 @@ func (m Model) handleCriteriaInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.criteriaState.CPUUsage = ""
 		m.criteriaState.RAMAmount = ""
 		m.criteriaState.StorageAmount = ""
+		return m, tea.ClearScreen
 	case "backspace", "ctrl+h", "delete":
 		m.deleteLastChar()
 		m.criteriaState.ErrorMessage = "" // Clear error on edit
@@ -685,12 +686,28 @@ func (m Model) handleResultsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.result = nil
 		m.resultsScrollPos = 0
 		m.resultsCursorPos = 0
+		// Clear criteria input for fresh start
+		m.criteriaState.VMCount = ""
+		m.criteriaState.VCPUCount = ""
+		m.criteriaState.CPUUsage = ""
+		m.criteriaState.RAMAmount = ""
+		m.criteriaState.StorageAmount = ""
+		m.criteriaState.InputFocused = false
+		m.criteriaState.ErrorMessage = ""
 		return m, tea.ClearScreen
 	case "esc":
 		// Go back to criteria screen (not dashboard)
 		m.currentView = ViewCriteria
 		m.resultsScrollPos = 0
 		m.resultsCursorPos = 0
+		// Clear criteria input
+		m.criteriaState.VMCount = ""
+		m.criteriaState.VCPUCount = ""
+		m.criteriaState.CPUUsage = ""
+		m.criteriaState.RAMAmount = ""
+		m.criteriaState.StorageAmount = ""
+		m.criteriaState.InputFocused = false
+		m.criteriaState.ErrorMessage = ""
 		return m, tea.ClearScreen
 	}
 	return m, nil
