@@ -77,6 +77,58 @@ func NewNodeState(node *proxmox.Node) NodeState {
 	}
 }
 
+// NewNodeStateFromVMs creates a NodeState with VM-aggregated values (not node values)
+// This is used for Migration Impact to show only VM resource totals
+func NewNodeStateFromVMs(node *proxmox.Node) NodeState {
+	// Calculate totals from VMs only
+	totalVCPUs := 0
+	totalCPUUsage := 0.0
+	var totalRAM int64
+	var totalStorage int64
+
+	for _, vm := range node.VMs {
+		if vm.Status == "running" {
+			totalVCPUs += vm.CPUCores
+			totalCPUUsage += vm.CPUUsage * float64(vm.CPUCores) / 100 // Weighted CPU usage
+		}
+		totalRAM += vm.MaxMem
+		storage := vm.MaxDisk
+		if storage == 0 {
+			storage = vm.UsedDisk
+		}
+		totalStorage += storage
+	}
+
+	// Calculate percentages based on node capacity
+	cpuPercent := 0.0
+	if node.CPUCores > 0 {
+		cpuPercent = (totalCPUUsage / float64(node.CPUCores)) * 100
+	}
+	ramPercent := 0.0
+	if node.MaxMem > 0 {
+		ramPercent = float64(totalRAM) / float64(node.MaxMem) * 100
+	}
+	storagePercent := 0.0
+	if node.MaxDisk > 0 {
+		storagePercent = float64(totalStorage) / float64(node.MaxDisk) * 100
+	}
+
+	return NodeState{
+		Name:           node.Name,
+		VMCount:        len(node.VMs),
+		VCPUs:          totalVCPUs,
+		CPUCores:       node.CPUCores,
+		CPUUsageTotal:  totalCPUUsage,
+		CPUPercent:     cpuPercent,
+		RAMUsed:        totalRAM,
+		RAMTotal:       node.MaxMem,
+		RAMPercent:     ramPercent,
+		StorageUsed:    totalStorage,
+		StorageTotal:   node.MaxDisk,
+		StoragePercent: storagePercent,
+	}
+}
+
 // CalculateAfterMigration computes node state after migrations
 func (ns NodeState) CalculateAfterMigration(addVMs []proxmox.VM, removeVMs []proxmox.VM) NodeState {
 	newState := ns

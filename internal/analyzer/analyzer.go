@@ -378,8 +378,8 @@ func BuildAnalysisResult(sourceNode *proxmox.Node, targets []proxmox.Node, sugge
 		TargetsAfter:  make(map[string]NodeState),
 	}
 
-	// Source before state
-	result.SourceBefore = NewNodeState(sourceNode)
+	// Source before state - use VM-aggregated values for Migration Impact
+	result.SourceBefore = NewNodeStateFromVMs(sourceNode)
 
 	// Source after state (remove migrated VMs)
 	result.SourceAfter = result.SourceBefore.CalculateAfterMigration(nil, vmsToMigrate)
@@ -398,7 +398,8 @@ func BuildAnalysisResult(sourceNode *proxmox.Node, targets []proxmox.Node, sugge
 	}
 
 	for _, target := range targets {
-		result.TargetsBefore[target.Name] = NewNodeState(&target)
+		// Use VM-aggregated values for Migration Impact
+		result.TargetsBefore[target.Name] = NewNodeStateFromVMs(&target)
 		addVMs := targetVMs[target.Name]
 		result.TargetsAfter[target.Name] = result.TargetsBefore[target.Name].CalculateAfterMigration(addVMs, nil)
 	}

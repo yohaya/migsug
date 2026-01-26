@@ -413,7 +413,8 @@ func RenderHostDetailInteractive(result *analyzer.AnalysisResult, hostName, sour
 type VMListItem struct {
 	VMID      int
 	Name      string
-	Status    string // "running" or "stopped"
+	Status    string  // "running" or "stopped"
+	CPUUsage  float64 // CPU usage percentage
 	VCPUs     int
 	RAM       int64
 	Storage   int64
@@ -478,12 +479,13 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 		if sourceNode != nil {
 			for _, vm := range sourceNode.VMs {
 				item := VMListItem{
-					VMID:    vm.VMID,
-					Name:    vm.Name,
-					Status:  vm.Status,
-					VCPUs:   vm.CPUCores,
-					RAM:     vm.MaxMem,
-					Storage: vm.MaxDisk,
+					VMID:     vm.VMID,
+					Name:     vm.Name,
+					Status:   vm.Status,
+					CPUUsage: vm.CPUUsage,
+					VCPUs:    vm.CPUCores,
+					RAM:      vm.MaxMem,
+					Storage:  vm.MaxDisk,
 				}
 				if vm.MaxDisk == 0 {
 					item.Storage = vm.UsedDisk
@@ -504,12 +506,13 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 		if targetNode != nil {
 			for _, vm := range targetNode.VMs {
 				item := VMListItem{
-					VMID:    vm.VMID,
-					Name:    vm.Name,
-					Status:  vm.Status,
-					VCPUs:   vm.CPUCores,
-					RAM:     vm.MaxMem,
-					Storage: vm.MaxDisk,
+					VMID:     vm.VMID,
+					Name:     vm.Name,
+					Status:   vm.Status,
+					CPUUsage: vm.CPUUsage,
+					VCPUs:    vm.CPUCores,
+					RAM:      vm.MaxMem,
+					Storage:  vm.MaxDisk,
 				}
 				if vm.MaxDisk == 0 {
 					item.Storage = vm.UsedDisk
@@ -525,6 +528,7 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 					VMID:      sug.VMID,
 					Name:      sug.VMName,
 					Status:    sug.Status,
+					CPUUsage:  sug.CPUUsage,
 					VCPUs:     sug.VCPUs,
 					RAM:       sug.RAM,
 					Storage:   sug.Storage,
@@ -548,19 +552,21 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 		colVMID    = 6
 		colName    = 24
 		colState   = 5
+		colCPU     = 6  // CPU%
 		colVCPU    = 5
 		colRAM     = 8
 		colStorage = 8
 		colTarget  = 20
 	)
-	totalWidth := colDir + colVMID + colName + colState + colVCPU + colRAM + colStorage + colTarget + 7
+	totalWidth := colDir + colVMID + colName + colState + colCPU + colVCPU + colRAM + colStorage + colTarget + 8
 
 	// Header
-	header := fmt.Sprintf("  %*s %*s %-*s %-*s %*s %*s %*s %-*s",
+	header := fmt.Sprintf("  %*s %*s %-*s %-*s %*s %*s %*s %*s %-*s",
 		colDir, "",
 		colVMID, "VMID",
 		colName, "Name",
 		colState, "State",
+		colCPU, "CPU%",
 		colVCPU, "vCPU",
 		colRAM, "RAM",
 		colStorage, "Storage",
@@ -601,11 +607,15 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 			migrationStr = "← " + vm.Target
 		}
 
+		// CPU% string
+		cpuStr := fmt.Sprintf("%.1f", vm.CPUUsage)
+
 		// Build row content
-		rowContent := fmt.Sprintf("%*d %-*s %-*s %*d %*s %*s %-*s",
+		rowContent := fmt.Sprintf("%*d %-*s %-*s %*s %*d %*s %*s %-*s",
 			colVMID, vm.VMID,
 			colName, truncateString(vm.Name, colName),
 			colState, stateStr,
+			colCPU, cpuStr,
 			colVCPU, vm.VCPUs,
 			colRAM, components.FormatBytesShort(vm.RAM),
 			colStorage, components.FormatBytesShort(vm.Storage),
