@@ -481,6 +481,12 @@ type vmPlacement struct {
 	reason     string
 }
 
+// targetNodeState wraps NodeState with a mutex for thread-safe updates
+type targetNodeState struct {
+	state NodeState
+	mu    sync.Mutex
+}
+
 // GenerateSuggestionsBalanced creates migration suggestions using a multi-threaded
 // algorithm that ensures no target node exceeds the cluster average usage.
 // This is used for "Migrate All" mode.
@@ -489,17 +495,12 @@ func GenerateSuggestionsBalanced(vms []proxmox.VM, targets []proxmox.Node, clust
 	targetAverages := CalculateTargetAverages(cluster, constraints.SourceNode, vms)
 
 	// Initialize target states with mutex for thread-safe updates
-	type targetState struct {
-		state NodeState
-		mu    sync.Mutex
-	}
-
-	targetStates := make(map[string]*targetState)
+	targetStates := make(map[string]*targetNodeState)
 	vmsPerTarget := make(map[string]int)
 	var statesMu sync.RWMutex
 
 	for _, target := range targets {
-		targetStates[target.Name] = &targetState{
+		targetStates[target.Name] = &targetNodeState{
 			state: NewNodeState(&target),
 		}
 		vmsPerTarget[target.Name] = len(target.VMs)
@@ -594,7 +595,7 @@ func GenerateSuggestionsBalanced(vms []proxmox.VM, targets []proxmox.Node, clust
 
 // findBestTargetBalanced finds the best target for a VM ensuring the target
 // doesn't exceed cluster average after adding the VM
-func findBestTargetBalanced(vm proxmox.VM, targetStates map[string]*targetState, vmsPerTarget map[string]int, statesMu *sync.RWMutex, averages ClusterAverages, constraints MigrationConstraints) vmPlacement {
+func findBestTargetBalanced(vm proxmox.VM, targetStates map[string]*targetNodeState, vmsPerTarget map[string]int, statesMu *sync.RWMutex, averages ClusterAverages, constraints MigrationConstraints) vmPlacement {
 	type candidate struct {
 		name   string
 		score  float64
@@ -609,7 +610,7 @@ func findBestTargetBalanced(vm proxmox.VM, targetStates map[string]*targetState,
 	// Evaluate all targets in parallel
 	for name, ts := range targetStates {
 		wg.Add(1)
-		go func(targetName string, targetState *targetState) {
+		go func(targetName string, targetState *targetNodeState) {
 			defer wg.Done()
 
 			targetState.mu.Lock()
@@ -705,7 +706,7 @@ func calculateBalancedScore(state NodeState, averages ClusterAverages) float64 {
 }
 
 // findFallbackTarget finds any target with capacity when no target is below average
-func findFallbackTarget(vm proxmox.VM, targetStates map[string]*targetState, vmsPerTarget map[string]int, statesMu *sync.RWMutex, constraints MigrationConstraints) vmPlacement {
+func findFallbackTarget(vm proxmox.VM, targetStates map[string]*targetNodeState, vmsPerTarget map[string]int, statesMu *sync.RWMutex, constraints MigrationConstraints) vmPlacement {
 	type fallback struct {
 		name  string
 		score float64
