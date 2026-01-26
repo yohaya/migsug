@@ -76,6 +76,10 @@ type Model struct {
 	selectedHostName string   // Selected host for detail view
 	impactHostNames  []string // Sorted list of host names in impact table
 
+	// Host detail view state
+	hostDetailSection    int // 0 = Before VMs, 1 = After VMs
+	hostDetailScrollPos  int // Scroll position for current section
+
 	// UI state
 	width      int
 	height     int
@@ -832,9 +836,93 @@ func (m *Model) buildImpactHostList() []string {
 }
 
 func (m Model) handleHostDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Calculate VM counts for scrolling limits
+	isSource := (m.selectedHostName == m.sourceNode || m.selectedHostName == m.result.SourceBefore.Name)
+	var beforeVMCount, afterVMCount int
+
+	if isSource {
+		// Source node: Before = all VMs removed, After = empty
+		for _, sug := range m.result.Suggestions {
+			if sug.SourceNode == m.sourceNode {
+				beforeVMCount++
+			}
+		}
+		afterVMCount = 0
+	} else {
+		// Target node: Before = empty (or existing), After = VMs added
+		beforeVMCount = 0
+		for _, sug := range m.result.Suggestions {
+			if sug.TargetNode == m.selectedHostName {
+				afterVMCount++
+			}
+		}
+	}
+
+	// Calculate max visible rows (height - overhead for headers, titles, help)
+	maxVisible := m.height - 20
+	if maxVisible < 3 {
+		maxVisible = 3
+	}
+
+	currentVMCount := beforeVMCount
+	if m.hostDetailSection == 1 {
+		currentVMCount = afterVMCount
+	}
+
 	switch msg.String() {
-	case "esc", "enter", "q":
+	case "tab":
+		// Switch between Before and After sections
+		m.hostDetailSection = (m.hostDetailSection + 1) % 2
+		m.hostDetailScrollPos = 0 // Reset scroll when switching sections
+		return m, nil
+
+	case "up", "k":
+		if m.hostDetailScrollPos > 0 {
+			m.hostDetailScrollPos--
+		}
+		return m, nil
+
+	case "down", "j":
+		if m.hostDetailScrollPos < currentVMCount-maxVisible {
+			m.hostDetailScrollPos++
+		}
+		if m.hostDetailScrollPos < 0 {
+			m.hostDetailScrollPos = 0
+		}
+		return m, nil
+
+	case "pgup":
+		m.hostDetailScrollPos -= maxVisible
+		if m.hostDetailScrollPos < 0 {
+			m.hostDetailScrollPos = 0
+		}
+		return m, nil
+
+	case "pgdown":
+		m.hostDetailScrollPos += maxVisible
+		if m.hostDetailScrollPos > currentVMCount-maxVisible {
+			m.hostDetailScrollPos = currentVMCount - maxVisible
+		}
+		if m.hostDetailScrollPos < 0 {
+			m.hostDetailScrollPos = 0
+		}
+		return m, nil
+
+	case "home":
+		m.hostDetailScrollPos = 0
+		return m, nil
+
+	case "end":
+		m.hostDetailScrollPos = currentVMCount - maxVisible
+		if m.hostDetailScrollPos < 0 {
+			m.hostDetailScrollPos = 0
+		}
+		return m, nil
+
+	case "esc", "q":
 		m.currentView = ViewResults
+		m.hostDetailSection = 0
+		m.hostDetailScrollPos = 0
 		return m, tea.ClearScreen
 	}
 	return m, nil
@@ -889,7 +977,7 @@ func (m Model) View() string {
 		return "No results available"
 	case ViewHostDetail:
 		if m.result != nil && m.selectedHostName != "" {
-			return views.RenderHostDetail(m.result, m.selectedHostName, m.sourceNode, m.width, m.height)
+			return views.RenderHostDetailInteractive(m.result, m.selectedHostName, m.sourceNode, m.width, m.height, m.hostDetailSection, m.hostDetailScrollPos)
 		}
 		return "No host selected"
 	case ViewError:

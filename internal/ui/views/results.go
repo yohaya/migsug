@@ -257,8 +257,13 @@ func RenderResultsInteractive(result *analyzer.AnalysisResult, cluster *proxmox.
 	return sb.String()
 }
 
-// RenderHostDetail renders the detail view for a selected host showing VMs added/removed
+// RenderHostDetail renders the detail view for a selected host showing VMs added/removed (legacy)
 func RenderHostDetail(result *analyzer.AnalysisResult, hostName, sourceNodeName string, width, height int) string {
+	return RenderHostDetailInteractive(result, hostName, sourceNodeName, width, height, 0, 0)
+}
+
+// RenderHostDetailInteractive renders the detail view with two scrollable tables and Tab switching
+func RenderHostDetailInteractive(result *analyzer.AnalysisResult, hostName, sourceNodeName string, width, height, focusedSection, scrollPos int) string {
 	var sb strings.Builder
 
 	if width < 80 {
@@ -270,8 +275,6 @@ func RenderHostDetail(result *analyzer.AnalysisResult, hostName, sourceNodeName 
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
 	labelStyle := lipgloss.NewStyle()
 	valueStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
-	addedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
-	removedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 
 	// Title
 	sb.WriteString(titleStyle.Render("Host Detail: "+hostName) + "\n")
@@ -298,25 +301,49 @@ func RenderHostDetail(result *analyzer.AnalysisResult, hostName, sourceNodeName 
 		valueStyle.Render(fmt.Sprintf("VMs: %d, vCPUs: %d, CPU: %.1f%%, RAM: %.1f%%",
 			afterState.VMCount, afterState.VCPUs, afterState.CPUPercent, afterState.RAMPercent)) + "\n\n")
 
-	// Collect VMs added/removed
-	var addedVMs, removedVMs []analyzer.MigrationSuggestion
+	// Collect VMs for before/after
+	var beforeVMs, afterVMs []analyzer.MigrationSuggestion
 
 	for _, sug := range result.Suggestions {
 		if isSource && sug.SourceNode == sourceNodeName {
-			removedVMs = append(removedVMs, sug)
+			// Source node: before has VMs, after is empty
+			beforeVMs = append(beforeVMs, sug)
 		} else if !isSource && sug.TargetNode == hostName {
-			addedVMs = append(addedVMs, sug)
+			// Target node: before is empty, after has VMs
+			afterVMs = append(afterVMs, sug)
 		}
 	}
 
-	// Show removed VMs (for source node)
-	if len(removedVMs) > 0 {
-		sb.WriteString(removedStyle.Render(fmt.Sprintf("VMs Removed (%d):", len(removedVMs))) + "\n")
+	// Calculate max visible rows for each table
+	maxVisible := (height - 20) / 2
+	if maxVisible < 3 {
+		maxVisible = 3
+	}
+
+	// Render Before VMs table
+	beforeTitle := "Before VMs"
+	if focusedSection == 0 {
+		beforeTitle = "▶ Before VMs"
+	}
+
+	if isSource {
+		sb.WriteString(fmt.Sprintf("%s (%d):\n", beforeTitle, len(beforeVMs)))
 		sb.WriteString(headerStyle.Render(fmt.Sprintf("  %6s  %-24s  %-20s  %6s  %8s  %8s",
 			"VMID", "Name", "Target", "vCPUs", "RAM", "Storage")) + "\n")
 		sb.WriteString("  " + strings.Repeat("─", 90) + "\n")
 
-		for _, vm := range removedVMs {
+		// Apply scrolling for before section
+		startIdx := 0
+		if focusedSection == 0 {
+			startIdx = scrollPos
+		}
+		endIdx := startIdx + maxVisible
+		if endIdx > len(beforeVMs) {
+			endIdx = len(beforeVMs)
+		}
+
+		for i := startIdx; i < endIdx; i++ {
+			vm := beforeVMs[i]
 			sb.WriteString(fmt.Sprintf("  %6d  %-24s  %-20s  %6d  %8s  %8s\n",
 				vm.VMID,
 				truncateString(vm.VMName, 24),
@@ -325,17 +352,45 @@ func RenderHostDetail(result *analyzer.AnalysisResult, hostName, sourceNodeName 
 				components.FormatBytesShort(vm.RAM),
 				components.FormatBytesShort(vm.Storage)))
 		}
-		sb.WriteString("\n")
+
+		// Show scroll info if needed
+		if len(beforeVMs) > maxVisible && focusedSection == 0 {
+			scrollInfo := fmt.Sprintf("Showing %d-%d of %d", startIdx+1, endIdx, len(beforeVMs))
+			sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("  " + scrollInfo) + "\n")
+		}
+	} else {
+		sb.WriteString(fmt.Sprintf("%s (0):\n", beforeTitle))
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("  (no VMs on this host before migration)") + "\n")
+	}
+	sb.WriteString("\n")
+
+	// Render After VMs table
+	afterTitle := "After VMs"
+	if focusedSection == 1 {
+		afterTitle = "▶ After VMs"
 	}
 
-	// Show added VMs (for target nodes)
-	if len(addedVMs) > 0 {
-		sb.WriteString(addedStyle.Render(fmt.Sprintf("VMs Added (%d):", len(addedVMs))) + "\n")
+	if isSource {
+		sb.WriteString(fmt.Sprintf("%s (0):\n", afterTitle))
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("  (all VMs migrated away)") + "\n")
+	} else {
+		sb.WriteString(fmt.Sprintf("%s (%d):\n", afterTitle, len(afterVMs)))
 		sb.WriteString(headerStyle.Render(fmt.Sprintf("  %6s  %-24s  %-20s  %6s  %8s  %8s",
 			"VMID", "Name", "From", "vCPUs", "RAM", "Storage")) + "\n")
 		sb.WriteString("  " + strings.Repeat("─", 90) + "\n")
 
-		for _, vm := range addedVMs {
+		// Apply scrolling for after section
+		startIdx := 0
+		if focusedSection == 1 {
+			startIdx = scrollPos
+		}
+		endIdx := startIdx + maxVisible
+		if endIdx > len(afterVMs) {
+			endIdx = len(afterVMs)
+		}
+
+		for i := startIdx; i < endIdx; i++ {
+			vm := afterVMs[i]
 			sb.WriteString(fmt.Sprintf("  %6d  %-24s  %-20s  %6d  %8s  %8s\n",
 				vm.VMID,
 				truncateString(vm.VMName, 24),
@@ -344,16 +399,18 @@ func RenderHostDetail(result *analyzer.AnalysisResult, hostName, sourceNodeName 
 				components.FormatBytesShort(vm.RAM),
 				components.FormatBytesShort(vm.Storage)))
 		}
-		sb.WriteString("\n")
-	}
 
-	if len(addedVMs) == 0 && len(removedVMs) == 0 {
-		sb.WriteString("No VMs added or removed on this host.\n\n")
+		// Show scroll info if needed
+		if len(afterVMs) > maxVisible && focusedSection == 1 {
+			scrollInfo := fmt.Sprintf("Showing %d-%d of %d", startIdx+1, endIdx, len(afterVMs))
+			sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("  " + scrollInfo) + "\n")
+		}
 	}
+	sb.WriteString("\n")
 
 	// Help text
 	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	sb.WriteString("\n" + helpStyle.Render("Press Esc or Enter to go back"))
+	sb.WriteString(helpStyle.Render("Tab: Switch section  ↑/↓/PgUp/PgDn: Scroll  Esc: Back"))
 
 	return sb.String()
 }
