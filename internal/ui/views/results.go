@@ -2,7 +2,6 @@ package views
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -114,42 +113,15 @@ func RenderResultsWithSource(result *analyzer.AnalysisResult, cluster *proxmox.C
 	}
 	sb.WriteString("\n")
 
-	// Before/After comparison
+	// Combined impact table (source + targets)
 	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6")).
-		Render("Source Node Impact:") + "\n\n")
-	sb.WriteString(components.RenderNodeStateComparison(
-		result.SourceBefore.Name,
+		Render("Migration Impact:") + "\n\n")
+	sb.WriteString(components.RenderImpactTable(
 		result.SourceBefore,
 		result.SourceAfter,
+		result.TargetsBefore,
+		result.TargetsAfter,
 	))
-	sb.WriteString("\n")
-
-	// Target nodes (sorted for consistent display)
-	if len(result.TargetsAfter) > 0 {
-		sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6")).
-			Render("Target Nodes Impact:") + "\n\n")
-
-		// Sort target names for consistent ordering
-		var targetNames []string
-		for targetName := range result.TargetsAfter {
-			targetNames = append(targetNames, targetName)
-		}
-		sort.Strings(targetNames)
-
-		for _, targetName := range targetNames {
-			afterState := result.TargetsAfter[targetName]
-			beforeState := result.TargetsBefore[targetName]
-			// Only show targets that actually receive VMs
-			if afterState.VMCount != beforeState.VMCount {
-				sb.WriteString(components.RenderNodeStateComparison(
-					targetName,
-					beforeState,
-					afterState,
-				))
-				sb.WriteString("\n")
-			}
-		}
-	}
 
 	// Help text
 	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
@@ -170,17 +142,16 @@ func calculateVisibleRowsWithTargets(height, numTargets int) int {
 	// - Cluster summary + blank: 3 lines
 	// - Source node summary + blank: 4 lines
 	// - Migration summary + 2 blanks: 3 lines
-	// - Table header + separator: 2 lines
-	// - Table closing dashes: 1 line
+	// - Suggestions table header + separator: 2 lines
+	// - Suggestions table closing dashes: 1 line
 	// - Scroll info (below table): 1 line
-	// - Source Node Impact header + blank: 2 lines
-	// - Source node state + blank: 2 lines
-	// - Target Nodes Impact header + blank: 2 lines
-	// - Each target node state + blank: 2 lines each
+	// - Migration Impact header + blank: 2 lines
+	// - Impact table (header1 + header2 + sep + source + closing): 5 lines
+	// - Each target node: 1 line each
 	// - Help text + buffer: 3 lines (extra 1 for safety)
 
-	fixedOverhead := 3 + 3 + 4 + 3 + 2 + 1 + 1 + 2 + 2 + 2 + 3 // = 26 lines
-	targetLines := numTargets * 2                              // Each target takes 2 lines (state + blank)
+	fixedOverhead := 3 + 3 + 4 + 3 + 2 + 1 + 1 + 2 + 5 + 3 // = 27 lines
+	targetLines := numTargets * 1                          // Each target takes 1 line in combined table
 
 	reserved := fixedOverhead + targetLines
 	available := height - reserved

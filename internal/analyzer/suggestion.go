@@ -38,6 +38,7 @@ type AnalysisResult struct {
 type NodeState struct {
 	Name           string
 	VMCount        int
+	VCPUs          int // Total vCPUs allocated to VMs
 	CPUCores       int
 	CPUUsageTotal  float64 // Total CPU usage value
 	CPUPercent     float64 // CPU usage as percentage
@@ -51,9 +52,18 @@ type NodeState struct {
 
 // NewNodeState creates a NodeState from a proxmox.Node
 func NewNodeState(node *proxmox.Node) NodeState {
+	// Calculate total vCPUs from running VMs
+	totalVCPUs := 0
+	for _, vm := range node.VMs {
+		if vm.Status == "running" {
+			totalVCPUs += vm.CPUCores
+		}
+	}
+
 	return NodeState{
 		Name:           node.Name,
 		VMCount:        len(node.VMs),
+		VCPUs:          totalVCPUs,
 		CPUCores:       node.CPUCores,
 		CPUUsageTotal:  node.CPUUsage,
 		CPUPercent:     node.GetCPUPercent(),
@@ -73,6 +83,7 @@ func (ns NodeState) CalculateAfterMigration(addVMs []proxmox.VM, removeVMs []pro
 	// Remove VMs
 	for _, vm := range removeVMs {
 		newState.VMCount--
+		newState.VCPUs -= vm.CPUCores
 		newState.CPUUsageTotal -= vm.CPUUsage / 100 // Convert back from percentage
 		newState.RAMUsed -= vm.UsedMem
 		newState.StorageUsed -= vm.UsedDisk
@@ -81,6 +92,7 @@ func (ns NodeState) CalculateAfterMigration(addVMs []proxmox.VM, removeVMs []pro
 	// Add VMs
 	for _, vm := range addVMs {
 		newState.VMCount++
+		newState.VCPUs += vm.CPUCores
 		newState.CPUUsageTotal += vm.CPUUsage / 100
 		newState.RAMUsed += vm.UsedMem
 		newState.StorageUsed += vm.UsedDisk
