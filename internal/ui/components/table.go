@@ -130,10 +130,10 @@ func RenderNodeTableWideWithSort(nodes []proxmox.Node, selectedIdx int, width in
 	colName := maxNameLen + 2
 	colStatus := 8
 	colVMs := 6
-	colVCPUs := 13 // e.g., "572 (325%)"
+	colVCPUs := 13  // e.g., "572 (325%)"
 	colCPUPct := 8
-	colLA := 7    // e.g., "12.34"
-	colRAM := 22  // e.g., "1632/2048G (80%)"
+	colLA := 14     // e.g., "62.56 (35.5%)"
+	colRAM := 22    // e.g., "1632/2048G (80%)"
 	colDisk := 20 // e.g., "165/205T (80%)"
 	// CPU Model gets remaining width - no artificial limit
 	colCPUModel := width - colName - colStatus - colVMs - colVCPUs - colCPUPct - colLA - colRAM - colDisk - 24
@@ -198,10 +198,16 @@ func RenderNodeTableWideWithSort(nodes []proxmox.Node, selectedIdx int, width in
 			vcpuOvercommit = float64(runningVCPUs) / float64(node.CPUCores) * 100
 		}
 		vcpuStr := fmt.Sprintf("%d (%.0f%%)", runningVCPUs, vcpuOvercommit)
-		// Load Average (1 minute)
+		// Load Average (1 minute) with percentage of total threads
 		laStr := "-"
 		if len(node.LoadAverage) > 0 {
-			laStr = fmt.Sprintf("%.2f", node.LoadAverage[0])
+			la := node.LoadAverage[0]
+			if node.CPUCores > 0 {
+				laPercent := la / float64(node.CPUCores) * 100
+				laStr = fmt.Sprintf("%.2f (%.1f%%)", la, laPercent)
+			} else {
+				laStr = fmt.Sprintf("%.2f", la)
+			}
 		}
 		// RAM: show used/total in G with percentage at end
 		ramStr := FormatRAMWithPercent(node.UsedMem, node.MaxMem, node.GetMemPercent())
