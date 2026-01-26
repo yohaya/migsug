@@ -242,33 +242,32 @@ func renderClusterSummary(cluster *proxmox.Cluster, width int) string {
 	storageColor := getUsageColor(storagePercent)
 
 	// Fixed column widths for alignment
-	col1Width := 22
-	col2Width := 35
+	col1Width := 22 // "Nodes: XX/XX online"
+	col2Width := 18 // "CPU:   XX.X%"
 
-	// Row 1: Nodes, VMs, vCPUs
+	// Row 1: Nodes, CPU, vCPUs
 	nodesStr := fmt.Sprintf("%d/%d online", onlineNodes, len(cluster.Nodes))
 	sb.WriteString(labelStyle.Render("Nodes: ") + valueStyle.Render(fmt.Sprintf("%-*s", col1Width-7, nodesStr)))
-	vmStr := fmt.Sprintf("%d ", cluster.TotalVMs)
-	sb.WriteString(labelStyle.Render("VMs: ") + valueStyle.Render(vmStr))
-	sb.WriteString(dimStyle.Render("(") + runningStyle.Render(fmt.Sprintf("On: %d", cluster.RunningVMs)) + dimStyle.Render(", "))
-	sb.WriteString(stoppedStyle.Render(fmt.Sprintf("Off: %d", cluster.StoppedVMs)) + dimStyle.Render(")"))
-	vmFullLen := 5 + len(vmStr) + 1 + 4 + len(fmt.Sprintf("%d", cluster.RunningVMs)) + 2 + 5 + len(fmt.Sprintf("%d", cluster.StoppedVMs)) + 1
-	if vmFullLen < col2Width {
-		sb.WriteString(strings.Repeat(" ", col2Width-vmFullLen))
-	}
+	cpuStr := fmt.Sprintf("%.1f%%", avgCPU)
+	sb.WriteString(labelStyle.Render("CPU: ") + lipgloss.NewStyle().Foreground(lipgloss.Color(cpuColor)).Render(fmt.Sprintf("%-*s", col2Width-5, cpuStr)))
 	sb.WriteString(labelStyle.Render("vCPUs: ") + valueStyle.Render(fmt.Sprintf("%d", cluster.TotalVCPUs)))
 	sb.WriteString("\n")
 
-	// Row 2: CPU, RAM, Storage
-	cpuStr := fmt.Sprintf("%.1f%%", avgCPU)
-	sb.WriteString(labelStyle.Render("CPU:   ") + lipgloss.NewStyle().Foreground(lipgloss.Color(cpuColor)).Render(fmt.Sprintf("%-*s", col1Width-7, cpuStr)))
+	// Row 2: VMs, RAM, Storage
+	vmStr := fmt.Sprintf("%d ", cluster.TotalVMs)
+	sb.WriteString(labelStyle.Render("VMs:   ") + valueStyle.Render(vmStr))
+	sb.WriteString(dimStyle.Render("(") + runningStyle.Render(fmt.Sprintf("On: %d", cluster.RunningVMs)) + dimStyle.Render(", "))
+	sb.WriteString(stoppedStyle.Render(fmt.Sprintf("Off: %d", cluster.StoppedVMs)) + dimStyle.Render(")"))
+	// Calculate padding to align RAM
+	vmFullLen := 7 + len(vmStr) + 1 + 4 + len(fmt.Sprintf("%d", cluster.RunningVMs)) + 2 + 5 + len(fmt.Sprintf("%d", cluster.StoppedVMs)) + 1
+	targetLen := col1Width + col2Width - 5
+	if vmFullLen < targetLen {
+		sb.WriteString(strings.Repeat(" ", targetLen-vmFullLen))
+	}
 	ramValStr := fmt.Sprintf("%.0f/%.0f GiB", usedRAMGiB, totalRAMGiB)
 	ramPctStr := fmt.Sprintf("(%.1f%%)", ramPercent)
 	sb.WriteString(labelStyle.Render("RAM: ") + valueStyle.Render(ramValStr) + " " + lipgloss.NewStyle().Foreground(lipgloss.Color(ramColor)).Render(ramPctStr))
-	ramFullLen := 5 + len(ramValStr) + 1 + len(ramPctStr)
-	if ramFullLen < col2Width {
-		sb.WriteString(strings.Repeat(" ", col2Width-ramFullLen))
-	}
+	sb.WriteString("  ")
 	sb.WriteString(labelStyle.Render("Storage: ") + valueStyle.Render(fmt.Sprintf("%.0f/%.0f TiB", usedStorageTiB, totalStorageTiB)))
 	sb.WriteString(" " + lipgloss.NewStyle().Foreground(lipgloss.Color(storageColor)).Render(fmt.Sprintf("(%.1f%%)", storagePercent)))
 	sb.WriteString("\n")
