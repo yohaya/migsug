@@ -296,8 +296,8 @@ func RenderNodeTableWideWithSort(nodes []proxmox.Node, selectedIdx int, width in
 			ramStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ramColor))
 			coloredRow.WriteString(ramStyle.Render(fmt.Sprintf("%-*s", colRAM, ramStr)) + " ")
 
-			// Disk with color
-			diskColor := getUsageColor(node.GetDiskPercent())
+			// Disk with color based on free space
+			diskColor := getDiskFreeColor(node.MaxDisk - node.UsedDisk)
 			diskStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(diskColor))
 			coloredRow.WriteString(diskStyle.Render(fmt.Sprintf("%-*s", colDisk, diskStr)) + " ")
 
@@ -440,6 +440,20 @@ func getUsageColor(percent float64) string {
 	if percent >= 87 {
 		return "9" // bright red (readable on black background)
 	} else if percent >= 80 {
+		return "3" // yellow
+	}
+	return "2" // green
+}
+
+// getDiskFreeColor returns color based on free disk space
+// Below 300G: red, 300-500G: yellow, above 500G: green
+func getDiskFreeColor(freeBytes int64) string {
+	const gib = 1024 * 1024 * 1024
+	freeGiB := freeBytes / gib
+
+	if freeGiB < 300 {
+		return "9" // bright red
+	} else if freeGiB < 500 {
 		return "3" // yellow
 	}
 	return "2" // green
