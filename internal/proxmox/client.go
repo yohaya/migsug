@@ -202,6 +202,20 @@ func (c *Client) GetNodeStatus(node string) (*NodeStatus, error) {
 		status.Uptime = int64(uptime)
 	}
 
+	// Extract load average (array of 3 floats: 1, 5, 15 minute averages)
+	if loadavg, ok := rawData["loadavg"].([]interface{}); ok {
+		status.LoadAverage = make([]float64, 0, len(loadavg))
+		for _, v := range loadavg {
+			if f, ok := v.(float64); ok {
+				status.LoadAverage = append(status.LoadAverage, f)
+			} else if s, ok := v.(string); ok {
+				var f float64
+				fmt.Sscanf(s, "%f", &f)
+				status.LoadAverage = append(status.LoadAverage, f)
+			}
+		}
+	}
+
 	return status, nil
 }
 
