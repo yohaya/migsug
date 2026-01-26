@@ -430,6 +430,23 @@ func FormatDiskWithPercent(usedBytes, totalBytes int64, percent float64) string 
 	return fmt.Sprintf("%s/%s (%.0f%%)", usedStr, totalStr, percent)
 }
 
+// FormatUsedTotalPercent formats RAM as used/totalG (percent%)
+// e.g., "1639/2015G (81%)"
+func FormatUsedTotalPercent(usedBytes, totalBytes int64, percent float64) string {
+	const gib = 1024 * 1024 * 1024
+	usedG := float64(usedBytes) / float64(gib)
+	totalG := float64(totalBytes) / float64(gib)
+	return fmt.Sprintf("%.0f/%.0fG (%.0f%%)", usedG, totalG, percent)
+}
+
+// FormatUsedTotalPercentStorage formats storage as used/total (percent%)
+// e.g., "31.4T/34.6T (91%)"
+func FormatUsedTotalPercentStorage(usedBytes, totalBytes int64, percent float64) string {
+	usedStr := FormatBytesShort(usedBytes)
+	totalStr := FormatBytesShort(totalBytes)
+	return fmt.Sprintf("%s/%s (%.0f%%)", usedStr, totalStr, percent)
+}
+
 // FormatRAMGiB formats bytes to GiB with percentage (e.g., "1.6T (80%)")
 func FormatRAMGiB(bytes int64, percent float64) string {
 	const gib = 1024 * 1024 * 1024
@@ -895,15 +912,15 @@ func max(a, b int) int {
 func RenderImpactTable(sourceBefore, sourceAfter analyzer.NodeState, targetsBefore, targetsAfter map[string]analyzer.NodeState) string {
 	var sb strings.Builder
 
-	// Column widths
+	// Column widths - increased for used/total (percent) display
 	const (
 		colHost    = 28 // Extended to support "kv0002-123-250-123-123 (src)"
 		colVMs     = 5
 		colVCPUs   = 6
 		colCPU     = 6
-		colRAM     = 8
-		colStorage = 8
-		colSep     = 3 // " | "
+		colRAM     = 20 // e.g., "1639/2015G (81%)"
+		colStorage = 20 // e.g., "31.4T/34.6T (91%)"
+		colSep     = 3  // " | "
 	)
 
 	// Styles
@@ -946,15 +963,19 @@ func RenderImpactTable(sourceBefore, sourceAfter analyzer.NodeState, targetsBefo
 		beforeVMs := fmt.Sprintf("%*d", colVMs, before.VMCount)
 		beforeVCPUs := fmt.Sprintf("%*d", colVCPUs, before.VCPUs)
 		beforeCPU := fmt.Sprintf("%*.1f", colCPU-1, before.CPUPercent) + "%"
-		beforeRAM := fmt.Sprintf("%*s", colRAM, FormatBytesShort(before.RAMUsed))
-		beforeStorage := fmt.Sprintf("%*s", colStorage, FormatBytesShort(before.StorageUsed))
+		beforeRAMStr := FormatUsedTotalPercent(before.RAMUsed, before.RAMTotal, before.RAMPercent)
+		beforeRAM := fmt.Sprintf("%*s", colRAM, beforeRAMStr)
+		beforeStorageStr := FormatUsedTotalPercentStorage(before.StorageUsed, before.StorageTotal, before.StoragePercent)
+		beforeStorage := fmt.Sprintf("%*s", colStorage, beforeStorageStr)
 
 		// After values
 		afterVMs := fmt.Sprintf("%*d", colVMs, after.VMCount)
 		afterVCPUs := fmt.Sprintf("%*d", colVCPUs, after.VCPUs)
 		afterCPU := fmt.Sprintf("%*.1f", colCPU-1, after.CPUPercent) + "%"
-		afterRAM := fmt.Sprintf("%*s", colRAM, FormatBytesShort(after.RAMUsed))
-		afterStorage := fmt.Sprintf("%*s", colStorage, FormatBytesShort(after.StorageUsed))
+		afterRAMStr := FormatUsedTotalPercent(after.RAMUsed, after.RAMTotal, after.RAMPercent)
+		afterRAM := fmt.Sprintf("%*s", colRAM, afterRAMStr)
+		afterStorageStr := FormatUsedTotalPercentStorage(after.StorageUsed, after.StorageTotal, after.StoragePercent)
+		afterStorage := fmt.Sprintf("%*s", colStorage, afterStorageStr)
 
 		// Determine color based on improvement (green = better, yellow = worse)
 		vmsDiff := after.VMCount - before.VMCount
@@ -1032,14 +1053,14 @@ func RenderImpactTable(sourceBefore, sourceAfter analyzer.NodeState, targetsBefo
 func RenderImpactTableWithCursor(sourceBefore, sourceAfter analyzer.NodeState, targetsBefore, targetsAfter map[string]analyzer.NodeState, cursorPos int) string {
 	var sb strings.Builder
 
-	// Column widths
+	// Column widths - increased for used/total (percent) display
 	const (
 		colHost    = 28
 		colVMs     = 5
 		colVCPUs   = 6
 		colCPU     = 6
-		colRAM     = 8
-		colStorage = 8
+		colRAM     = 20 // e.g., "1639/2015G (81%)"
+		colStorage = 20 // e.g., "31.4T/34.6T (91%)"
 		colSep     = 3
 	)
 
@@ -1088,14 +1109,18 @@ func RenderImpactTableWithCursor(sourceBefore, sourceAfter analyzer.NodeState, t
 		beforeVMs := fmt.Sprintf("%*d", colVMs, before.VMCount)
 		beforeVCPUs := fmt.Sprintf("%*d", colVCPUs, before.VCPUs)
 		beforeCPU := fmt.Sprintf("%*.1f", colCPU-1, before.CPUPercent) + "%"
-		beforeRAM := fmt.Sprintf("%*s", colRAM, FormatBytesShort(before.RAMUsed))
-		beforeStorage := fmt.Sprintf("%*s", colStorage, FormatBytesShort(before.StorageUsed))
+		beforeRAMStr := FormatUsedTotalPercent(before.RAMUsed, before.RAMTotal, before.RAMPercent)
+		beforeRAM := fmt.Sprintf("%*s", colRAM, beforeRAMStr)
+		beforeStorageStr := FormatUsedTotalPercentStorage(before.StorageUsed, before.StorageTotal, before.StoragePercent)
+		beforeStorage := fmt.Sprintf("%*s", colStorage, beforeStorageStr)
 
 		afterVMs := fmt.Sprintf("%*d", colVMs, after.VMCount)
 		afterVCPUs := fmt.Sprintf("%*d", colVCPUs, after.VCPUs)
 		afterCPU := fmt.Sprintf("%*.1f", colCPU-1, after.CPUPercent) + "%"
-		afterRAM := fmt.Sprintf("%*s", colRAM, FormatBytesShort(after.RAMUsed))
-		afterStorage := fmt.Sprintf("%*s", colStorage, FormatBytesShort(after.StorageUsed))
+		afterRAMStr := FormatUsedTotalPercent(after.RAMUsed, after.RAMTotal, after.RAMPercent)
+		afterRAM := fmt.Sprintf("%*s", colRAM, afterRAMStr)
+		afterStorageStr := FormatUsedTotalPercentStorage(after.StorageUsed, after.StorageTotal, after.StoragePercent)
+		afterStorage := fmt.Sprintf("%*s", colStorage, afterStorageStr)
 
 		beforeSection := fmt.Sprintf("%s %s %s %s %s", beforeVMs, beforeVCPUs, beforeCPU, beforeRAM, beforeStorage)
 		afterSection := fmt.Sprintf("%s %s %s %s %s", afterVMs, afterVCPUs, afterCPU, afterRAM, afterStorage)
