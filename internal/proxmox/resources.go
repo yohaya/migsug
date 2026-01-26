@@ -3,7 +3,11 @@ package proxmox
 import (
 	"fmt"
 	"sort"
+	"sync"
 )
+
+// Maximum concurrent node status fetches
+const maxConcurrentFetches = 32
 
 // CollectClusterData gathers complete cluster information
 func CollectClusterData(client ProxmoxClient) (*Cluster, error) {
@@ -90,22 +94,9 @@ func CollectClusterData(client ProxmoxClient) (*Cluster, error) {
 		}
 	}
 
-	// Fetch detailed node status for each node (CPU model, sockets, MHz, PVE version)
-	for nodeName, node := range nodeMap {
-		if node.Status == "online" {
-			status, err := client.GetNodeStatus(nodeName)
-			if err == nil && status != nil {
-				node.CPUModel = status.CPUInfo.Model
-				node.CPUSockets = status.CPUInfo.Sockets
-				node.CPUMHz = status.CPUInfo.MHz
-				// CPUCores from resources is total logical CPUs
-				// If we got more detailed info, we can verify/update
-				if status.CPUInfo.CPUs > 0 {
-					node.CPUCores = status.CPUInfo.CPUs
-				}
-			}
-		}
-	}
+	// Fetch detailed node status for each node in parallel (CPU model, sockets, MHz, PVE version)
+	// Use a worker pool with limited concurrency for large clusters
+	fetchNodeDetails(client, nodeMap)
 
 	// Assign VMs to their nodes
 	for _, vm := range vmList {
@@ -258,4 +249,82 @@ func GetAvailableTargets(cluster *Cluster, sourceNode string, excludeNodes []str
 	}
 
 	return targets
+}
+
+// nodeStatusResult holds the result of fetching node status
+type nodeStatusResult struct {
+	nodeName string
+	status   *NodeStatus
+	err      error
+}
+
+// fetchNodeDetails fetches detailed status for all online nodes in parallel
+// Uses a worker pool with limited concurrency (maxConcurrentFetches)
+func fetchNodeDetails(client ProxmoxClient, nodeMap map[string]*Node) {
+	// Collect online nodes that need fetching
+	var onlineNodes []string
+	for nodeName, node := range nodeMap {
+		if node.Status == "online" {
+			onlineNodes = append(onlineNodes, nodeName)
+		}
+	}
+
+	if len(onlineNodes) == 0 {
+		return
+	}
+
+	// Create channels for work distribution and results
+	jobs := make(chan string, len(onlineNodes))
+	results := make(chan nodeStatusResult, len(onlineNodes))
+
+	// Determine number of workers (min of maxConcurrentFetches and number of nodes)
+	numWorkers := maxConcurrentFetches
+	if len(onlineNodes) < numWorkers {
+		numWorkers = len(onlineNodes)
+	}
+
+	// Start worker goroutines
+	var wg sync.WaitGroup
+	for i := 0; i < numWorkers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for nodeName := range jobs {
+				status, err := client.GetNodeStatus(nodeName)
+				results <- nodeStatusResult{
+					nodeName: nodeName,
+					status:   status,
+					err:      err,
+				}
+			}
+		}()
+	}
+
+	// Send jobs to workers
+	for _, nodeName := range onlineNodes {
+		jobs <- nodeName
+	}
+	close(jobs)
+
+	// Wait for all workers to complete in a separate goroutine
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	// Collect results and update node map
+	for result := range results {
+		if result.err == nil && result.status != nil {
+			if node, exists := nodeMap[result.nodeName]; exists {
+				node.CPUModel = result.status.CPUInfo.Model
+				node.CPUSockets = result.status.CPUInfo.Sockets
+				node.CPUMHz = result.status.CPUInfo.MHz
+				// CPUCores from resources is total logical CPUs
+				// If we got more detailed info, we can verify/update
+				if result.status.CPUInfo.CPUs > 0 {
+					node.CPUCores = result.status.CPUInfo.CPUs
+				}
+			}
+		}
+	}
 }
