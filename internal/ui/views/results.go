@@ -435,9 +435,10 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
 	labelStyle := lipgloss.NewStyle()
 	valueStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	selectedStyle := lipgloss.NewStyle().Background(lipgloss.Color("236")).Foreground(lipgloss.Color("15")).Bold(true)
-	arrowOutStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("1"))  // Red for out
-	arrowInStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2"))   // Green for in
+	arrowOutStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("1")) // Red for out
+	arrowInStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2"))  // Green for in
 
 	// Title
 	sb.WriteString(titleStyle.Render("Host Detail: "+hostName) + "\n")
@@ -445,6 +446,20 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 
 	// Check if this is the source node
 	isSource := (hostName == sourceNodeName || hostName == result.SourceBefore.Name)
+
+	// Get the node from cluster to show CPU info
+	node := proxmox.GetNodeByName(cluster, hostName)
+
+	// Show CPU model and threads
+	if node != nil {
+		cpuInfoStr := ""
+		if node.CPUModel != "" {
+			cpuInfoStr = fmt.Sprintf("%s, %d threads", node.CPUModel, node.CPUCores)
+		} else {
+			cpuInfoStr = fmt.Sprintf("%d threads", node.CPUCores)
+		}
+		sb.WriteString(labelStyle.Render("CPU:    ") + dimStyle.Render(cpuInfoStr) + "\n")
+	}
 
 	// Get before/after state
 	var beforeState, afterState analyzer.NodeState
@@ -550,22 +565,22 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 		maxVisible = 3
 	}
 
-	// Column widths
+	// Column widths - increased for full hostnames
 	const (
 		colDir     = 2  // Arrow direction
 		colVMID    = 6
-		colName    = 24
+		colName    = 32 // Increased for longer VM names
 		colState   = 5
 		colCPU     = 6  // CPU%
 		colVCPU    = 5
 		colRAM     = 8
 		colStorage = 8
-		colTarget  = 20
+		colTarget  = 28 // Increased for full hostname in migration info
 	)
 	totalWidth := colDir + colVMID + colName + colState + colCPU + colVCPU + colRAM + colStorage + colTarget + 8
 
-	// Header
-	header := fmt.Sprintf("  %*s %*s %-*s %-*s %*s %*s %*s %*s %-*s",
+	// Header - aligned with data columns (no extra space between dir and VMID)
+	header := fmt.Sprintf("  %*s%*s %-*s %-*s %*s %*s %*s %*s %-*s",
 		colDir, "",
 		colVMID, "VMID",
 		colName, "Name",
@@ -614,16 +629,16 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 		// CPU% string
 		cpuStr := fmt.Sprintf("%.1f", vm.CPUUsage)
 
-		// Build row content
+		// Build row content - show full names without truncation
 		rowContent := fmt.Sprintf("%*d %-*s %-*s %*s %*d %*s %*s %-*s",
 			colVMID, vm.VMID,
-			colName, truncateString(vm.Name, colName),
+			colName, vm.Name,
 			colState, stateStr,
 			colCPU, cpuStr,
 			colVCPU, vm.VCPUs,
 			colRAM, components.FormatBytesShort(vm.RAM),
 			colStorage, components.FormatBytesShort(vm.Storage),
-			colTarget, truncateString(migrationStr, colTarget))
+			colTarget, migrationStr)
 
 		// Selector prefix
 		selector := "  "
