@@ -450,23 +450,36 @@ func (m Model) handleCriteriaKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleCriteriaInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Check if we're in strategy selection mode for CPU migration
+	if m.criteriaState.SelectedMode == analyzer.ModeCPUUsage && m.criteriaState.StrategySelection {
+		return m.handleStrategySelection(msg)
+	}
+
 	switch msg.String() {
 	case "enter":
 		// Clear previous error
 		m.criteriaState.ErrorMessage = ""
 
-		// Validate input before starting analysis
+		// Validate input before proceeding
 		validationErr := m.validateCriteriaInput()
 		if validationErr != "" {
 			m.criteriaState.ErrorMessage = validationErr
 			return m, nil
 		}
 
-		// Validate and start analysis
+		// For CPU mode, show strategy selection instead of starting analysis
+		if m.criteriaState.SelectedMode == analyzer.ModeCPUUsage {
+			m.criteriaState.StrategySelection = true
+			m.criteriaState.StrategyCursor = 0 // Start at Quick Relief
+			return m, tea.ClearScreen
+		}
+
+		// For other modes, start analysis directly
 		m.criteriaState.InputFocused = false
 		return m, tea.Batch(tea.ClearScreen, m.startAnalysis())
 	case "esc":
 		m.criteriaState.InputFocused = false
+		m.criteriaState.StrategySelection = false
 		m.criteriaState.ErrorMessage = ""
 		// Clear all input fields to reset the form
 		m.criteriaState.VMCount = ""
@@ -484,6 +497,39 @@ func (m Model) handleCriteriaInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.appendToInput(msg.String())
 			m.criteriaState.ErrorMessage = "" // Clear error on edit
 		}
+	}
+	return m, nil
+}
+
+// handleStrategySelection handles key input during CPU migration strategy selection
+func (m Model) handleStrategySelection(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "up", "k":
+		if m.criteriaState.StrategyCursor > 0 {
+			m.criteriaState.StrategyCursor--
+		}
+	case "down", "j":
+		if m.criteriaState.StrategyCursor < 2 { // 3 strategies: 0, 1, 2
+			m.criteriaState.StrategyCursor++
+		}
+	case "enter":
+		// Set the selected strategy based on cursor position
+		switch m.criteriaState.StrategyCursor {
+		case 0:
+			m.criteriaState.CPUStrategy = analyzer.StrategyQuick
+		case 1:
+			m.criteriaState.CPUStrategy = analyzer.StrategyBalanced
+		case 2:
+			m.criteriaState.CPUStrategy = analyzer.StrategyThorough
+		}
+		// Now start the analysis
+		m.criteriaState.InputFocused = false
+		m.criteriaState.StrategySelection = false
+		return m, tea.Batch(tea.ClearScreen, m.startAnalysis())
+	case "esc":
+		// Go back to CPU input
+		m.criteriaState.StrategySelection = false
+		return m, tea.ClearScreen
 	}
 	return m, nil
 }
@@ -784,6 +830,7 @@ func (m Model) handleResultsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.criteriaState.RAMAmount = ""
 		m.criteriaState.StorageAmount = ""
 		m.criteriaState.InputFocused = false
+		m.criteriaState.StrategySelection = false
 		m.criteriaState.ErrorMessage = ""
 		return m, tea.ClearScreen
 
@@ -801,6 +848,7 @@ func (m Model) handleResultsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.criteriaState.RAMAmount = ""
 		m.criteriaState.StorageAmount = ""
 		m.criteriaState.InputFocused = false
+		m.criteriaState.StrategySelection = false
 		m.criteriaState.ErrorMessage = ""
 		return m, tea.ClearScreen
 	}
@@ -1057,6 +1105,7 @@ func (m Model) startAnalysis() tea.Cmd {
 					return errMsg{fmt.Errorf("invalid CPU usage: %w", parseErr)}
 				}
 				constraints.CPUUsage = &usage
+				constraints.CPUStrategy = m.criteriaState.CPUStrategy
 			}
 		case analyzer.ModeRAM:
 			if m.criteriaState.RAMAmount != "" {
