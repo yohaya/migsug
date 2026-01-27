@@ -345,7 +345,7 @@ func RenderHostDetailInteractive(result *analyzer.AnalysisResult, hostName, sour
 				truncateString(vm.TargetNode, 20),
 				vm.VCPUs,
 				components.FormatBytesShort(vm.RAM),
-				components.FormatBytesShort(vm.Storage)))
+				components.FormatStorageG(vm.Storage)))
 		}
 
 		// Show scroll info if needed
@@ -392,7 +392,7 @@ func RenderHostDetailInteractive(result *analyzer.AnalysisResult, hostName, sour
 				truncateString(vm.SourceNode, 20),
 				vm.VCPUs,
 				components.FormatBytesShort(vm.RAM),
-				components.FormatBytesShort(vm.Storage)))
+				components.FormatStorageG(vm.Storage)))
 		}
 
 		// Show scroll info if needed
@@ -565,8 +565,8 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 		}
 	}
 
-	// Calculate max visible rows
-	maxVisible := height - 15
+	// Calculate max visible rows - leave room for migration reasoning panel
+	maxVisible := height - 25
 	if maxVisible < 3 {
 		maxVisible = 3
 	}
@@ -643,7 +643,7 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 			colCPU, cpuStr,
 			colVCPU, vm.VCPUs,
 			colRAM, components.FormatBytesShort(vm.RAM),
-			colStorage, components.FormatBytesShort(vm.Storage),
+			colStorage, components.FormatStorageG(vm.Storage),
 			colTarget, migrationStr)
 
 		// Selector prefix

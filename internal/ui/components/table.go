@@ -413,6 +413,13 @@ func FormatBytesShort(bytes int64) string {
 	return fmt.Sprintf("%.1f%s", val, units[exp])
 }
 
+// FormatStorageG formats storage size always in GB with whole numbers
+func FormatStorageG(bytes int64) string {
+	const gib = 1024 * 1024 * 1024
+	gb := float64(bytes) / float64(gib)
+	return fmt.Sprintf("%.0fG", gb)
+}
+
 // FormatRAMWithPercent formats used/total RAM in G with percentage at end
 // e.g., "1232/2320G (52%)"
 func FormatRAMWithPercent(usedBytes, totalBytes int64, percent float64) string {
@@ -700,7 +707,7 @@ func RenderVMTableWithScroll(vms []proxmox.VM, selectedIndices map[int]bool, cur
 			colVCPU, vm.CPUCores,
 			colCPU, cpuStr,
 			colRAM, FormatBytes(vm.UsedMem),
-			colStorage, FormatBytes(vm.UsedDisk),
+			colStorage, FormatStorageG(vm.UsedDisk),
 		)
 
 		if i == cursorIdx {
@@ -844,7 +851,7 @@ func RenderSuggestionTableWithCursor(suggestions []analyzer.MigrationSuggestion,
 			colCPU, cpuStr,
 			colVCPU, sug.VCPUs,
 			colRAM, FormatBytes(sug.RAM),
-			colStorage, FormatBytes(sug.Storage),
+			colStorage, FormatStorageG(sug.Storage),
 		)
 
 		// Scrollbar character for this row
