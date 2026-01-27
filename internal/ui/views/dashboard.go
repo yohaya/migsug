@@ -97,7 +97,7 @@ func RenderDashboardWithHeight(cluster *proxmox.Cluster, selectedIdx int, width,
 		if endPos > len(cluster.Nodes) {
 			endPos = len(cluster.Nodes)
 		}
-		scrollInfo := fmt.Sprintf("(showing %d-%d of %d nodes)",
+		scrollInfo := fmt.Sprintf("Showing %d-%d of %d nodes",
 			scrollPos+1, endPos, len(cluster.Nodes))
 		// Right-align: pad with spaces so last char aligns with end of separator
 		padding := width - len(scrollInfo)
