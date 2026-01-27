@@ -775,17 +775,48 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 	}
 
 	// Show migration reasoning panel if selected VM is migrating
+	reasoningContent := ""
 	if cursorPos >= 0 && cursorPos < len(vmList) {
 		selectedVM := vmList[cursorPos]
 		if selectedVM.Details != nil && selectedVM.Direction != "" {
-			sb.WriteString("\n")
-			sb.WriteString(renderMigrationReasoning(selectedVM, hostName))
+			reasoningContent = renderMigrationReasoning(selectedVM, hostName)
 		}
+	}
+
+	// Calculate lines used so far
+	// Header: 2 (title + border)
+	// CPU info: 1
+	// Before/After: 3 (before, after, blank)
+	// Table header + separator: 2
+	// VM rows: maxVisible
+	// Closing line: 1
+	// Scroll info: 1 (if applicable)
+	fixedLines := 2 + 1 + 3 + 2 + maxVisible + 1
+	if len(vmList) > maxVisible {
+		fixedLines++ // scroll info line
+	}
+
+	// Add reasoning panel
+	if reasoningContent != "" {
+		sb.WriteString("\n")
+		sb.WriteString(reasoningContent)
+		fixedLines++ // blank line before reasoning
+		// Count lines in reasoning content
+		reasoningLines := strings.Count(reasoningContent, "\n")
+		fixedLines += reasoningLines
 	}
 
 	// Help text
 	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	sb.WriteString("\n" + helpStyle.Render("↑/↓/PgUp/PgDn/Home/End: Navigate  Esc: Back  q: Quit"))
+	fixedLines += 2 // blank line + help text
+
+	// Pad with empty lines to fill the screen and clear old content
+	// This ensures content from previous renders is overwritten
+	for fixedLines < height {
+		sb.WriteString("\n" + strings.Repeat(" ", width))
+		fixedLines++
+	}
 
 	return sb.String()
 }
