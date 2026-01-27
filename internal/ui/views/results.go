@@ -1267,11 +1267,11 @@ func RenderMigrationCommands(result *analyzer.AnalysisResult, sourceNode string,
 	sb.WriteString(strings.Repeat("━", width) + "\n\n")
 
 	// Instructions
-	sb.WriteString(headerStyle.Render("Copy and execute these commands on the Proxmox host:") + "\n\n")
+	sb.WriteString(headerStyle.Render("Copy and execute these commands from ANY Proxmox cluster node:") + "\n\n")
 
-	// Note about online migration
-	sb.WriteString(noteStyle.Render("Note: Commands below use --online for running VMs (live migration).") + "\n")
-	sb.WriteString(noteStyle.Render("      Stopped VMs are migrated without --online flag.") + "\n\n")
+	// Note about pvesh commands
+	sb.WriteString(noteStyle.Render("Note: Using pvesh API commands (works from any cluster node).") + "\n")
+	sb.WriteString(noteStyle.Render("      Running VMs use --online 1 for live migration.") + "\n\n")
 
 	// Build command list
 	lines := []string{}
@@ -1284,7 +1284,7 @@ func RenderMigrationCommands(result *analyzer.AnalysisResult, sourceNode string,
 		}
 	}
 
-	// Generate commands
+	// Generate commands using pvesh (works from any node)
 	lines = append(lines, headerStyle.Render("# Individual migration commands:"))
 	for _, sug := range result.Suggestions {
 		if sug.TargetNode == "NONE" {
@@ -1292,11 +1292,11 @@ func RenderMigrationCommands(result *analyzer.AnalysisResult, sourceNode string,
 			continue
 		}
 
-		// Generate qm migrate command
-		// Format: qm migrate <vmid> <target> [--online] [--with-local-disks]
-		cmd := fmt.Sprintf("qm migrate %d %s", sug.VMID, sug.TargetNode)
+		// Generate pvesh command (works from any cluster node)
+		// Format: pvesh create /nodes/{sourceNode}/qemu/{vmid}/migrate --target {targetNode} [--online 1]
+		cmd := fmt.Sprintf("pvesh create /nodes/%s/qemu/%d/migrate --target %s", sug.SourceNode, sug.VMID, sug.TargetNode)
 		if sug.Status == "running" {
-			cmd += " --online"
+			cmd += " --online 1"
 		}
 
 		// Add comment with VM name
@@ -1319,9 +1319,9 @@ func RenderMigrationCommands(result *analyzer.AnalysisResult, sourceNode string,
 		if sug.TargetNode == "NONE" {
 			continue
 		}
-		cmd := fmt.Sprintf("qm migrate %d %s", sug.VMID, sug.TargetNode)
+		cmd := fmt.Sprintf("pvesh create /nodes/%s/qemu/%d/migrate --target %s", sug.SourceNode, sug.VMID, sug.TargetNode)
 		if sug.Status == "running" {
-			cmd += " --online"
+			cmd += " --online 1"
 		}
 		cmdParts = append(cmdParts, cmd)
 	}
