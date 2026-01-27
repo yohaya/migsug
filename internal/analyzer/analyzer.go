@@ -721,20 +721,30 @@ func BuildAnalysisResult(sourceNode *proxmox.Node, targets []proxmox.Node, sugge
 	// Source before state - use ACTUAL node values from Proxmox API
 	result.SourceBefore = NewNodeState(sourceNode)
 
-	// Calculate VM CPU contribution being removed
+	// Calculate VM contributions being removed (CPU, RAM, Storage)
 	vmCPUContribution := 0.0
 	var vmRAMContribution int64
+	var vmStorageContribution int64
+	removedVCPUs := 0
 	for _, vm := range vmsToMigrate {
+		// Storage is always counted regardless of power state
+		storage := vm.MaxDisk
+		if storage == 0 {
+			storage = vm.UsedDisk
+		}
+		vmStorageContribution += storage
+
 		if vm.Status == "running" {
 			// HCPU% = vm.CPUUsage * vm.CPUCores / hostCores
 			if sourceNode.CPUCores > 0 {
 				vmCPUContribution += vm.CPUUsage * float64(vm.CPUCores) / float64(sourceNode.CPUCores)
 			}
 			vmRAMContribution += vm.MaxMem
+			removedVCPUs += vm.CPUCores
 		}
 	}
 
-	// Source after state - actual CPU minus VM contributions being removed
+	// Source after state - actual values minus VM contributions being removed
 	result.SourceAfter = result.SourceBefore
 	result.SourceAfter.CPUPercent = result.SourceBefore.CPUPercent - vmCPUContribution
 	if result.SourceAfter.CPUPercent < 0 {
@@ -747,14 +757,14 @@ func BuildAnalysisResult(sourceNode *proxmox.Node, targets []proxmox.Node, sugge
 	if result.SourceBefore.RAMTotal > 0 {
 		result.SourceAfter.RAMPercent = float64(result.SourceAfter.RAMUsed) / float64(result.SourceBefore.RAMTotal) * 100
 	}
-	result.SourceAfter.VMCount = result.SourceBefore.VMCount - len(vmsToMigrate)
-	// Update vCPUs
-	removedVCPUs := 0
-	for _, vm := range vmsToMigrate {
-		if vm.Status == "running" {
-			removedVCPUs += vm.CPUCores
-		}
+	result.SourceAfter.StorageUsed = result.SourceBefore.StorageUsed - vmStorageContribution
+	if result.SourceAfter.StorageUsed < 0 {
+		result.SourceAfter.StorageUsed = 0
 	}
+	if result.SourceBefore.StorageTotal > 0 {
+		result.SourceAfter.StoragePercent = float64(result.SourceAfter.StorageUsed) / float64(result.SourceBefore.StorageTotal) * 100
+	}
+	result.SourceAfter.VMCount = result.SourceBefore.VMCount - len(vmsToMigrate)
 	result.SourceAfter.VCPUs = result.SourceBefore.VCPUs - removedVCPUs
 
 	// Target states
@@ -775,14 +785,22 @@ func BuildAnalysisResult(sourceNode *proxmox.Node, targets []proxmox.Node, sugge
 		beforeState := NewNodeState(&target)
 		result.TargetsBefore[target.Name] = beforeState
 
-		// Calculate "After" by adding VM contributions
+		// Calculate "After" by adding VM contributions (CPU, RAM, Storage)
 		addVMs := targetVMs[target.Name]
 		afterState := beforeState
 
 		var addedCPU float64
 		var addedRAM int64
+		var addedStorage int64
 		addedVCPUs := 0
 		for _, vm := range addVMs {
+			// Storage is always counted regardless of power state
+			storage := vm.MaxDisk
+			if storage == 0 {
+				storage = vm.UsedDisk
+			}
+			addedStorage += storage
+
 			if vm.Status == "running" {
 				// HCPU% contribution on target = vm.CPUUsage * vm.CPUCores / targetCores
 				if target.CPUCores > 0 {
@@ -797,6 +815,10 @@ func BuildAnalysisResult(sourceNode *proxmox.Node, targets []proxmox.Node, sugge
 		afterState.RAMUsed = beforeState.RAMUsed + addedRAM
 		if beforeState.RAMTotal > 0 {
 			afterState.RAMPercent = float64(afterState.RAMUsed) / float64(beforeState.RAMTotal) * 100
+		}
+		afterState.StorageUsed = beforeState.StorageUsed + addedStorage
+		if beforeState.StorageTotal > 0 {
+			afterState.StoragePercent = float64(afterState.StorageUsed) / float64(beforeState.StorageTotal) * 100
 		}
 		afterState.VMCount = beforeState.VMCount + len(addVMs)
 		afterState.VCPUs = beforeState.VCPUs + addedVCPUs
