@@ -17,6 +17,69 @@ type MigrationSuggestion struct {
 	CPUUsage float64
 	RAM      int64
 	Storage  int64
+
+	// Detailed migration reasoning
+	Details *MigrationDetails
+}
+
+// MigrationDetails contains comprehensive reasoning for why a VM was migrated to a specific host
+type MigrationDetails struct {
+	// VM Selection Info
+	SelectionMode   string // "all", "vm_count", "vcpu", "cpu_usage", "ram", "storage", "specific"
+	SelectionReason string // Why this VM was selected for migration
+
+	// Target Selection Scoring
+	ScoreBreakdown ScoreBreakdown
+
+	// Target state comparison
+	TargetBefore ResourceState // Target node state before this VM
+	TargetAfter  ResourceState // Target node state after adding this VM
+
+	// Cluster context (for MigrateAll mode)
+	ClusterAvgCPU float64 // Cluster average CPU%
+	ClusterAvgRAM float64 // Cluster average RAM%
+	BelowAverage  bool    // Is target below cluster average after migration?
+
+	// Alternative targets considered
+	Alternatives []AlternativeTarget
+
+	// Constraints applied
+	ConstraintsApplied []string // List of constraints that were checked
+}
+
+// ScoreBreakdown shows how the target selection score was calculated
+type ScoreBreakdown struct {
+	TotalScore       float64 // Final combined score
+	UtilizationScore float64 // Score based on resource utilization (lower util = higher score)
+	BalanceScore     float64 // Score based on resource balance (more balanced = higher score)
+	HeadroomScore    float64 // Score based on headroom below cluster average (MigrateAll only)
+
+	// Weights used
+	UtilizationWeight float64
+	BalanceWeight     float64
+}
+
+// ResourceState captures resource utilization at a point in time
+type ResourceState struct {
+	CPUPercent     float64
+	RAMPercent     float64
+	StoragePercent float64
+	VMCount        int
+	VCPUs          int
+	RAMUsed        int64
+	RAMTotal       int64
+	StorageUsed    int64
+	StorageTotal   int64
+}
+
+// AlternativeTarget represents a target that was considered but not chosen
+type AlternativeTarget struct {
+	Name            string
+	Score           float64
+	RejectionReason string // Why this target wasn't chosen
+	CPUAfter        float64
+	RAMAfter        float64
+	StorageAfter    float64
 }
 
 // AnalysisResult contains the complete analysis output

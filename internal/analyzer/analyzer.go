@@ -250,9 +250,20 @@ func GenerateSuggestions(vms []proxmox.VM, targets []proxmox.Node, constraints M
 		vmsPerTarget[target.Name] = len(target.VMs)
 	}
 
+	// Determine selection mode for details
+	selectionMode := string(constraints.GetMode())
+	selectionReason := getSelectionReason(constraints)
+
 	// For each VM, find the best target
 	for _, vm := range vms {
-		targetNode, score, reason := FindBestTarget(vm, targetStates, vmsPerTarget, constraints)
+		targetNode, score, reason, details := FindBestTarget(vm, targetStates, vmsPerTarget, constraints)
+
+		// Add selection info to details
+		if details != nil {
+			details.SelectionMode = selectionMode
+			details.SelectionReason = selectionReason
+		}
+
 		if targetNode == "" {
 			// No suitable target found
 			reason = "No suitable target with sufficient capacity"
@@ -284,6 +295,7 @@ func GenerateSuggestions(vms []proxmox.VM, targets []proxmox.Node, constraints M
 			CPUUsage:   vm.CPUUsage,
 			RAM:        vm.MaxMem, // Use allocated RAM
 			Storage:    storageValue,
+			Details:    details,
 		}
 
 		suggestions = append(suggestions, suggestion)
@@ -292,54 +304,223 @@ func GenerateSuggestions(vms []proxmox.VM, targets []proxmox.Node, constraints M
 	return suggestions
 }
 
-// FindBestTarget finds the best target node for a VM
-func FindBestTarget(vm proxmox.VM, targetStates map[string]NodeState, vmsPerTarget map[string]int, constraints MigrationConstraints) (string, float64, string) {
+// getSelectionReason returns a human-readable reason for VM selection
+func getSelectionReason(constraints MigrationConstraints) string {
+	mode := constraints.GetMode()
+	switch mode {
+	case ModeAll:
+		return "Selected for full host evacuation (Migrate All mode)"
+	case ModeSpecific:
+		return "Manually selected by user"
+	case ModeVMCount:
+		return fmt.Sprintf("Selected as one of %d VMs with lowest resource usage", *constraints.VMCount)
+	case ModeVCPU:
+		return fmt.Sprintf("Selected to free up %d vCPUs from source host", *constraints.VCPUCount)
+	case ModeCPUUsage:
+		return fmt.Sprintf("Selected to reduce CPU usage by %.1f%% on source host", *constraints.CPUUsage)
+	case ModeRAM:
+		return fmt.Sprintf("Selected to free up %d GB RAM from source host", *constraints.RAMAmount/(1024*1024*1024))
+	case ModeStorage:
+		return fmt.Sprintf("Selected to free up %d GB storage from source host", *constraints.StorageAmount/(1024*1024*1024))
+	default:
+		return "Selected based on migration criteria"
+	}
+}
+
+// FindBestTarget finds the best target node for a VM and returns detailed reasoning
+func FindBestTarget(vm proxmox.VM, targetStates map[string]NodeState, vmsPerTarget map[string]int, constraints MigrationConstraints) (string, float64, string, *MigrationDetails) {
 	type candidate struct {
-		name   string
-		score  float64
-		reason string
+		name         string
+		score        float64
+		reason       string
+		stateBefore  NodeState
+		stateAfter   NodeState
+		breakdown    ScoreBreakdown
+		rejected     bool
+		rejectReason string
 	}
 
-	var candidates []candidate
+	var allCandidates []candidate
+	var constraintsApplied []string
+
+	// Track which constraints are being checked
+	constraintsApplied = append(constraintsApplied, "RAM capacity check")
+	constraintsApplied = append(constraintsApplied, "Storage capacity check")
+	if constraints.MinRAMFree != nil {
+		constraintsApplied = append(constraintsApplied, fmt.Sprintf("Min RAM free: %d GB", *constraints.MinRAMFree/(1024*1024*1024)))
+	}
+	if constraints.MinCPUFree != nil {
+		constraintsApplied = append(constraintsApplied, fmt.Sprintf("Min CPU free: %.0f%%", *constraints.MinCPUFree))
+	}
+	if constraints.MaxVMsPerHost != nil {
+		constraintsApplied = append(constraintsApplied, fmt.Sprintf("Max VMs per host: %d", *constraints.MaxVMsPerHost))
+	}
 
 	for name, state := range targetStates {
+		cand := candidate{
+			name:        name,
+			stateBefore: state,
+		}
+
 		// Check capacity
 		if !state.HasCapacity(vm, constraints) {
+			cand.rejected = true
+			// Determine specific reason
+			newRAMUsed := state.RAMUsed + vm.UsedMem
+			if newRAMUsed > state.RAMTotal {
+				cand.rejectReason = "Insufficient RAM capacity"
+			} else {
+				newStorageUsed := state.StorageUsed + vm.UsedDisk
+				if newStorageUsed > state.StorageTotal {
+					cand.rejectReason = "Insufficient storage capacity"
+				} else if constraints.MinRAMFree != nil {
+					cand.rejectReason = "Would violate minimum RAM free constraint"
+				} else if constraints.MinCPUFree != nil {
+					cand.rejectReason = "Would violate minimum CPU free constraint"
+				}
+			}
+			allCandidates = append(allCandidates, cand)
 			continue
 		}
 
 		// Check MaxVMsPerHost constraint
 		if constraints.MaxVMsPerHost != nil {
 			if vmsPerTarget[name] >= *constraints.MaxVMsPerHost {
+				cand.rejected = true
+				cand.rejectReason = fmt.Sprintf("Already has %d VMs (max: %d)", vmsPerTarget[name], *constraints.MaxVMsPerHost)
+				allCandidates = append(allCandidates, cand)
 				continue
 			}
 		}
 
 		// Calculate score after adding this VM
 		newState := state.CalculateAfterMigration([]proxmox.VM{vm}, nil)
-		score := calculateTargetScore(state, newState)
+		cand.stateAfter = newState
 
-		reason := fmt.Sprintf("Good balance (CPU: %.1f%%, RAM: %.1f%%, Storage: %.1f%%)",
+		// Calculate detailed score breakdown
+		utilizationScore := 100 - newState.GetUtilizationScore()
+		balanceScore := calculateBalanceScoreDetailed(newState)
+
+		cand.breakdown = ScoreBreakdown{
+			UtilizationScore:  utilizationScore,
+			BalanceScore:      balanceScore,
+			UtilizationWeight: 0.7,
+			BalanceWeight:     0.3,
+			TotalScore:        0.7*utilizationScore + 0.3*balanceScore,
+		}
+		cand.score = cand.breakdown.TotalScore
+
+		cand.reason = fmt.Sprintf("Good balance (CPU: %.1f%%, RAM: %.1f%%, Storage: %.1f%%)",
 			newState.CPUPercent, newState.RAMPercent, newState.StoragePercent)
 
-		candidates = append(candidates, candidate{
-			name:   name,
-			score:  score,
-			reason: reason,
-		})
+		allCandidates = append(allCandidates, cand)
 	}
 
-	if len(candidates) == 0 {
-		return "", 0, "No suitable target found"
+	// Separate valid and rejected candidates
+	var validCandidates []candidate
+	var rejectedCandidates []candidate
+	for _, c := range allCandidates {
+		if c.rejected {
+			rejectedCandidates = append(rejectedCandidates, c)
+		} else {
+			validCandidates = append(validCandidates, c)
+		}
+	}
+
+	if len(validCandidates) == 0 {
+		// Build details even for failure case
+		details := &MigrationDetails{
+			ConstraintsApplied: constraintsApplied,
+		}
+		// Add rejected alternatives
+		for _, c := range rejectedCandidates {
+			details.Alternatives = append(details.Alternatives, AlternativeTarget{
+				Name:            c.name,
+				Score:           0,
+				RejectionReason: c.rejectReason,
+			})
+		}
+		return "", 0, "No suitable target found", details
 	}
 
 	// Sort by score (higher is better)
-	sort.Slice(candidates, func(i, j int) bool {
-		return candidates[i].score > candidates[j].score
+	sort.Slice(validCandidates, func(i, j int) bool {
+		return validCandidates[i].score > validCandidates[j].score
 	})
 
-	best := candidates[0]
-	return best.name, best.score, best.reason
+	best := validCandidates[0]
+
+	// Build detailed migration reasoning
+	details := &MigrationDetails{
+		ScoreBreakdown: best.breakdown,
+		TargetBefore: ResourceState{
+			CPUPercent:     best.stateBefore.CPUPercent,
+			RAMPercent:     best.stateBefore.RAMPercent,
+			StoragePercent: best.stateBefore.StoragePercent,
+			VMCount:        best.stateBefore.VMCount,
+			VCPUs:          best.stateBefore.VCPUs,
+			RAMUsed:        best.stateBefore.RAMUsed,
+			RAMTotal:       best.stateBefore.RAMTotal,
+			StorageUsed:    best.stateBefore.StorageUsed,
+			StorageTotal:   best.stateBefore.StorageTotal,
+		},
+		TargetAfter: ResourceState{
+			CPUPercent:     best.stateAfter.CPUPercent,
+			RAMPercent:     best.stateAfter.RAMPercent,
+			StoragePercent: best.stateAfter.StoragePercent,
+			VMCount:        best.stateAfter.VMCount,
+			VCPUs:          best.stateAfter.VCPUs,
+			RAMUsed:        best.stateAfter.RAMUsed,
+			RAMTotal:       best.stateAfter.RAMTotal,
+			StorageUsed:    best.stateAfter.StorageUsed,
+			StorageTotal:   best.stateAfter.StorageTotal,
+		},
+		ConstraintsApplied: constraintsApplied,
+	}
+
+	// Add alternative targets (other valid options)
+	for i, c := range validCandidates {
+		if i == 0 {
+			continue // Skip the chosen one
+		}
+		if i > 3 {
+			break // Only show top 3 alternatives
+		}
+		details.Alternatives = append(details.Alternatives, AlternativeTarget{
+			Name:            c.name,
+			Score:           c.score,
+			RejectionReason: fmt.Sprintf("Lower score (%.1f vs %.1f)", c.score, best.score),
+			CPUAfter:        c.stateAfter.CPUPercent,
+			RAMAfter:        c.stateAfter.RAMPercent,
+			StorageAfter:    c.stateAfter.StoragePercent,
+		})
+	}
+
+	// Add rejected targets
+	for _, c := range rejectedCandidates {
+		if len(details.Alternatives) >= 5 {
+			break
+		}
+		details.Alternatives = append(details.Alternatives, AlternativeTarget{
+			Name:            c.name,
+			Score:           0,
+			RejectionReason: c.rejectReason,
+		})
+	}
+
+	return best.name, best.score, best.reason, details
+}
+
+// calculateBalanceScoreDetailed calculates balance score with more detail
+func calculateBalanceScoreDetailed(state NodeState) float64 {
+	resources := []float64{state.CPUPercent, state.RAMPercent, state.StoragePercent}
+	mean := (resources[0] + resources[1] + resources[2]) / 3
+	variance := 0.0
+	for _, r := range resources {
+		variance += math.Pow(r-mean, 2)
+	}
+	stdDev := math.Sqrt(variance / 3)
+	return 100 - stdDev
 }
 
 // calculateTargetScore computes a score for target selection
@@ -502,10 +683,16 @@ func GenerateSuggestionsBalanced(vms []proxmox.VM, targets []proxmox.Node, clust
 	// VMs are already sorted by size (largest first) from selectAllVMs
 	for _, vm := range vms {
 		// Find best target for this VM
-		targetName, score, reason := findBestTargetForMigrateAll(vm, targetStates, vmsPerTarget, targetAverages, constraints)
+		targetName, score, reason, details := findBestTargetForMigrateAll(vm, targetStates, vmsPerTarget, targetAverages, constraints)
+
+		// Add selection info to details
+		if details != nil {
+			details.SelectionMode = string(ModeAll)
+			details.SelectionReason = "Selected for full host evacuation (Migrate All mode)"
+		}
 
 		// Update target state after placement
-		if targetName != "" {
+		if targetName != "" && targetName != "NONE" {
 			state := targetStates[targetName]
 			targetStates[targetName] = state.CalculateAfterMigration([]proxmox.VM{vm}, nil)
 			vmsPerTarget[targetName]++
@@ -529,6 +716,7 @@ func GenerateSuggestionsBalanced(vms []proxmox.VM, targets []proxmox.Node, clust
 			CPUUsage:   vm.CPUUsage,
 			RAM:        vm.MaxMem,
 			Storage:    storageValue,
+			Details:    details,
 		}
 		suggestions = append(suggestions, suggestion)
 	}
@@ -538,76 +726,200 @@ func GenerateSuggestionsBalanced(vms []proxmox.VM, targets []proxmox.Node, clust
 
 // findBestTargetForMigrateAll finds the best target for a VM in "Migrate All" mode.
 // Unlike regular mode, this ALWAYS returns a valid target (never "NONE").
-func findBestTargetForMigrateAll(vm proxmox.VM, targetStates map[string]NodeState, vmsPerTarget map[string]int, averages ClusterAverages, constraints MigrationConstraints) (string, float64, string) {
+func findBestTargetForMigrateAll(vm proxmox.VM, targetStates map[string]NodeState, vmsPerTarget map[string]int, averages ClusterAverages, constraints MigrationConstraints) (string, float64, string, *MigrationDetails) {
 	type candidate struct {
 		name         string
 		score        float64
 		reason       string
 		belowAverage bool
+		stateBefore  NodeState
+		stateAfter   NodeState
+		breakdown    ScoreBreakdown
+		rejected     bool
+		rejectReason string
 	}
 
-	var candidates []candidate
+	var allCandidates []candidate
+	var constraintsApplied []string
+
+	constraintsApplied = append(constraintsApplied, "RAM capacity check")
+	constraintsApplied = append(constraintsApplied, "Storage capacity check")
+	constraintsApplied = append(constraintsApplied, fmt.Sprintf("Cluster balance target (CPU: %.1f%%, RAM: %.1f%%)", averages.CPUPercent, averages.RAMPercent))
+	if constraints.MaxVMsPerHost != nil {
+		constraintsApplied = append(constraintsApplied, fmt.Sprintf("Max VMs per host: %d", *constraints.MaxVMsPerHost))
+	}
 
 	// Evaluate all targets
 	for name, state := range targetStates {
+		cand := candidate{
+			name:        name,
+			stateBefore: state,
+		}
+
 		// Check basic capacity (RAM and storage must fit)
 		newRAMUsed := state.RAMUsed + vm.UsedMem
 		if newRAMUsed > state.RAMTotal {
-			continue // Can't fit - skip this target
+			cand.rejected = true
+			cand.rejectReason = "Insufficient RAM capacity"
+			allCandidates = append(allCandidates, cand)
+			continue
 		}
 
 		newStorageUsed := state.StorageUsed + vm.UsedDisk
 		if newStorageUsed > state.StorageTotal {
-			continue // Can't fit - skip this target
+			cand.rejected = true
+			cand.rejectReason = "Insufficient storage capacity"
+			allCandidates = append(allCandidates, cand)
+			continue
 		}
 
 		// Check MaxVMsPerHost constraint if set
 		if constraints.MaxVMsPerHost != nil && vmsPerTarget[name] >= *constraints.MaxVMsPerHost {
+			cand.rejected = true
+			cand.rejectReason = fmt.Sprintf("Already has %d VMs (max: %d)", vmsPerTarget[name], *constraints.MaxVMsPerHost)
+			allCandidates = append(allCandidates, cand)
 			continue
 		}
 
 		// Calculate state after adding this VM
 		newState := state.CalculateAfterMigration([]proxmox.VM{vm}, nil)
+		cand.stateAfter = newState
 
 		// Check if this target stays below cluster average
 		margin := 5.0 // 5% margin
 		belowAverage := newState.CPUPercent <= averages.CPUPercent+margin &&
 			newState.RAMPercent <= averages.RAMPercent+margin
+		cand.belowAverage = belowAverage
 
-		// Calculate score - prefer targets further below average
-		score := calculateBalancedScore(newState, averages)
+		// Calculate detailed score breakdown
+		cpuHeadroom := averages.CPUPercent - newState.CPUPercent
+		ramHeadroom := averages.RAMPercent - newState.RAMPercent
+		headroomScore := cpuHeadroom*0.4 + ramHeadroom*0.4
+		balanceScore := calculateBalanceScoreDetailed(newState)
 
-		var reason string
+		cand.breakdown = ScoreBreakdown{
+			HeadroomScore:     headroomScore,
+			BalanceScore:      balanceScore,
+			UtilizationWeight: 0.0, // Not used in MigrateAll mode
+			BalanceWeight:     0.2,
+			TotalScore:        headroomScore + balanceScore*0.2,
+		}
+		cand.score = cand.breakdown.TotalScore
+
 		if belowAverage {
-			reason = fmt.Sprintf("Balanced (CPU: %.1f%%, RAM: %.1f%%)", newState.CPUPercent, newState.RAMPercent)
+			cand.reason = fmt.Sprintf("Balanced (CPU: %.1f%%, RAM: %.1f%%)", newState.CPUPercent, newState.RAMPercent)
 		} else {
-			reason = fmt.Sprintf("Best available (CPU: %.1f%%, RAM: %.1f%%)", newState.CPUPercent, newState.RAMPercent)
+			cand.reason = fmt.Sprintf("Best available (CPU: %.1f%%, RAM: %.1f%%)", newState.CPUPercent, newState.RAMPercent)
 		}
 
-		candidates = append(candidates, candidate{
-			name:         name,
-			score:        score,
-			reason:       reason,
-			belowAverage: belowAverage,
-		})
+		allCandidates = append(allCandidates, cand)
 	}
 
-	if len(candidates) == 0 {
-		// No target can fit this VM at all - this shouldn't happen normally
-		// but return a message indicating the issue
-		return "NONE", 0, "No target has capacity for this VM"
+	// Separate valid and rejected candidates
+	var validCandidates []candidate
+	var rejectedCandidates []candidate
+	for _, c := range allCandidates {
+		if c.rejected {
+			rejectedCandidates = append(rejectedCandidates, c)
+		} else {
+			validCandidates = append(validCandidates, c)
+		}
+	}
+
+	if len(validCandidates) == 0 {
+		details := &MigrationDetails{
+			ClusterAvgCPU:      averages.CPUPercent,
+			ClusterAvgRAM:      averages.RAMPercent,
+			ConstraintsApplied: constraintsApplied,
+		}
+		for _, c := range rejectedCandidates {
+			details.Alternatives = append(details.Alternatives, AlternativeTarget{
+				Name:            c.name,
+				Score:           0,
+				RejectionReason: c.rejectReason,
+			})
+		}
+		return "NONE", 0, "No target has capacity for this VM", details
 	}
 
 	// Sort candidates: prefer below-average first, then by score
-	sort.Slice(candidates, func(i, j int) bool {
-		if candidates[i].belowAverage != candidates[j].belowAverage {
-			return candidates[i].belowAverage // below-average first
+	sort.Slice(validCandidates, func(i, j int) bool {
+		if validCandidates[i].belowAverage != validCandidates[j].belowAverage {
+			return validCandidates[i].belowAverage // below-average first
 		}
-		return candidates[i].score > candidates[j].score
+		return validCandidates[i].score > validCandidates[j].score
 	})
 
-	best := candidates[0]
-	return best.name, best.score, best.reason
+	best := validCandidates[0]
+
+	// Build detailed migration reasoning
+	details := &MigrationDetails{
+		ScoreBreakdown: best.breakdown,
+		TargetBefore: ResourceState{
+			CPUPercent:     best.stateBefore.CPUPercent,
+			RAMPercent:     best.stateBefore.RAMPercent,
+			StoragePercent: best.stateBefore.StoragePercent,
+			VMCount:        best.stateBefore.VMCount,
+			VCPUs:          best.stateBefore.VCPUs,
+			RAMUsed:        best.stateBefore.RAMUsed,
+			RAMTotal:       best.stateBefore.RAMTotal,
+			StorageUsed:    best.stateBefore.StorageUsed,
+			StorageTotal:   best.stateBefore.StorageTotal,
+		},
+		TargetAfter: ResourceState{
+			CPUPercent:     best.stateAfter.CPUPercent,
+			RAMPercent:     best.stateAfter.RAMPercent,
+			StoragePercent: best.stateAfter.StoragePercent,
+			VMCount:        best.stateAfter.VMCount,
+			VCPUs:          best.stateAfter.VCPUs,
+			RAMUsed:        best.stateAfter.RAMUsed,
+			RAMTotal:       best.stateAfter.RAMTotal,
+			StorageUsed:    best.stateAfter.StorageUsed,
+			StorageTotal:   best.stateAfter.StorageTotal,
+		},
+		ClusterAvgCPU:      averages.CPUPercent,
+		ClusterAvgRAM:      averages.RAMPercent,
+		BelowAverage:       best.belowAverage,
+		ConstraintsApplied: constraintsApplied,
+	}
+
+	// Add alternative targets
+	for i, c := range validCandidates {
+		if i == 0 {
+			continue
+		}
+		if i > 3 {
+			break
+		}
+		var rejectReason string
+		if c.belowAverage != best.belowAverage {
+			rejectReason = "Would exceed cluster average"
+		} else {
+			rejectReason = fmt.Sprintf("Lower score (%.1f vs %.1f)", c.score, best.score)
+		}
+		details.Alternatives = append(details.Alternatives, AlternativeTarget{
+			Name:            c.name,
+			Score:           c.score,
+			RejectionReason: rejectReason,
+			CPUAfter:        c.stateAfter.CPUPercent,
+			RAMAfter:        c.stateAfter.RAMPercent,
+			StorageAfter:    c.stateAfter.StoragePercent,
+		})
+	}
+
+	// Add rejected targets
+	for _, c := range rejectedCandidates {
+		if len(details.Alternatives) >= 5 {
+			break
+		}
+		details.Alternatives = append(details.Alternatives, AlternativeTarget{
+			Name:            c.name,
+			Score:           0,
+			RejectionReason: c.rejectReason,
+		})
+	}
+
+	return best.name, best.score, best.reason, details
 }
 
 // calculateBalancedScore computes a score that prefers targets further below average

@@ -421,6 +421,9 @@ type VMListItem struct {
 	Storage   int64
 	Direction string // "←" for out, "→" for in, "" for staying
 	Target    string // Target/Source node for migration
+
+	// Migration details (only set for migrating VMs)
+	Details *analyzer.MigrationDetails
 }
 
 // RenderHostDetailBrowseable renders a browseable list of all VMs on a host
@@ -515,6 +518,7 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 				if sug, ok := migratingVMs[vm.VMID]; ok && sug.SourceNode == sourceNodeName {
 					item.Direction = "←"
 					item.Target = sug.TargetNode
+					item.Details = sug.Details
 				}
 
 				vmList = append(vmList, item)
@@ -554,6 +558,7 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 					Storage:   sug.Storage,
 					Direction: "→",
 					Target:    sug.SourceNode,
+					Details:   sug.Details,
 				}
 				vmList = append(vmList, item)
 			}
@@ -671,6 +676,15 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(scrollInfo) + "\n")
 	}
 
+	// Show migration reasoning panel if selected VM is migrating
+	if cursorPos >= 0 && cursorPos < len(vmList) {
+		selectedVM := vmList[cursorPos]
+		if selectedVM.Details != nil && selectedVM.Direction != "" {
+			sb.WriteString("\n")
+			sb.WriteString(renderMigrationReasoning(selectedVM, hostName))
+		}
+	}
+
 	// Legend
 	sb.WriteString("\n")
 	legendStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
@@ -679,6 +693,123 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 	// Help text
 	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	sb.WriteString("\n" + helpStyle.Render("↑/↓/PgUp/PgDn/Home/End: Navigate  Esc: Back  q: Quit"))
+
+	return sb.String()
+}
+
+// renderMigrationReasoning renders the detailed reasoning panel for a migrating VM
+func renderMigrationReasoning(vm VMListItem, currentHost string) string {
+	if vm.Details == nil {
+		return ""
+	}
+
+	var sb strings.Builder
+	details := vm.Details
+
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
+	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	valueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
+	goodStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
+	warnStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+
+	// Title
+	sb.WriteString(titleStyle.Render("Migration Reasoning for VM "+fmt.Sprintf("%d", vm.VMID)) + "\n")
+	sb.WriteString(strings.Repeat("─", 60) + "\n\n")
+
+	// VM Selection Reason
+	sb.WriteString(labelStyle.Render("Why selected: ") + valueStyle.Render(details.SelectionReason) + "\n\n")
+
+	// Target Selection
+	targetName := vm.Target
+	if vm.Direction == "←" {
+		// Migrating out - target is the destination
+		targetName = vm.Target
+	}
+
+	sb.WriteString(labelStyle.Render("Why this target (") + valueStyle.Render(targetName) + labelStyle.Render("):") + "\n")
+
+	// Score breakdown
+	if details.ScoreBreakdown.TotalScore > 0 {
+		sb.WriteString("  " + labelStyle.Render("Score: ") + valueStyle.Render(fmt.Sprintf("%.1f", details.ScoreBreakdown.TotalScore)) + "\n")
+		if details.ScoreBreakdown.UtilizationScore > 0 {
+			sb.WriteString("    " + dimStyle.Render(fmt.Sprintf("- Utilization: %.1f (weight: %.0f%%)",
+				details.ScoreBreakdown.UtilizationScore, details.ScoreBreakdown.UtilizationWeight*100)) + "\n")
+		}
+		if details.ScoreBreakdown.BalanceScore > 0 {
+			sb.WriteString("    " + dimStyle.Render(fmt.Sprintf("- Balance: %.1f (weight: %.0f%%)",
+				details.ScoreBreakdown.BalanceScore, details.ScoreBreakdown.BalanceWeight*100)) + "\n")
+		}
+		if details.ScoreBreakdown.HeadroomScore != 0 {
+			sb.WriteString("    " + dimStyle.Render(fmt.Sprintf("- Headroom: %.1f (below cluster avg)",
+				details.ScoreBreakdown.HeadroomScore)) + "\n")
+		}
+	}
+	sb.WriteString("\n")
+
+	// Target state before/after
+	sb.WriteString(labelStyle.Render("Target state change:") + "\n")
+	sb.WriteString("  " + labelStyle.Render("Before: ") +
+		dimStyle.Render(fmt.Sprintf("CPU: %.1f%%, RAM: %.1f%%, Storage: %.1f%%, VMs: %d",
+			details.TargetBefore.CPUPercent,
+			details.TargetBefore.RAMPercent,
+			details.TargetBefore.StoragePercent,
+			details.TargetBefore.VMCount)) + "\n")
+
+	// Color the after values based on impact
+	cpuAfterStr := fmt.Sprintf("%.1f%%", details.TargetAfter.CPUPercent)
+	ramAfterStr := fmt.Sprintf("%.1f%%", details.TargetAfter.RAMPercent)
+	if details.TargetAfter.CPUPercent > 80 {
+		cpuAfterStr = warnStyle.Render(cpuAfterStr)
+	} else {
+		cpuAfterStr = goodStyle.Render(cpuAfterStr)
+	}
+	if details.TargetAfter.RAMPercent > 80 {
+		ramAfterStr = warnStyle.Render(ramAfterStr)
+	} else {
+		ramAfterStr = goodStyle.Render(ramAfterStr)
+	}
+
+	sb.WriteString("  " + labelStyle.Render("After:  ") +
+		labelStyle.Render("CPU: ") + cpuAfterStr +
+		labelStyle.Render(", RAM: ") + ramAfterStr +
+		labelStyle.Render(fmt.Sprintf(", Storage: %.1f%%, VMs: %d",
+			details.TargetAfter.StoragePercent,
+			details.TargetAfter.VMCount)) + "\n")
+
+	// Cluster context (for MigrateAll mode)
+	if details.ClusterAvgCPU > 0 || details.ClusterAvgRAM > 0 {
+		sb.WriteString("\n" + labelStyle.Render("Cluster balance target:") + "\n")
+		sb.WriteString("  " + dimStyle.Render(fmt.Sprintf("Avg CPU: %.1f%%, Avg RAM: %.1f%%",
+			details.ClusterAvgCPU, details.ClusterAvgRAM)) + "\n")
+		if details.BelowAverage {
+			sb.WriteString("  " + goodStyle.Render("✓ Target stays below cluster average") + "\n")
+		} else {
+			sb.WriteString("  " + warnStyle.Render("! Target will exceed cluster average") + "\n")
+		}
+	}
+
+	// Alternatives considered
+	if len(details.Alternatives) > 0 {
+		sb.WriteString("\n" + labelStyle.Render("Alternative targets:") + "\n")
+		for _, alt := range details.Alternatives {
+			if alt.Score > 0 {
+				sb.WriteString("  " + dimStyle.Render(fmt.Sprintf("• %s (score: %.1f) - %s",
+					alt.Name, alt.Score, alt.RejectionReason)) + "\n")
+			} else {
+				sb.WriteString("  " + dimStyle.Render(fmt.Sprintf("• %s - %s",
+					alt.Name, alt.RejectionReason)) + "\n")
+			}
+		}
+	}
+
+	// Constraints applied
+	if len(details.ConstraintsApplied) > 0 {
+		sb.WriteString("\n" + labelStyle.Render("Constraints checked:") + "\n")
+		for _, c := range details.ConstraintsApplied {
+			sb.WriteString("  " + dimStyle.Render("• "+c) + "\n")
+		}
+	}
 
 	return sb.String()
 }
