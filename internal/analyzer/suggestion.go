@@ -153,7 +153,7 @@ func NewNodeStateFromVMs(node *proxmox.Node) NodeState {
 		if vm.Status == "running" {
 			totalVCPUs += vm.CPUCores
 			totalCPUUsage += vm.CPUUsage * float64(vm.CPUCores) / 100 // Weighted CPU usage
-			totalRAM += vm.MaxMem // Only count RAM for running VMs
+			totalRAM += vm.MaxMem                                     // Only count RAM for running VMs
 		}
 		// Storage is always counted (disk space is used regardless of power state)
 		storage := vm.MaxDisk
