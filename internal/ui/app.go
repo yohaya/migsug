@@ -91,6 +91,10 @@ type Model struct {
 	showMigrationLogics      bool
 	migrationLogicsScrollPos int
 
+	// Migration commands overlay state
+	showMigrationCommands      bool
+	migrationCommandsScrollPos int
+
 	// Auto-refresh state
 	refreshCountdown int    // seconds until next refresh
 	refreshing       bool   // true when actively refreshing data
@@ -261,6 +265,11 @@ func (m Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Handle migration logics view navigation
 	if m.showMigrationLogics {
 		return m.handleMigrationLogicsKeys(msg)
+	}
+
+	// Handle migration commands view navigation
+	if m.showMigrationCommands {
+		return m.handleMigrationCommandsKeys(msg)
 	}
 
 	// View-specific keys
@@ -834,6 +843,12 @@ func (m Model) handleResultsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.criteriaState.ErrorMessage = ""
 		return m, tea.ClearScreen
 
+	case "m":
+		// Show migration commands
+		m.showMigrationCommands = true
+		m.migrationCommandsScrollPos = 0
+		return m, tea.ClearScreen
+
 	case "esc":
 		// Go back to criteria screen (not dashboard)
 		m.currentView = ViewCriteria
@@ -1026,10 +1041,58 @@ func (m Model) handleMigrationLogicsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m Model) handleMigrationCommandsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.result == nil {
+		m.showMigrationCommands = false
+		return m, tea.ClearScreen
+	}
+
+	totalLines := len(m.result.Suggestions) + 10 // commands + header/footer
+	availableHeight := m.height - 4
+	maxScroll := totalLines - availableHeight
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+
+	switch msg.String() {
+	case "esc", "m":
+		m.showMigrationCommands = false
+		m.migrationCommandsScrollPos = 0
+		return m, tea.ClearScreen
+	case "up", "k":
+		if m.migrationCommandsScrollPos > 0 {
+			m.migrationCommandsScrollPos--
+		}
+	case "down", "j":
+		if m.migrationCommandsScrollPos < maxScroll {
+			m.migrationCommandsScrollPos++
+		}
+	case "pgup":
+		m.migrationCommandsScrollPos -= availableHeight
+		if m.migrationCommandsScrollPos < 0 {
+			m.migrationCommandsScrollPos = 0
+		}
+	case "pgdown":
+		m.migrationCommandsScrollPos += availableHeight
+		if m.migrationCommandsScrollPos > maxScroll {
+			m.migrationCommandsScrollPos = maxScroll
+		}
+	case "home":
+		m.migrationCommandsScrollPos = 0
+	case "end":
+		m.migrationCommandsScrollPos = maxScroll
+	}
+	return m, nil
+}
+
 // View renders the current view
 func (m Model) View() string {
 	if m.showMigrationLogics {
 		return views.RenderMigrationLogic(m.width, m.height, m.migrationLogicsScrollPos)
+	}
+
+	if m.showMigrationCommands && m.result != nil {
+		return views.RenderMigrationCommands(m.result, m.sourceNode, m.width, m.height, m.migrationCommandsScrollPos)
 	}
 
 	if m.showHelp {

@@ -222,7 +222,6 @@ func RenderResultsInteractive(result *analyzer.AnalysisResult, cluster *proxmox.
 		}
 		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(scrollInfo) + "\n")
 	}
-	sb.WriteString("\n")
 
 	// Impact table with section indicator (always show ▶)
 	impactTitle := "▶ Migration Impact:"
@@ -247,7 +246,7 @@ func RenderResultsInteractive(result *analyzer.AnalysisResult, cluster *proxmox.
 
 	// Help text with TAB instruction
 	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	sb.WriteString("\n" + helpStyle.Render("Tab: Switch section  ↑/↓: Navigate  Enter: View details  r: New Analysis  Esc: Back  q: Quit"))
+	sb.WriteString("\n" + helpStyle.Render("Tab: Switch section  ↑/↓: Navigate  Enter: Details  m: Commands  r: New Analysis  Esc: Back  q: Quit"))
 
 	return sb.String()
 }
@@ -1247,6 +1246,152 @@ func RenderVMSelectionWithHeight(vms []proxmox.VM, selectedVMs map[int]bool, cur
 	// Help text
 	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	sb.WriteString(helpStyle.Render("↑/↓: Navigate  Space: Toggle  Enter: Confirm  Esc: Back"))
+
+	return sb.String()
+}
+
+// RenderMigrationCommands renders the migration commands overlay
+func RenderMigrationCommands(result *analyzer.AnalysisResult, sourceNode string, width, height, scrollPos int) string {
+	var sb strings.Builder
+
+	// Styles
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5"))
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
+	cmdStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	noteStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Italic(true)
+
+	// Title
+	sb.WriteString(titleStyle.Render("Migration Commands") + "\n")
+	sb.WriteString(strings.Repeat("━", width) + "\n\n")
+
+	// Instructions
+	sb.WriteString(headerStyle.Render("Copy and execute these commands on the Proxmox host:") + "\n\n")
+
+	// Note about online migration
+	sb.WriteString(noteStyle.Render("Note: Commands below use --online for running VMs (live migration).") + "\n")
+	sb.WriteString(noteStyle.Render("      Stopped VMs are migrated without --online flag.") + "\n\n")
+
+	// Build command list
+	lines := []string{}
+
+	// Group suggestions by target node for easier execution
+	targetVMs := make(map[string][]analyzer.MigrationSuggestion)
+	for _, sug := range result.Suggestions {
+		if sug.TargetNode != "NONE" {
+			targetVMs[sug.TargetNode] = append(targetVMs[sug.TargetNode], sug)
+		}
+	}
+
+	// Generate commands
+	lines = append(lines, headerStyle.Render("# Individual migration commands:"))
+	for _, sug := range result.Suggestions {
+		if sug.TargetNode == "NONE" {
+			lines = append(lines, dimStyle.Render(fmt.Sprintf("# VMID %d (%s) - No suitable target found", sug.VMID, sug.VMName)))
+			continue
+		}
+
+		// Generate qm migrate command
+		// Format: qm migrate <vmid> <target> [--online] [--with-local-disks]
+		cmd := fmt.Sprintf("qm migrate %d %s", sug.VMID, sug.TargetNode)
+		if sug.Status == "running" {
+			cmd += " --online"
+		}
+
+		// Add comment with VM name
+		comment := fmt.Sprintf("  # %s", sug.VMName)
+		if sug.Status == "running" {
+			comment += " (live)"
+		} else {
+			comment += " (offline)"
+		}
+
+		lines = append(lines, cmdStyle.Render(cmd)+dimStyle.Render(comment))
+	}
+
+	lines = append(lines, "")
+	lines = append(lines, headerStyle.Render("# One-liner to migrate all (sequential):"))
+
+	// Build one-liner for all migrations
+	var cmdParts []string
+	for _, sug := range result.Suggestions {
+		if sug.TargetNode == "NONE" {
+			continue
+		}
+		cmd := fmt.Sprintf("qm migrate %d %s", sug.VMID, sug.TargetNode)
+		if sug.Status == "running" {
+			cmd += " --online"
+		}
+		cmdParts = append(cmdParts, cmd)
+	}
+	if len(cmdParts) > 0 {
+		oneLiner := strings.Join(cmdParts, " && ")
+		// Split long one-liner into multiple lines for readability
+		if len(oneLiner) > width-4 {
+			lines = append(lines, cmdStyle.Render(cmdParts[0]+" \\"))
+			for i := 1; i < len(cmdParts)-1; i++ {
+				lines = append(lines, cmdStyle.Render("  && "+cmdParts[i]+" \\"))
+			}
+			if len(cmdParts) > 1 {
+				lines = append(lines, cmdStyle.Render("  && "+cmdParts[len(cmdParts)-1]))
+			}
+		} else {
+			lines = append(lines, cmdStyle.Render(oneLiner))
+		}
+	}
+
+	// Add summary
+	lines = append(lines, "")
+	lines = append(lines, headerStyle.Render("# Summary:"))
+	successCount := 0
+	failedCount := 0
+	for _, sug := range result.Suggestions {
+		if sug.TargetNode == "NONE" {
+			failedCount++
+		} else {
+			successCount++
+		}
+	}
+	lines = append(lines, dimStyle.Render(fmt.Sprintf("# Total VMs to migrate: %d", successCount)))
+	if failedCount > 0 {
+		lines = append(lines, dimStyle.Render(fmt.Sprintf("# VMs with no target: %d", failedCount)))
+	}
+
+	// Calculate visible area
+	availableHeight := height - 8 // Title + header + help
+	if availableHeight < 5 {
+		availableHeight = 5
+	}
+
+	// Apply scroll
+	startLine := scrollPos
+	if startLine > len(lines)-availableHeight {
+		startLine = len(lines) - availableHeight
+	}
+	if startLine < 0 {
+		startLine = 0
+	}
+	endLine := startLine + availableHeight
+	if endLine > len(lines) {
+		endLine = len(lines)
+	}
+
+	// Render visible lines
+	for i := startLine; i < endLine; i++ {
+		sb.WriteString(lines[i] + "\n")
+	}
+
+	// Scroll indicator
+	if len(lines) > availableHeight {
+		sb.WriteString("\n")
+		scrollInfo := fmt.Sprintf("Lines %d-%d of %d (↑/↓ to scroll)", startLine+1, endLine, len(lines))
+		sb.WriteString(dimStyle.Render(scrollInfo) + "\n")
+	}
+
+	// Help text
+	sb.WriteString("\n")
+	sb.WriteString(helpStyle.Render("↑/↓/PgUp/PgDn: Scroll │ m/Esc: Close"))
 
 	return sb.String()
 }
