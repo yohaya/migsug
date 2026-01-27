@@ -165,15 +165,10 @@ func RenderNodeTableWideWithScroll(nodes []proxmox.Node, selectedIdx int, width 
 		return ""
 	}
 
-	// Scrollbar styles
-	scrollTrackStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	scrollThumbStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
-
 	totalItems := len(nodes)
 	if maxVisible <= 0 || maxVisible > totalItems {
 		maxVisible = totalItems
 	}
-	needsScrollbar := totalItems > maxVisible
 
 	// Calculate scroll position to keep selected item visible
 	scrollPos := 0
@@ -185,20 +180,6 @@ func RenderNodeTableWideWithScroll(nodes []proxmox.Node, selectedIdx int, width 
 	}
 	if scrollPos < 0 {
 		scrollPos = 0
-	}
-
-	// Calculate scrollbar thumb position
-	thumbPos := 0
-	thumbSize := maxVisible
-	if needsScrollbar && totalItems > 0 {
-		thumbSize = max(1, maxVisible*maxVisible/totalItems)
-		if thumbSize > maxVisible {
-			thumbSize = maxVisible
-		}
-		scrollRange := maxVisible - thumbSize
-		if scrollRange > 0 && totalItems > maxVisible {
-			thumbPos = scrollPos * scrollRange / (totalItems - maxVisible)
-		}
 	}
 
 	// Main header with sort arrows (aligned to match row format)
@@ -213,13 +194,8 @@ func RenderNodeTableWideWithScroll(nodes []proxmox.Node, selectedIdx int, width 
 		colDisk, "Disk"+getSortArrow(7),
 		colSwap, "Swap",
 		"CPU Model")
-	if needsScrollbar {
-		sb.WriteString(headerStyle.Render(header1) + "  \n")
-		sb.WriteString("  " + borderStyle.Render(strings.Repeat(boxHeavyHoriz, width-4)) + "  \n")
-	} else {
-		sb.WriteString(headerStyle.Render(header1) + "\n")
-		sb.WriteString("  " + borderStyle.Render(strings.Repeat(boxHeavyHoriz, width-4)) + "\n")
-	}
+	sb.WriteString(headerStyle.Render(header1) + "\n")
+	sb.WriteString("  " + borderStyle.Render(strings.Repeat(boxHeavyHoriz, width-4)) + "\n")
 
 	// Calculate visible range
 	endPos := scrollPos + maxVisible
@@ -377,18 +353,7 @@ func RenderNodeTableWideWithScroll(nodes []proxmox.Node, selectedIdx int, width 
 			styledRow = prefix + coloredRow.String()
 		}
 
-		sb.WriteString(styledRow)
-
-		// Add scrollbar character if needed
-		if needsScrollbar {
-			rowIdx := i - scrollPos
-			if rowIdx >= thumbPos && rowIdx < thumbPos+thumbSize {
-				sb.WriteString(" " + scrollThumbStyle.Render("█"))
-			} else {
-				sb.WriteString(" " + scrollTrackStyle.Render("│"))
-			}
-		}
-		sb.WriteString("\n")
+		sb.WriteString(styledRow + "\n")
 	}
 
 	return sb.String()
