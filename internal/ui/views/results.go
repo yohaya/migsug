@@ -422,6 +422,10 @@ type VMListItem struct {
 	Direction string // "←" for out, "→" for in, "" for staying
 	Target    string // Target/Source node for migration
 
+	// Host info for CPU calculations
+	SourceCores int // Source host's thread count
+	TargetCores int // Target host's thread count
+
 	// Migration details (only set for migrating VMs)
 	Details *analyzer.MigrationDetails
 }
@@ -518,6 +522,8 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 					item.Direction = "←"
 					item.Target = sug.TargetNode
 					item.Details = sug.Details
+					item.SourceCores = sug.SourceCores
+					item.TargetCores = sug.TargetCores
 				}
 
 				vmList = append(vmList, item)
@@ -548,16 +554,18 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 		for _, sug := range result.Suggestions {
 			if sug.TargetNode == hostName {
 				item := VMListItem{
-					VMID:      sug.VMID,
-					Name:      sug.VMName,
-					Status:    sug.Status,
-					CPUUsage:  sug.CPUUsage,
-					VCPUs:     sug.VCPUs,
-					RAM:       sug.RAM,
-					Storage:   sug.Storage,
-					Direction: "→",
-					Target:    sug.SourceNode,
-					Details:   sug.Details,
+					VMID:        sug.VMID,
+					Name:        sug.VMName,
+					Status:      sug.Status,
+					CPUUsage:    sug.CPUUsage,
+					VCPUs:       sug.VCPUs,
+					RAM:         sug.RAM,
+					Storage:     sug.Storage,
+					Direction:   "→",
+					Target:      sug.SourceNode,
+					Details:     sug.Details,
+					SourceCores: sug.SourceCores,
+					TargetCores: sug.TargetCores,
 				}
 				vmList = append(vmList, item)
 			}
@@ -867,6 +875,14 @@ func renderMigrationReasoning(vm VMListItem, currentHost string) string {
 
 	// Target state before/after
 	sb.WriteString(labelStyle.Render("Target state change:") + "\n")
+
+	// Calculate VM's CPU contribution to target (if we have target cores)
+	// This explains why HCPU% in the list (source-based) differs from the delta here (target-based)
+	vmTargetCPU := 0.0
+	if vm.TargetCores > 0 {
+		vmTargetCPU = vm.CPUUsage * float64(vm.VCPUs) / float64(vm.TargetCores)
+	}
+
 	sb.WriteString("  " + labelStyle.Render("Before: ") +
 		valueStyle.Render(fmt.Sprintf("CPU: %.1f%%, RAM: %.1f%%, Storage: %.1f%%, VMs: %d",
 			details.TargetBefore.CPUPercent,
@@ -894,6 +910,12 @@ func renderMigrationReasoning(vm VMListItem, currentHost string) string {
 		labelStyle.Render(fmt.Sprintf(", Storage: %.1f%%, VMs: %d",
 			details.TargetAfter.StoragePercent,
 			details.TargetAfter.VMCount)) + "\n")
+
+	// Show VM's contribution to target (explains why it differs from HCPU% in the list)
+	if vmTargetCPU > 0 && vm.TargetCores > 0 && vm.SourceCores > 0 && vm.TargetCores != vm.SourceCores {
+		sb.WriteString("  " + valueStyle.Render(fmt.Sprintf("(VM adds %.1f%% CPU - target has %d threads vs source %d)",
+			vmTargetCPU, vm.TargetCores, vm.SourceCores)) + "\n")
+	}
 
 	// Cluster context (for MigrateAll mode)
 	if details.ClusterAvgCPU > 0 || details.ClusterAvgRAM > 0 {
