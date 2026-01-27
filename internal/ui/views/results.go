@@ -584,17 +584,17 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 
 	// Column widths - increased for full hostnames
 	const (
-		colDir     = 2  // Arrow direction
+		colDir     = 2
 		colVMID    = 6
-		colName    = 28 // VM name
+		colName    = 28
 		colState   = 5
-		colHCPU    = 6  // HCPU% (host CPU% - normalized)
-		colVMCPU   = 7  // VMCPU% (% of allocated vCPUs)
-		colCPU     = 6  // CPU% (VMCPU% * vCPU)
+		colHCPU    = 6
+		colVMCPU   = 7
+		colCPU     = 6
 		colVCPU    = 5
 		colRAM     = 8
 		colStorage = 8
-		colTarget  = 24 // Migration info
+		colTarget  = 24
 	)
 	totalWidth := colDir + colVMID + colName + colState + colHCPU + colVMCPU + colCPU + colVCPU + colRAM + colStorage + colTarget + 10
 
