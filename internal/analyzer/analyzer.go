@@ -251,7 +251,7 @@ func GenerateSuggestions(vms []proxmox.VM, targets []proxmox.Node, constraints M
 	}
 
 	// Determine selection mode for details
-	selectionMode := string(constraints.GetMode())
+	selectionMode := constraints.GetMode().String()
 	selectionReason := getSelectionReason(constraints)
 
 	// For each VM, find the best target
@@ -687,7 +687,7 @@ func GenerateSuggestionsBalanced(vms []proxmox.VM, targets []proxmox.Node, clust
 
 		// Add selection info to details
 		if details != nil {
-			details.SelectionMode = string(ModeAll)
+			details.SelectionMode = ModeAll.String()
 			details.SelectionReason = "Selected for full host evacuation (Migrate All mode)"
 		}
 

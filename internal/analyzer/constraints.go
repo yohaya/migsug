@@ -33,6 +33,28 @@ const (
 	ModeAll // Migrate all VMs from host, spread across cluster below average
 )
 
+// String returns the string representation of a MigrationMode
+func (m MigrationMode) String() string {
+	switch m {
+	case ModeVMCount:
+		return "vm_count"
+	case ModeVCPU:
+		return "vcpu"
+	case ModeCPUUsage:
+		return "cpu_usage"
+	case ModeRAM:
+		return "ram"
+	case ModeStorage:
+		return "storage"
+	case ModeSpecific:
+		return "specific"
+	case ModeAll:
+		return "all"
+	default:
+		return "unknown"
+	}
+}
+
 // GetMode returns the migration mode based on what's set in constraints
 func (c *MigrationConstraints) GetMode() MigrationMode {
 	if c.MigrateAll {
