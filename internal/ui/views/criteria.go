@@ -28,11 +28,6 @@ type CriteriaState struct {
 	CursorPosition int
 	InputFocused   bool
 	ErrorMessage   string // Validation error message to display
-
-	// CPU migration strategy selection
-	CPUStrategy         analyzer.MigrationStrategy
-	StrategySelection   bool // True when selecting strategy for CPU mode
-	StrategyCursor      int  // Cursor position in strategy selection
 }
 
 // RenderCriteria renders the criteria selection view (without node data)
@@ -161,51 +156,53 @@ func RenderCriteriaFull(state CriteriaState, sourceNode string, node *proxmox.No
 	// Only show input field after user has selected a mode (InputFocused becomes true)
 	// Or show hint for ModeSpecific
 	if state.InputFocused {
-		// Check if we're in strategy selection for CPU mode
-		if state.SelectedMode == analyzer.ModeCPUUsage && state.StrategySelection {
-			// Render strategy selection UI
-			sb.WriteString(renderStrategySelection(state, width))
-		} else {
-			// Input field based on selected mode
-			inputLabel := ""
-			inputValue := ""
-			inputSuffix := ""
+		// Input field based on selected mode
+		inputLabel := ""
+		inputValue := ""
+		inputSuffix := ""
+		inputHint := ""
 
-			switch state.SelectedMode {
-			case analyzer.ModeVCPU:
-				inputLabel = "Number of vCPUs to migrate"
-				inputValue = state.VCPUCount
-			case analyzer.ModeCPUUsage:
-				inputLabel = "CPU usage percentage to free"
-				inputValue = state.CPUUsage
-				inputSuffix = "%"
-			case analyzer.ModeRAM:
-				inputLabel = "RAM to free (GiB)"
-				inputValue = state.RAMAmount
-			case analyzer.ModeStorage:
-				inputLabel = "Storage to free (GiB)"
-				inputValue = state.StorageAmount
-			}
+		switch state.SelectedMode {
+		case analyzer.ModeVCPU:
+			inputLabel = "Number of vCPUs to migrate"
+			inputValue = state.VCPUCount
+		case analyzer.ModeCPUUsage:
+			inputLabel = "CPU usage percentage to free"
+			inputValue = state.CPUUsage
+			inputSuffix = "%"
+			inputHint = "(auto-optimized: selects VMs with best CPU%/GiB ratio for fastest relief)"
+		case analyzer.ModeRAM:
+			inputLabel = "RAM to free (GiB)"
+			inputValue = state.RAMAmount
+		case analyzer.ModeStorage:
+			inputLabel = "Storage to free (GiB)"
+			inputValue = state.StorageAmount
+		}
 
-			labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
-			inputStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
-			suffixStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-			errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Bold(true)
+		labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
+		inputStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
+		suffixStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+		hintStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Italic(true)
+		errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Bold(true)
 
-			// Display value with cursor
-			displayValue := inputValue + "█"
+		// Display value with cursor
+		displayValue := inputValue + "█"
 
-			// Inline input after the label
-			sb.WriteString("  " + labelStyle.Render(inputLabel+": ") + inputStyle.Render(displayValue))
-			if inputSuffix != "" {
-				sb.WriteString(" " + suffixStyle.Render(inputSuffix))
-			}
-			sb.WriteString("\n")
+		// Inline input after the label
+		sb.WriteString("  " + labelStyle.Render(inputLabel+": ") + inputStyle.Render(displayValue))
+		if inputSuffix != "" {
+			sb.WriteString(" " + suffixStyle.Render(inputSuffix))
+		}
+		sb.WriteString("\n")
 
-			// Show error message if present
-			if state.ErrorMessage != "" {
-				sb.WriteString("  " + errorStyle.Render("⚠ "+state.ErrorMessage) + "\n")
-			}
+		// Show hint for CPU mode
+		if inputHint != "" {
+			sb.WriteString("  " + hintStyle.Render(inputHint) + "\n")
+		}
+
+		// Show error message if present
+		if state.ErrorMessage != "" {
+			sb.WriteString("  " + errorStyle.Render("⚠ "+state.ErrorMessage) + "\n")
 		}
 	} else if state.SelectedMode == analyzer.ModeAll && state.CursorPosition == 0 {
 		// Show hint for Migrate All mode
@@ -222,11 +219,7 @@ func RenderCriteriaFull(state CriteriaState, sourceNode string, node *proxmox.No
 	// Help text
 	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	if state.InputFocused {
-		if state.SelectedMode == analyzer.ModeCPUUsage && state.StrategySelection {
-			sb.WriteString(helpStyle.Render("↑/↓: Select strategy │ Enter: Confirm │ Esc: Back to CPU input"))
-		} else {
-			sb.WriteString(helpStyle.Render("Type value │ Enter: Confirm │ Esc: Cancel input"))
-		}
+		sb.WriteString(helpStyle.Render("Type value │ Enter: Confirm │ Esc: Cancel input"))
 	} else {
 		sb.WriteString(helpStyle.Render("↑/↓: Navigate │ Enter: Select mode │ Esc: Back to host selection │ q: Quit"))
 	}
@@ -428,86 +421,6 @@ func renderNodeSummary(node *proxmox.Node, width int) string {
 	}
 
 	sb.WriteString(labelStyle.Render("Disk: ") + valueStyle.Render(diskStr))
-	sb.WriteString("\n")
-
-	return sb.String()
-}
-
-// renderStrategySelection renders the migration strategy selection UI for CPU mode
-func renderStrategySelection(state CriteriaState, width int) string {
-	var sb strings.Builder
-
-	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
-	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
-	valueStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
-	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	selectedBgStyle := lipgloss.NewStyle().
-		Background(lipgloss.Color("236")).
-		Foreground(lipgloss.Color("15")).
-		Bold(true)
-
-	// Show the entered CPU value
-	sb.WriteString("  " + labelStyle.Render("CPU usage to free: ") + valueStyle.Render(state.CPUUsage+"%") + "\n\n")
-
-	// Strategy selection header
-	sb.WriteString(headerStyle.Render("  Select Migration Strategy:") + "\n")
-	sb.WriteString("  " + dimStyle.Render("(Smaller disk VMs migrate faster, freeing CPU sooner)") + "\n\n")
-
-	// Strategy options with descriptions
-	strategies := []struct {
-		strategy analyzer.MigrationStrategy
-		name     string
-		desc     string
-		detail   string
-	}{
-		{
-			analyzer.StrategyQuick,
-			"Quick Relief",
-			"Only small VMs (≤100 GiB disks)",
-			"Fastest migrations, may not reach full CPU target",
-		},
-		{
-			analyzer.StrategyBalanced,
-			"Balanced",
-			"Small + medium VMs (≤500 GiB disks)",
-			"Good balance of speed and CPU relief",
-		},
-		{
-			analyzer.StrategyThorough,
-			"Thorough",
-			"All VM sizes as needed",
-			"Reaches CPU target, includes large/slow VMs if needed",
-		},
-	}
-
-	for i, s := range strategies {
-		isSelected := state.StrategyCursor == i
-
-		// Build row content
-		name := fmt.Sprintf("%-16s", s.name)
-		desc := fmt.Sprintf("%-35s", s.desc)
-
-		// Selector indicator
-		selector := "  "
-		if isSelected {
-			selector = "▶ "
-		}
-
-		// Apply styling
-		if isSelected {
-			rowContent := fmt.Sprintf("%s %s", name, desc)
-			// Pad to consistent width
-			if len(rowContent) < width-6 {
-				rowContent += strings.Repeat(" ", width-6-len(rowContent))
-			}
-			sb.WriteString("  " + selector + selectedBgStyle.Render(rowContent) + "\n")
-			// Show detail on next line when selected
-			sb.WriteString("      " + dimStyle.Render("→ "+s.detail) + "\n")
-		} else {
-			sb.WriteString("  " + selector + valueStyle.Render(name) + " " + dimStyle.Render(desc) + "\n")
-		}
-	}
-
 	sb.WriteString("\n")
 
 	return sb.String()

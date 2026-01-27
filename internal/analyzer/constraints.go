@@ -1,46 +1,5 @@
 package analyzer
 
-// MigrationStrategy defines how to prioritize VMs for CPU-based migration
-type MigrationStrategy int
-
-const (
-	// StrategyThorough migrates all VM sizes as needed to reach CPU target
-	StrategyThorough MigrationStrategy = iota
-	// StrategyQuick only migrates small VMs (≤100 GiB) for fastest migration
-	StrategyQuick
-	// StrategyBalanced migrates small and medium VMs (≤500 GiB)
-	StrategyBalanced
-)
-
-// String returns the string representation of a MigrationStrategy
-func (s MigrationStrategy) String() string {
-	switch s {
-	case StrategyQuick:
-		return "Quick Relief (≤100 GiB disks only)"
-	case StrategyBalanced:
-		return "Balanced (≤500 GiB disks)"
-	case StrategyThorough:
-		return "Thorough (all disk sizes)"
-	default:
-		return "Unknown"
-	}
-}
-
-// DiskSizeTier represents a tier of VMs based on disk size
-type DiskSizeTier int
-
-const (
-	TierSmall  DiskSizeTier = iota // ≤100 GiB - fast migration
-	TierMedium                     // 100-500 GiB - moderate migration
-	TierLarge                      // >500 GiB - slow migration
-)
-
-// Disk size thresholds in bytes
-const (
-	SmallDiskThreshold  = 100 * 1024 * 1024 * 1024  // 100 GiB
-	MediumDiskThreshold = 500 * 1024 * 1024 * 1024  // 500 GiB
-)
-
 // MigrationConstraints defines the user's migration requirements
 type MigrationConstraints struct {
 	SourceNode string
@@ -48,14 +7,11 @@ type MigrationConstraints struct {
 	// Migration criteria (one or more can be set)
 	VMCount       *int     // migrate N VMs
 	VCPUCount     *int     // migrate VMs totaling N vCPUs
-	CPUUsage      *float64 // migrate VMs using N% CPU
+	CPUUsage      *float64 // migrate VMs using N% CPU (uses efficiency algorithm)
 	RAMAmount     *int64   // migrate VMs using N GB RAM (in bytes)
 	StorageAmount *int64   // migrate VMs using N GB storage (in bytes)
 	SpecificVMs   []int    // migrate these specific VMIDs
 	MigrateAll    bool     // migrate all VMs from host, spread across cluster
-
-	// CPU migration strategy (for ModeCPUUsage)
-	CPUStrategy MigrationStrategy // How to prioritize VMs by disk size
 
 	// Additional constraints
 	ExcludeNodes  []string // don't migrate to these nodes

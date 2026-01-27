@@ -62,8 +62,8 @@ func SelectVMsToMigrate(node *proxmox.Node, constraints MigrationConstraints) []
 	case ModeVCPU:
 		return selectByVCPU(node, *constraints.VCPUCount)
 	case ModeCPUUsage:
-		// Use the strategy-aware CPU selection
-		return selectByCPUUsageWithStrategy(node, *constraints.CPUUsage, constraints.CPUStrategy)
+		// Use efficiency-based CPU selection (automatic optimization)
+		return selectByCPUUsageEfficient(node, *constraints.CPUUsage)
 	case ModeRAM:
 		return selectByRAM(node, *constraints.RAMAmount)
 	case ModeStorage:
@@ -163,89 +163,66 @@ func selectByVCPU(node *proxmox.Node, targetVCPUs int) []proxmox.VM {
 }
 
 func selectByCPUUsage(node *proxmox.Node, targetUsage float64) []proxmox.VM {
-	// Use default strategy (Thorough) for backward compatibility
-	return selectByCPUUsageWithStrategy(node, targetUsage, StrategyThorough)
+	return selectByCPUUsageEfficient(node, targetUsage)
 }
 
-// selectByCPUUsageWithStrategy selects VMs to migrate based on CPU usage with a tiered strategy
-// The algorithm prioritizes small disk VMs with high CPU first for faster migration times
-func selectByCPUUsageWithStrategy(node *proxmox.Node, targetUsage float64, strategy MigrationStrategy) []proxmox.VM {
+// selectByCPUUsageEfficient selects VMs to migrate based on CPU efficiency
+// Efficiency = Host CPU% / Disk Size (GiB) - maximizes CPU freed per data migrated
+// This automatically finds the optimal set of VMs for fastest CPU relief
+func selectByCPUUsageEfficient(node *proxmox.Node, targetUsage float64) []proxmox.VM {
 	// Only select running VMs (don't migrate powered off VMs)
 	vms := filterRunningVMs(node.VMs)
 
-	// Calculate each VM's actual host CPU% contribution and categorize by disk tier
-	type vmWithMetrics struct {
-		vm      proxmox.VM
-		hostCPU float64      // Actual host CPU% contribution (HCPU%)
-		tier    DiskSizeTier // Disk size tier
-		disk    int64        // Disk size in bytes
+	// Calculate each VM's efficiency score
+	type vmWithEfficiency struct {
+		vm         proxmox.VM
+		hostCPU    float64 // Actual host CPU% contribution (HCPU%)
+		diskGiB    float64 // Disk size in GiB
+		efficiency float64 // CPU% per GiB - higher is better
 	}
 
-	vmsWithMetrics := make([]vmWithMetrics, 0, len(vms))
+	vmsWithEfficiency := make([]vmWithEfficiency, 0, len(vms))
 	for _, vm := range vms {
 		hostCPU := 0.0
 		if node.CPUCores > 0 {
 			hostCPU = vm.CPUUsage * float64(vm.CPUCores) / float64(node.CPUCores)
 		}
 
-		// Get disk size (prefer MaxDisk, fallback to UsedDisk)
+		// Get disk size in GiB (prefer MaxDisk, fallback to UsedDisk)
 		disk := vm.MaxDisk
 		if disk == 0 {
 			disk = vm.UsedDisk
 		}
-
-		// Determine tier based on disk size
-		tier := TierLarge
-		if disk <= SmallDiskThreshold {
-			tier = TierSmall
-		} else if disk <= MediumDiskThreshold {
-			tier = TierMedium
+		diskGiB := float64(disk) / (1024 * 1024 * 1024)
+		if diskGiB < 1 {
+			diskGiB = 1 // Minimum 1 GiB to avoid division issues
 		}
 
-		vmsWithMetrics = append(vmsWithMetrics, vmWithMetrics{
-			vm:      vm,
-			hostCPU: hostCPU,
-			tier:    tier,
-			disk:    disk,
+		// Efficiency = CPU% freed per GiB migrated
+		// Higher efficiency means more CPU relief per unit of migration time
+		efficiency := hostCPU / diskGiB
+
+		vmsWithEfficiency = append(vmsWithEfficiency, vmWithEfficiency{
+			vm:         vm,
+			hostCPU:    hostCPU,
+			diskGiB:    diskGiB,
+			efficiency: efficiency,
 		})
 	}
 
-	// Determine which tiers to include based on strategy
-	maxTier := TierLarge
-	switch strategy {
-	case StrategyQuick:
-		maxTier = TierSmall
-	case StrategyBalanced:
-		maxTier = TierMedium
-	case StrategyThorough:
-		maxTier = TierLarge
-	}
-
-	// Sort VMs by tier (small first), then by host CPU% descending within tier
-	// This ensures small, high-CPU VMs are selected first for fastest relief
-	sort.Slice(vmsWithMetrics, func(i, j int) bool {
-		// First compare by tier (smaller tier = faster migration = higher priority)
-		if vmsWithMetrics[i].tier != vmsWithMetrics[j].tier {
-			return vmsWithMetrics[i].tier < vmsWithMetrics[j].tier
-		}
-		// Within same tier, prefer higher CPU usage (migrate high-CPU VMs first)
-		return vmsWithMetrics[i].hostCPU > vmsWithMetrics[j].hostCPU
+	// Sort VMs by efficiency (highest first) - get most CPU relief per GiB migrated
+	sort.Slice(vmsWithEfficiency, func(i, j int) bool {
+		return vmsWithEfficiency[i].efficiency > vmsWithEfficiency[j].efficiency
 	})
 
-	// Select VMs until we reach target host CPU%, respecting tier limits
+	// Select VMs in efficiency order until we reach target host CPU%
 	var selected []proxmox.VM
 	totalHostCPU := 0.0
 
-	for _, v := range vmsWithMetrics {
+	for _, v := range vmsWithEfficiency {
 		if totalHostCPU >= targetUsage {
 			break
 		}
-
-		// Skip VMs from tiers above the strategy limit
-		if v.tier > maxTier {
-			continue
-		}
-
 		selected = append(selected, v.vm)
 		totalHostCPU += v.hostCPU
 	}
@@ -253,30 +230,26 @@ func selectByCPUUsageWithStrategy(node *proxmox.Node, targetUsage float64, strat
 	return selected
 }
 
-// SelectByCPUUsageDetailed returns selected VMs along with detailed tier information
+// SelectByCPUUsageDetailed returns selected VMs along with detailed efficiency information
 // This is useful for displaying migration plan details to the user
-func SelectByCPUUsageDetailed(node *proxmox.Node, targetUsage float64, strategy MigrationStrategy) ([]proxmox.VM, *CPUMigrationPlan) {
+func SelectByCPUUsageDetailed(node *proxmox.Node, targetUsage float64) ([]proxmox.VM, *CPUMigrationPlan) {
 	vms := filterRunningVMs(node.VMs)
 
 	plan := &CPUMigrationPlan{
 		TargetCPUReduction: targetUsage,
-		Strategy:           strategy,
-		TierStats:          make(map[DiskSizeTier]*TierStat),
 	}
 
-	// Initialize tier stats
-	plan.TierStats[TierSmall] = &TierStat{Name: "Small (≤100 GiB)"}
-	plan.TierStats[TierMedium] = &TierStat{Name: "Medium (100-500 GiB)"}
-	plan.TierStats[TierLarge] = &TierStat{Name: "Large (>500 GiB)"}
-
-	type vmWithMetrics struct {
-		vm      proxmox.VM
-		hostCPU float64
-		tier    DiskSizeTier
-		disk    int64
+	type vmWithEfficiency struct {
+		vm         proxmox.VM
+		hostCPU    float64
+		diskGiB    float64
+		efficiency float64
 	}
 
-	vmsWithMetrics := make([]vmWithMetrics, 0, len(vms))
+	vmsWithEfficiency := make([]vmWithEfficiency, 0, len(vms))
+	var totalAvailableCPU float64
+	var totalAvailableDisk float64
+
 	for _, vm := range vms {
 		hostCPU := 0.0
 		if node.CPUCores > 0 {
@@ -287,67 +260,53 @@ func SelectByCPUUsageDetailed(node *proxmox.Node, targetUsage float64, strategy 
 		if disk == 0 {
 			disk = vm.UsedDisk
 		}
-
-		tier := TierLarge
-		if disk <= SmallDiskThreshold {
-			tier = TierSmall
-		} else if disk <= MediumDiskThreshold {
-			tier = TierMedium
+		diskGiB := float64(disk) / (1024 * 1024 * 1024)
+		if diskGiB < 1 {
+			diskGiB = 1
 		}
 
-		// Update tier stats (total available)
-		plan.TierStats[tier].TotalVMs++
-		plan.TierStats[tier].TotalCPU += hostCPU
-		plan.TierStats[tier].TotalDisk += disk
+		efficiency := hostCPU / diskGiB
 
-		vmsWithMetrics = append(vmsWithMetrics, vmWithMetrics{
-			vm:      vm,
-			hostCPU: hostCPU,
-			tier:    tier,
-			disk:    disk,
+		totalAvailableCPU += hostCPU
+		totalAvailableDisk += diskGiB
+
+		vmsWithEfficiency = append(vmsWithEfficiency, vmWithEfficiency{
+			vm:         vm,
+			hostCPU:    hostCPU,
+			diskGiB:    diskGiB,
+			efficiency: efficiency,
 		})
 	}
 
-	maxTier := TierLarge
-	switch strategy {
-	case StrategyQuick:
-		maxTier = TierSmall
-	case StrategyBalanced:
-		maxTier = TierMedium
-	case StrategyThorough:
-		maxTier = TierLarge
-	}
-
-	// Sort by tier then by CPU descending
-	sort.Slice(vmsWithMetrics, func(i, j int) bool {
-		if vmsWithMetrics[i].tier != vmsWithMetrics[j].tier {
-			return vmsWithMetrics[i].tier < vmsWithMetrics[j].tier
-		}
-		return vmsWithMetrics[i].hostCPU > vmsWithMetrics[j].hostCPU
+	// Sort by efficiency (highest first)
+	sort.Slice(vmsWithEfficiency, func(i, j int) bool {
+		return vmsWithEfficiency[i].efficiency > vmsWithEfficiency[j].efficiency
 	})
 
 	var selected []proxmox.VM
 	totalHostCPU := 0.0
+	totalDiskGiB := 0.0
 
-	for _, v := range vmsWithMetrics {
+	for _, v := range vmsWithEfficiency {
 		if totalHostCPU >= targetUsage {
 			break
-		}
-		if v.tier > maxTier {
-			continue
 		}
 
 		selected = append(selected, v.vm)
 		totalHostCPU += v.hostCPU
-
-		// Update selected stats
-		plan.TierStats[v.tier].SelectedVMs++
-		plan.TierStats[v.tier].SelectedCPU += v.hostCPU
-		plan.TierStats[v.tier].SelectedDisk += v.disk
+		totalDiskGiB += v.diskGiB
 	}
 
 	plan.AchievedCPUReduction = totalHostCPU
 	plan.TotalVMsSelected = len(selected)
+	plan.TotalDiskGiB = totalDiskGiB
+	plan.AvailableCPU = totalAvailableCPU
+	plan.AvailableDiskGiB = totalAvailableDisk
+
+	// Calculate efficiency of the selection
+	if totalDiskGiB > 0 {
+		plan.SelectionEfficiency = totalHostCPU / totalDiskGiB
+	}
 
 	// Calculate if target was reached
 	plan.TargetReached = totalHostCPU >= targetUsage
@@ -360,24 +319,15 @@ func SelectByCPUUsageDetailed(node *proxmox.Node, targetUsage float64, strategy 
 
 // CPUMigrationPlan contains detailed information about the CPU migration selection
 type CPUMigrationPlan struct {
-	TargetCPUReduction  float64
+	TargetCPUReduction   float64
 	AchievedCPUReduction float64
-	Strategy            MigrationStrategy
-	TotalVMsSelected    int
-	TargetReached       bool
-	Shortfall           float64 // How much CPU% we couldn't free (if target not reached)
-	TierStats           map[DiskSizeTier]*TierStat
-}
-
-// TierStat contains statistics for a disk size tier
-type TierStat struct {
-	Name         string
-	TotalVMs     int     // Total VMs in this tier on source host
-	TotalCPU     float64 // Total HCPU% available in this tier
-	TotalDisk    int64   // Total disk space in this tier
-	SelectedVMs  int     // VMs selected for migration
-	SelectedCPU  float64 // HCPU% being migrated
-	SelectedDisk int64   // Disk space being migrated
+	TotalVMsSelected     int
+	TotalDiskGiB         float64 // Total disk to migrate
+	AvailableCPU         float64 // Total CPU% available on host
+	AvailableDiskGiB     float64 // Total disk on host
+	SelectionEfficiency  float64 // CPU%/GiB of selected VMs
+	TargetReached        bool
+	Shortfall            float64 // How much CPU% we couldn't free (if target not reached)
 }
 
 func selectByRAM(node *proxmox.Node, targetRAM int64) []proxmox.VM {
@@ -522,16 +472,7 @@ func getSelectionReason(constraints MigrationConstraints) string {
 	case ModeVCPU:
 		return fmt.Sprintf("Selected to free up %d vCPUs from source host", *constraints.VCPUCount)
 	case ModeCPUUsage:
-		strategyDesc := ""
-		switch constraints.CPUStrategy {
-		case StrategyQuick:
-			strategyDesc = " (Quick Relief - small VMs only)"
-		case StrategyBalanced:
-			strategyDesc = " (Balanced - small/medium VMs)"
-		case StrategyThorough:
-			strategyDesc = " (Thorough - all sizes)"
-		}
-		return fmt.Sprintf("Selected to reduce CPU usage by %.1f%% on source host%s", *constraints.CPUUsage, strategyDesc)
+		return fmt.Sprintf("Selected by efficiency (CPU%%/GiB) to reduce CPU by %.1f%% with minimal data transfer", *constraints.CPUUsage)
 	case ModeRAM:
 		return fmt.Sprintf("Selected to free up %d GB RAM from source host", *constraints.RAMAmount/(1024*1024*1024))
 	case ModeStorage:
