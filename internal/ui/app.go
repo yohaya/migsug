@@ -401,10 +401,9 @@ func (m Model) handleCriteriaKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "enter":
 		// Select mode based on cursor position
-		// Mode order: ModeAll, ModeVMCount, ModeVCPU, ModeCPUUsage, ModeRAM, ModeStorage, ModeSpecific
+		// Mode order: ModeAll, ModeVCPU, ModeCPUUsage, ModeRAM, ModeStorage, ModeSpecific
 		modeMap := []analyzer.MigrationMode{
 			analyzer.ModeAll,
-			analyzer.ModeVMCount,
 			analyzer.ModeVCPU,
 			analyzer.ModeCPUUsage,
 			analyzer.ModeRAM,
@@ -475,23 +474,6 @@ func (m Model) handleCriteriaInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // validateCriteriaInput validates the input value and returns an error message if invalid
 func (m *Model) validateCriteriaInput() string {
 	switch m.criteriaState.SelectedMode {
-	case analyzer.ModeVMCount:
-		if m.criteriaState.VMCount == "" {
-			return "Please enter a number of VMs"
-		}
-		count, err := strconv.Atoi(m.criteriaState.VMCount)
-		if err != nil {
-			return "Invalid number"
-		}
-		if count <= 0 {
-			return "VM count must be greater than 0"
-		}
-		// Check against actual VMs on source node
-		sourceNode := proxmox.GetNodeByName(m.cluster, m.sourceNode)
-		if sourceNode != nil && count > len(sourceNode.VMs) {
-			return fmt.Sprintf("VM count exceeds available VMs (%d)", len(sourceNode.VMs))
-		}
-
 	case analyzer.ModeVCPU:
 		if m.criteriaState.VCPUCount == "" {
 			return "Please enter a vCPU count"
@@ -549,8 +531,6 @@ func (m *Model) validateCriteriaInput() string {
 
 func (m *Model) appendToInput(char string) {
 	switch m.criteriaState.SelectedMode {
-	case analyzer.ModeVMCount:
-		m.criteriaState.VMCount += char
 	case analyzer.ModeVCPU:
 		m.criteriaState.VCPUCount += char
 	case analyzer.ModeCPUUsage:
@@ -571,8 +551,6 @@ func (m *Model) deleteLastChar() {
 	}
 
 	switch m.criteriaState.SelectedMode {
-	case analyzer.ModeVMCount:
-		m.criteriaState.VMCount = deleteFrom(m.criteriaState.VMCount)
 	case analyzer.ModeVCPU:
 		m.criteriaState.VCPUCount = deleteFrom(m.criteriaState.VCPUCount)
 	case analyzer.ModeCPUUsage:
@@ -586,8 +564,6 @@ func (m *Model) deleteLastChar() {
 
 func (m *Model) clearCurrentInput() {
 	switch m.criteriaState.SelectedMode {
-	case analyzer.ModeVMCount:
-		m.criteriaState.VMCount = ""
 	case analyzer.ModeVCPU:
 		m.criteriaState.VCPUCount = ""
 	case analyzer.ModeCPUUsage:
@@ -1004,14 +980,6 @@ func (m Model) startAnalysis() tea.Cmd {
 		// Parse input based on mode
 		var err error
 		switch m.criteriaState.SelectedMode {
-		case analyzer.ModeVMCount:
-			if m.criteriaState.VMCount != "" {
-				count, parseErr := strconv.Atoi(m.criteriaState.VMCount)
-				if parseErr != nil {
-					return errMsg{fmt.Errorf("invalid VM count: %w", parseErr)}
-				}
-				constraints.VMCount = &count
-			}
 		case analyzer.ModeVCPU:
 			if m.criteriaState.VCPUCount != "" {
 				count, parseErr := strconv.Atoi(m.criteriaState.VCPUCount)

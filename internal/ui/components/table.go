@@ -831,7 +831,7 @@ func RenderSuggestionTableWithCursor(suggestions []analyzer.MigrationSuggestion,
 			colVMCPU, vmCpuStr,
 			colCPU, cpuStr,
 			colVCPU, sug.VCPUs,
-			colRAM, FormatBytes(sug.RAM),
+			colRAM, FormatRAMShort(sug.RAM),
 			colStorage, FormatStorageG(sug.Storage),
 		)
 

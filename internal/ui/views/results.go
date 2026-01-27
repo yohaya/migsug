@@ -565,10 +565,21 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 		}
 	}
 
-	// Calculate max visible rows - leave room for migration reasoning panel
-	maxVisible := height - 25
-	if maxVisible < 3 {
-		maxVisible = 3
+	// Calculate max visible rows with fixed reservation for reasoning panel
+	// Fixed overhead:
+	// - Title + border: 3 lines
+	// - CPU info: 1 line
+	// - Before/After summary: 3 lines
+	// - Table header + separator: 2 lines
+	// - Table closing line: 1 line
+	// - Scroll info: 1 line
+	// - Reasoning panel (fixed): 22 lines (max height including all sections)
+	// - Help text: 1 line
+	// Total: 34 lines
+	fixedOverhead := 34
+	maxVisible := height - fixedOverhead
+	if maxVisible < 5 {
+		maxVisible = 5
 	}
 
 	// Column widths - increased for full hostnames
