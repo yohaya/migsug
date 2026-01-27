@@ -56,6 +56,27 @@ LOAD AVERAGE:
 • Displayed as percentage of total threads: LA / Threads × 100%
 
 
+MIGRATION IMPACT CALCULATIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+The Migration Impact table shows resource changes before/after migration:
+
+BEFORE VALUES:
+• CPU%, RAM%, Storage% are actual values from Proxmox API
+• These match the values shown in the dashboard and source node header
+• Reflects real current state including all system processes
+
+AFTER VALUES (Predicted):
+• CPU After = CPU Before - (sum of migrating VMs' HCPU% contributions)
+• RAM After = RAM Before - (sum of migrating VMs' allocated RAM)
+• HCPU% = VM CPU% × VM vCPUs / Host Threads
+
+This approach shows:
+• Accurate current state (from Proxmox API)
+• Estimated improvement based on VM resource contributions
+• The "After" values are predictions, actual results may vary slightly
+
+
 TARGET SELECTION ALGORITHM
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -119,10 +140,20 @@ BY vCPU:
 • Sorts VMs by vCPU count (smallest first)
 • Selects VMs until total vCPUs reach or exceed target
 
-BY CPU USAGE:
-• Sorts VMs by CPU usage percentage (lowest first)
-• Selects VMs until cumulative CPU% reaches target
-• Note: A VM's CPU% contribution = its CPU% × vCPUs / Host threads
+BY CPU USAGE (Efficiency-Optimized):
+• Uses automatic efficiency-based algorithm for fastest CPU relief
+• Efficiency = Host CPU% / Disk Size (GiB)
+• Higher efficiency = more CPU freed per GiB of data migrated
+• VMs are sorted by efficiency (highest first) and selected until target is met
+
+  EXAMPLE:
+  VM-A: 5% CPU, 200 GiB disk → efficiency = 0.025
+  VM-B: 0.067% CPU, 20 GiB disk → efficiency = 0.0033
+
+  VM-A is selected first because it frees more CPU per migration time.
+  Migrating 1×VM-A (200 GiB, 5% CPU) beats 30×VM-B (600 GiB, 2% CPU total).
+
+• A VM's Host CPU% contribution = VM CPU% × vCPUs / Host threads (HCPU%)
 
 BY RAM:
 • Sorts VMs by actual RAM usage (smallest first)
@@ -244,8 +275,10 @@ QUIT:
 
 RESULTS VIEW:
   Tab               Switch between Migration Summary / Impact tables
-  Enter             View host details
+  Enter             View host details (in Impact table)
   ↑/↓               Browse VMs or hosts
+  m                 Show migration commands (qm migrate)
+  r                 New analysis with different criteria
 `
 
 // GetMigrationLogicLines returns all documentation lines
