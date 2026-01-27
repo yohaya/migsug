@@ -439,7 +439,6 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
 	labelStyle := lipgloss.NewStyle()
 	valueStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
-	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	selectedStyle := lipgloss.NewStyle().Background(lipgloss.Color("236")).Foreground(lipgloss.Color("15")).Bold(true)
 	arrowOutStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("1")) // Red for out
 	arrowInStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2"))  // Green for in
@@ -787,7 +786,6 @@ func renderMigrationReasoning(vm VMListItem, currentHost string) string {
 	valueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
 	goodStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
 	warnStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
-	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 
 	// VM Selection Reason
 	sb.WriteString(labelStyle.Render("Why selected: ") + valueStyle.Render(details.SelectionReason) + "\n\n")
