@@ -378,16 +378,16 @@ func (m *Model) sortNodes() {
 		case SortByCPUPercent:
 			less = nodes[i].GetCPUPercent() < nodes[j].GetCPUPercent()
 		case SortByLA:
-			// Compare 1-minute load average
-			laI := 0.0
-			laJ := 0.0
-			if len(nodes[i].LoadAverage) > 0 {
-				laI = nodes[i].LoadAverage[0]
+			// Compare 1-minute load average as percentage of CPU cores
+			laPctI := 0.0
+			laPctJ := 0.0
+			if len(nodes[i].LoadAverage) > 0 && nodes[i].CPUCores > 0 {
+				laPctI = nodes[i].LoadAverage[0] / float64(nodes[i].CPUCores) * 100
 			}
-			if len(nodes[j].LoadAverage) > 0 {
-				laJ = nodes[j].LoadAverage[0]
+			if len(nodes[j].LoadAverage) > 0 && nodes[j].CPUCores > 0 {
+				laPctJ = nodes[j].LoadAverage[0] / float64(nodes[j].CPUCores) * 100
 			}
-			less = laI < laJ
+			less = laPctI < laPctJ
 		case SortByRAM:
 			less = nodes[i].GetMemPercent() < nodes[j].GetMemPercent()
 		case SortByDisk:
