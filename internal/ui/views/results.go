@@ -110,8 +110,8 @@ func RenderResultsWithSource(result *analyzer.AnalysisResult, cluster *proxmox.C
 			min(scrollPos+maxVisible, len(result.Suggestions)),
 			len(result.Suggestions))
 		// Right-align so last digit is below last "-" of the table
-		// Table width = 2 (prefix) + 104 (totalWidth) = 106 characters for the dashes
-		tableWidth := 106
+		// Table width = 2 (prefix) + 110 (totalWidth) + 2 (scrollbar space) = 114 characters
+		tableWidth := 114
 		padding := tableWidth - len(scrollInfo)
 		if padding > 0 {
 			scrollInfo = strings.Repeat(" ", padding) + scrollInfo
@@ -214,7 +214,8 @@ func RenderResultsInteractive(result *analyzer.AnalysisResult, cluster *proxmox.
 			scrollPos+1,
 			min(scrollPos+maxVisible, len(result.Suggestions)),
 			len(result.Suggestions))
-		tableWidth := 106
+		// Table width = 2 (prefix) + 110 (totalWidth) + 2 (scrollbar space) = 114 characters
+		tableWidth := 114
 		padding := tableWidth - len(scrollInfo)
 		if padding > 0 {
 			scrollInfo = strings.Repeat(" ", padding) + scrollInfo
