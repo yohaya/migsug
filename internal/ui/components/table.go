@@ -202,7 +202,7 @@ func RenderNodeTableWideWithScroll(nodes []proxmox.Node, selectedIdx int, width 
 	}
 
 	// Main header with sort arrows (aligned to match row format)
-	header1 := fmt.Sprintf("  %-*s %-*s %*s %*s %*s %*s %-*s %-*s %-*s %s",
+	header1 := fmt.Sprintf("  %-*s %-*s %*s %*s %*s %*s %*s %*s %-*s %s",
 		colName, "Host"+getSortArrow(0),
 		colStatus, "Status"+getSortArrow(1),
 		colVMs, "VMs"+getSortArrow(2),
@@ -279,7 +279,7 @@ func RenderNodeTableWideWithScroll(nodes []proxmox.Node, selectedIdx int, width 
 		}
 
 		// Build the row content (plain text for width calculation)
-		rowContent := fmt.Sprintf("%-*s %-*s %*d %*s %*s %*s %-*s %-*s %-*s %s",
+		rowContent := fmt.Sprintf("%-*s %-*s %*d %*s %*s %*s %*s %*s %-*s %s",
 			colName, truncate(node.Name, colName),
 			colStatus, node.Status,
 			colVMs, len(node.VMs),
@@ -353,15 +353,15 @@ func RenderNodeTableWideWithScroll(nodes []proxmox.Node, selectedIdx int, width 
 			laStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(laColor))
 			coloredRow.WriteString(laStyle.Render(fmt.Sprintf("%*s", colLA, laStr)) + " ")
 
-			// RAM with color
+			// RAM with color (right-aligned)
 			ramColor := getUsageColor(node.GetMemPercent())
 			ramStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ramColor))
-			coloredRow.WriteString(ramStyle.Render(fmt.Sprintf("%-*s", colRAM, ramStr)) + " ")
+			coloredRow.WriteString(ramStyle.Render(fmt.Sprintf("%*s", colRAM, ramStr)) + " ")
 
-			// Disk with color based on free space
+			// Disk with color based on free space (right-aligned)
 			diskColor := getDiskFreeColor(node.MaxDisk - node.UsedDisk)
 			diskStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(diskColor))
-			coloredRow.WriteString(diskStyle.Render(fmt.Sprintf("%-*s", colDisk, diskStr)) + " ")
+			coloredRow.WriteString(diskStyle.Render(fmt.Sprintf("%*s", colDisk, diskStr)) + " ")
 
 			// Swap with color (red for Yes, green for No)
 			swapColor := "2" // green for No
