@@ -462,7 +462,7 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 		} else {
 			cpuInfoStr = fmt.Sprintf("%d threads", node.CPUCores)
 		}
-		sb.WriteString(labelStyle.Render("CPU:    ") + dimStyle.Render(cpuInfoStr) + "\n")
+		sb.WriteString(labelStyle.Render("CPU:    ") + valueStyle.Render(cpuInfoStr) + "\n")
 	}
 
 	// Get before/after state
@@ -805,15 +805,15 @@ func renderMigrationReasoning(vm VMListItem, currentHost string) string {
 	if details.ScoreBreakdown.TotalScore > 0 {
 		sb.WriteString("  " + labelStyle.Render("Score: ") + valueStyle.Render(fmt.Sprintf("%.1f", details.ScoreBreakdown.TotalScore)) + "\n")
 		if details.ScoreBreakdown.UtilizationScore > 0 {
-			sb.WriteString("    " + dimStyle.Render(fmt.Sprintf("- Utilization: %.1f (weight: %.0f%%)",
+			sb.WriteString("    " + valueStyle.Render(fmt.Sprintf("- Utilization: %.1f (weight: %.0f%%)",
 				details.ScoreBreakdown.UtilizationScore, details.ScoreBreakdown.UtilizationWeight*100)) + "\n")
 		}
 		if details.ScoreBreakdown.BalanceScore > 0 {
-			sb.WriteString("    " + dimStyle.Render(fmt.Sprintf("- Balance: %.1f (weight: %.0f%%)",
+			sb.WriteString("    " + valueStyle.Render(fmt.Sprintf("- Balance: %.1f (weight: %.0f%%)",
 				details.ScoreBreakdown.BalanceScore, details.ScoreBreakdown.BalanceWeight*100)) + "\n")
 		}
 		if details.ScoreBreakdown.HeadroomScore != 0 {
-			sb.WriteString("    " + dimStyle.Render(fmt.Sprintf("- Headroom: %.1f (below cluster avg)",
+			sb.WriteString("    " + valueStyle.Render(fmt.Sprintf("- Headroom: %.1f (below cluster avg)",
 				details.ScoreBreakdown.HeadroomScore)) + "\n")
 		}
 	}
@@ -822,7 +822,7 @@ func renderMigrationReasoning(vm VMListItem, currentHost string) string {
 	// Target state before/after
 	sb.WriteString(labelStyle.Render("Target state change:") + "\n")
 	sb.WriteString("  " + labelStyle.Render("Before: ") +
-		dimStyle.Render(fmt.Sprintf("CPU: %.1f%%, RAM: %.1f%%, Storage: %.1f%%, VMs: %d",
+		valueStyle.Render(fmt.Sprintf("CPU: %.1f%%, RAM: %.1f%%, Storage: %.1f%%, VMs: %d",
 			details.TargetBefore.CPUPercent,
 			details.TargetBefore.RAMPercent,
 			details.TargetBefore.StoragePercent,
@@ -852,7 +852,7 @@ func renderMigrationReasoning(vm VMListItem, currentHost string) string {
 	// Cluster context (for MigrateAll mode)
 	if details.ClusterAvgCPU > 0 || details.ClusterAvgRAM > 0 {
 		sb.WriteString("\n" + labelStyle.Render("Cluster balance target:") + "\n")
-		sb.WriteString("  " + dimStyle.Render(fmt.Sprintf("Avg CPU: %.1f%%, Avg RAM: %.1f%%",
+		sb.WriteString("  " + valueStyle.Render(fmt.Sprintf("Avg CPU: %.1f%%, Avg RAM: %.1f%%",
 			details.ClusterAvgCPU, details.ClusterAvgRAM)) + "\n")
 		if details.BelowAverage {
 			sb.WriteString("  " + goodStyle.Render("✓ Target stays below cluster average") + "\n")
@@ -866,10 +866,10 @@ func renderMigrationReasoning(vm VMListItem, currentHost string) string {
 		sb.WriteString("\n" + labelStyle.Render("Alternative targets:") + "\n")
 		for _, alt := range details.Alternatives {
 			if alt.Score > 0 {
-				sb.WriteString("  " + dimStyle.Render(fmt.Sprintf("• %s (score: %.1f) - %s",
+				sb.WriteString("  " + valueStyle.Render(fmt.Sprintf("• %s (score: %.1f) - %s",
 					alt.Name, alt.Score, alt.RejectionReason)) + "\n")
 			} else {
-				sb.WriteString("  " + dimStyle.Render(fmt.Sprintf("• %s - %s",
+				sb.WriteString("  " + valueStyle.Render(fmt.Sprintf("• %s - %s",
 					alt.Name, alt.RejectionReason)) + "\n")
 			}
 		}
@@ -879,7 +879,7 @@ func renderMigrationReasoning(vm VMListItem, currentHost string) string {
 	if len(details.ConstraintsApplied) > 0 {
 		sb.WriteString("\n" + labelStyle.Render("Constraints checked:") + "\n")
 		for _, c := range details.ConstraintsApplied {
-			sb.WriteString("  " + dimStyle.Render("• "+c) + "\n")
+			sb.WriteString("  " + valueStyle.Render("• "+c) + "\n")
 		}
 	}
 
