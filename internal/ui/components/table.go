@@ -133,17 +133,18 @@ func RenderNodeTableWideWithScroll(nodes []proxmox.Node, selectedIdx int, width 
 	}
 
 	// Column widths - fit to terminal width
+	// Note: Headers include sort numbers like "[1]" and sort arrow "▼", so widths must accommodate
 	colName := maxNameLen + 2
-	colStatus := 8
-	colVMs := 6
-	colVCPUs := 13 // e.g., "572 (325%)"
-	colCPUPct := 8
-	colLA := 14   // e.g., "62.56 (35.5%)"
-	colRAM := 22  // e.g., "1632/2048G (80%)"
-	colDisk := 20 // e.g., "165/205T (80%)"
-	colSwap := 4  // "Yes" or "No"
+	colStatus := 13 // "Status [2] ▼" = 12 chars
+	colVMs := 10    // "VMs [3] ▼" = 9 chars
+	colVCPUs := 14  // "vCPUs [4] ▼" = 11 chars
+	colCPUPct := 11 // "CPU% [5] ▼" = 10 chars
+	colLA := 14     // "LA [6] ▼" = 8 chars, but data can be "62.56 (35.5%)"
+	colRAM := 22    // "RAM [7] ▼" = 9 chars, but data is "1632/2048G (80%)"
+	colDisk := 20   // "Disk [8] ▼" = 10 chars, but data is "165/205T (80%)"
+	colSwap := 4    // "Swap" (no sort number)
 	// CPU Model gets remaining width - no artificial limit
-	colCPUModel := width - colName - colStatus - colVMs - colVCPUs - colCPUPct - colLA - colRAM - colDisk - colSwap - 26
+	colCPUModel := width - colName - colStatus - colVMs - colVCPUs - colCPUPct - colLA - colRAM - colDisk - colSwap - 12
 	if colCPUModel < 20 {
 		colCPUModel = 20
 	}
