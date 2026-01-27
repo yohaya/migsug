@@ -420,6 +420,22 @@ func FormatStorageG(bytes int64) string {
 	return fmt.Sprintf("%.0fG", gb)
 }
 
+// FormatRAMShort formats RAM size with whole numbers (no decimals)
+func FormatRAMShort(bytes int64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%dB", bytes)
+	}
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	units := []string{"K", "M", "G", "T", "P"}
+	val := float64(bytes) / float64(div)
+	return fmt.Sprintf("%.0f%s", val, units[exp])
+}
+
 // FormatRAMWithPercent formats used/total RAM in G with percentage at end
 // e.g., "1232/2320G (52%)"
 func FormatRAMWithPercent(usedBytes, totalBytes int64, percent float64) string {

@@ -344,7 +344,7 @@ func RenderHostDetailInteractive(result *analyzer.AnalysisResult, hostName, sour
 				truncateString(vm.VMName, 24),
 				truncateString(vm.TargetNode, 20),
 				vm.VCPUs,
-				components.FormatBytesShort(vm.RAM),
+				components.FormatRAMShort(vm.RAM),
 				components.FormatStorageG(vm.Storage)))
 		}
 
@@ -391,7 +391,7 @@ func RenderHostDetailInteractive(result *analyzer.AnalysisResult, hostName, sour
 				truncateString(vm.VMName, 24),
 				truncateString(vm.SourceNode, 20),
 				vm.VCPUs,
-				components.FormatBytesShort(vm.RAM),
+				components.FormatRAMShort(vm.RAM),
 				components.FormatStorageG(vm.Storage)))
 		}
 
@@ -479,12 +479,12 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 	sb.WriteString(labelStyle.Render("Before: ") +
 		valueStyle.Render(fmt.Sprintf("VMs: %d, vCPUs: %d, CPU: %.1f%%, RAM: %s, Storage: %s",
 			beforeState.VMCount, beforeState.VCPUs, beforeState.CPUPercent,
-			components.FormatBytesShort(beforeState.RAMUsed),
+			components.FormatRAMShort(beforeState.RAMUsed),
 			components.FormatBytesShort(beforeState.StorageUsed))) + "\n")
 	sb.WriteString(labelStyle.Render("After:  ") +
 		valueStyle.Render(fmt.Sprintf("VMs: %d, vCPUs: %d, CPU: %.1f%%, RAM: %s, Storage: %s",
 			afterState.VMCount, afterState.VCPUs, afterState.CPUPercent,
-			components.FormatBytesShort(afterState.RAMUsed),
+			components.FormatRAMShort(afterState.RAMUsed),
 			components.FormatBytesShort(afterState.StorageUsed))) + "\n\n")
 
 	// Build VM list
@@ -642,7 +642,7 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 			colState, stateStr,
 			colCPU, cpuStr,
 			colVCPU, vm.VCPUs,
-			colRAM, components.FormatBytesShort(vm.RAM),
+			colRAM, components.FormatRAMShort(vm.RAM),
 			colStorage, components.FormatStorageG(vm.Storage),
 			colTarget, migrationStr)
 
@@ -685,11 +685,6 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 		}
 	}
 
-	// Legend
-	sb.WriteString("\n")
-	legendStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	sb.WriteString(legendStyle.Render("  ← Migrating out   → Migrating in") + "\n")
-
 	// Help text
 	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	sb.WriteString("\n" + helpStyle.Render("↑/↓/PgUp/PgDn/Home/End: Navigate  Esc: Back  q: Quit"))
@@ -706,16 +701,11 @@ func renderMigrationReasoning(vm VMListItem, currentHost string) string {
 	var sb strings.Builder
 	details := vm.Details
 
-	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
 	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	valueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
 	goodStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
 	warnStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-
-	// Title
-	sb.WriteString(titleStyle.Render("Migration Reasoning for VM "+fmt.Sprintf("%d", vm.VMID)) + "\n")
-	sb.WriteString(strings.Repeat("─", 60) + "\n\n")
 
 	// VM Selection Reason
 	sb.WriteString(labelStyle.Render("Why selected: ") + valueStyle.Render(details.SelectionReason) + "\n\n")
