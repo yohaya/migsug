@@ -201,16 +201,16 @@ func RenderNodeTableWideWithScroll(nodes []proxmox.Node, selectedIdx int, width 
 		}
 	}
 
-	// Main header with sort arrows (aligned to match row format)
+	// Main header with sort numbers [1-8] and sort arrows (aligned to match row format)
 	header1 := fmt.Sprintf("  %-*s %-*s %*s %*s %*s %*s %*s %*s %-*s %s",
-		colName, "Host"+getSortArrow(0),
-		colStatus, "Status"+getSortArrow(1),
-		colVMs, "VMs"+getSortArrow(2),
-		colVCPUs, "vCPUs"+getSortArrow(3),
-		colCPUPct, "CPU%"+getSortArrow(4),
-		colLA, "LA"+getSortArrow(5),
-		colRAM, "RAM"+getSortArrow(6),
-		colDisk, "Disk"+getSortArrow(7),
+		colName, "Host [1]"+getSortArrow(0),
+		colStatus, "Status [2]"+getSortArrow(1),
+		colVMs, "VMs [3]"+getSortArrow(2),
+		colVCPUs, "vCPUs [4]"+getSortArrow(3),
+		colCPUPct, "CPU% [5]"+getSortArrow(4),
+		colLA, "LA [6]"+getSortArrow(5),
+		colRAM, "RAM [7]"+getSortArrow(6),
+		colDisk, "Disk [8]"+getSortArrow(7),
 		colSwap, "Swap",
 		"CPU Model")
 	if needsScrollbar {
