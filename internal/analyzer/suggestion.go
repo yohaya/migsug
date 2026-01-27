@@ -153,8 +153,9 @@ func NewNodeStateFromVMs(node *proxmox.Node) NodeState {
 		if vm.Status == "running" {
 			totalVCPUs += vm.CPUCores
 			totalCPUUsage += vm.CPUUsage * float64(vm.CPUCores) / 100 // Weighted CPU usage
+			totalRAM += vm.MaxMem // Only count RAM for running VMs
 		}
-		totalRAM += vm.MaxMem
+		// Storage is always counted (disk space is used regardless of power state)
 		storage := vm.MaxDisk
 		if storage == 0 {
 			storage = vm.UsedDisk
@@ -200,14 +201,14 @@ func (ns NodeState) CalculateAfterMigration(addVMs []proxmox.VM, removeVMs []pro
 	// Remove VMs
 	for _, vm := range removeVMs {
 		newState.VMCount--
-		// Only subtract vCPUs/CPU for running VMs (stopped VMs don't contribute)
+		// Only subtract vCPUs/CPU/RAM for running VMs (stopped VMs don't contribute to usage)
 		if vm.Status == "running" {
 			newState.VCPUs -= vm.CPUCores
 			// Weighted CPU usage: vm.CPUUsage * vCPUs / 100
 			newState.CPUUsageTotal -= vm.CPUUsage * float64(vm.CPUCores) / 100
+			newState.RAMUsed -= vm.MaxMem // Only count RAM for running VMs
 		}
-		newState.RAMUsed -= vm.MaxMem // Use allocated RAM
-		// Use MaxDisk if available, otherwise UsedDisk
+		// Storage is always counted (disk space is used regardless of power state)
 		storage := vm.MaxDisk
 		if storage == 0 {
 			storage = vm.UsedDisk
@@ -218,14 +219,14 @@ func (ns NodeState) CalculateAfterMigration(addVMs []proxmox.VM, removeVMs []pro
 	// Add VMs
 	for _, vm := range addVMs {
 		newState.VMCount++
-		// Only add vCPUs/CPU for running VMs
+		// Only add vCPUs/CPU/RAM for running VMs (stopped VMs don't contribute to usage)
 		if vm.Status == "running" {
 			newState.VCPUs += vm.CPUCores
 			// Weighted CPU usage: vm.CPUUsage * vCPUs / 100
 			newState.CPUUsageTotal += vm.CPUUsage * float64(vm.CPUCores) / 100
+			newState.RAMUsed += vm.MaxMem // Only count RAM for running VMs
 		}
-		newState.RAMUsed += vm.MaxMem // Use allocated RAM
-		// Use MaxDisk if available, otherwise UsedDisk
+		// Storage is always counted (disk space is used regardless of power state)
 		storage := vm.MaxDisk
 		if storage == 0 {
 			storage = vm.UsedDisk
@@ -284,15 +285,21 @@ func (ns NodeState) CalculateAfterMigration(addVMs []proxmox.VM, removeVMs []pro
 }
 
 // HasCapacity checks if the node has capacity for a VM
+// Uses MaxMem for RAM check to ensure there's room to power on the VM
 func (ns NodeState) HasCapacity(vm proxmox.VM, constraints MigrationConstraints) bool {
-	// Check RAM capacity
-	newRAMUsed := ns.RAMUsed + vm.UsedMem
+	// Check RAM capacity - use MaxMem to ensure there's room to power on the VM
+	// Even if VM is currently stopped, we need capacity for when it's powered on
+	newRAMUsed := ns.RAMUsed + vm.MaxMem
 	if newRAMUsed > ns.RAMTotal {
 		return false
 	}
 
 	// Check storage capacity
-	newStorageUsed := ns.StorageUsed + vm.UsedDisk
+	storage := vm.MaxDisk
+	if storage == 0 {
+		storage = vm.UsedDisk
+	}
+	newStorageUsed := ns.StorageUsed + storage
 	if newStorageUsed > ns.StorageTotal {
 		return false
 	}

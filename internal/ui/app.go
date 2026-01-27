@@ -87,6 +87,10 @@ type Model struct {
 	loading    bool
 	loadingMsg string
 
+	// Migration logic documentation view
+	showMigrationLogics      bool
+	migrationLogicsScrollPos int
+
 	// Auto-refresh state
 	refreshCountdown int    // seconds until next refresh
 	refreshing       bool   // true when actively refreshing data
@@ -239,11 +243,24 @@ func (m Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "ctrl+c", "q":
 		if m.currentView != ViewCriteria || !m.criteriaState.InputFocused {
+			if m.showMigrationLogics {
+				m.showMigrationLogics = false
+				m.migrationLogicsScrollPos = 0
+				return m, tea.ClearScreen
+			}
 			return m, tea.Quit
 		}
 	case "?":
-		m.showHelp = !m.showHelp
-		return m, nil
+		if !m.showMigrationLogics {
+			m.showMigrationLogics = true
+			m.migrationLogicsScrollPos = 0
+		}
+		return m, tea.ClearScreen
+	}
+
+	// Handle migration logics view navigation
+	if m.showMigrationLogics {
+		return m.handleMigrationLogicsKeys(msg)
 	}
 
 	// View-specific keys
@@ -920,8 +937,46 @@ func (m Model) handleErrorKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m Model) handleMigrationLogicsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	totalPages := len(views.MigrationLogicContent)
+
+	switch msg.String() {
+	case "esc":
+		m.showMigrationLogics = false
+		m.migrationLogicsScrollPos = 0
+		return m, tea.ClearScreen
+	case "up", "k":
+		if m.migrationLogicsScrollPos > 0 {
+			m.migrationLogicsScrollPos--
+		}
+	case "down", "j":
+		if m.migrationLogicsScrollPos < totalPages-1 {
+			m.migrationLogicsScrollPos++
+		}
+	case "pgup":
+		m.migrationLogicsScrollPos -= 3
+		if m.migrationLogicsScrollPos < 0 {
+			m.migrationLogicsScrollPos = 0
+		}
+	case "pgdown":
+		m.migrationLogicsScrollPos += 3
+		if m.migrationLogicsScrollPos >= totalPages {
+			m.migrationLogicsScrollPos = totalPages - 1
+		}
+	case "home":
+		m.migrationLogicsScrollPos = 0
+	case "end":
+		m.migrationLogicsScrollPos = totalPages - 1
+	}
+	return m, nil
+}
+
 // View renders the current view
 func (m Model) View() string {
+	if m.showMigrationLogics {
+		return views.RenderMigrationLogic(m.width, m.height, m.migrationLogicsScrollPos)
+	}
+
 	if m.showHelp {
 		return components.RenderHelp()
 	}

@@ -365,12 +365,16 @@ func FindBestTarget(vm proxmox.VM, targetStates map[string]NodeState, vmsPerTarg
 		// Check capacity
 		if !state.HasCapacity(vm, constraints) {
 			cand.rejected = true
-			// Determine specific reason
-			newRAMUsed := state.RAMUsed + vm.UsedMem
+			// Determine specific reason - use MaxMem to check if VM can be powered on
+			newRAMUsed := state.RAMUsed + vm.MaxMem
 			if newRAMUsed > state.RAMTotal {
 				cand.rejectReason = "Insufficient RAM capacity"
 			} else {
-				newStorageUsed := state.StorageUsed + vm.UsedDisk
+				storage := vm.MaxDisk
+				if storage == 0 {
+					storage = vm.UsedDisk
+				}
+				newStorageUsed := state.StorageUsed + storage
 				if newStorageUsed > state.StorageTotal {
 					cand.rejectReason = "Insufficient storage capacity"
 				} else if constraints.MinRAMFree != nil {
@@ -757,7 +761,8 @@ func findBestTargetForMigrateAll(vm proxmox.VM, targetStates map[string]NodeStat
 		}
 
 		// Check basic capacity (RAM and storage must fit)
-		newRAMUsed := state.RAMUsed + vm.UsedMem
+		// Use MaxMem to ensure there's room to power on the VM even if currently stopped
+		newRAMUsed := state.RAMUsed + vm.MaxMem
 		if newRAMUsed > state.RAMTotal {
 			cand.rejected = true
 			cand.rejectReason = "Insufficient RAM capacity"
@@ -765,7 +770,11 @@ func findBestTargetForMigrateAll(vm proxmox.VM, targetStates map[string]NodeStat
 			continue
 		}
 
-		newStorageUsed := state.StorageUsed + vm.UsedDisk
+		storage := vm.MaxDisk
+		if storage == 0 {
+			storage = vm.UsedDisk
+		}
+		newStorageUsed := state.StorageUsed + storage
 		if newStorageUsed > state.StorageTotal {
 			cand.rejected = true
 			cand.rejectReason = "Insufficient storage capacity"
