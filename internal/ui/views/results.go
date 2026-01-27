@@ -567,16 +567,17 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 
 	// Calculate max visible rows with fixed reservation for reasoning panel
 	// Fixed overhead:
-	// - Title + border: 3 lines
+	// - Title + border: 2 lines
 	// - CPU info: 1 line
-	// - Before/After summary: 3 lines
+	// - Before/After summary: 2 lines + 1 blank
 	// - Table header + separator: 2 lines
 	// - Table closing line: 1 line
 	// - Scroll info: 1 line
-	// - Reasoning panel (fixed): 22 lines (max height including all sections)
+	// - Blank before reasoning: 1 line
+	// - Reasoning panel (fixed): 26 lines (max height including all sections)
 	// - Help text: 1 line
-	// Total: 34 lines
-	fixedOverhead := 34
+	// Total: 38 lines
+	fixedOverhead := 38
 	maxVisible := height - fixedOverhead
 	if maxVisible < 5 {
 		maxVisible = 5
