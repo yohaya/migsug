@@ -584,17 +584,19 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 
 	// Column widths - increased for full hostnames
 	const (
-		colDir     = 2 // Arrow direction
+		colDir     = 2  // Arrow direction
 		colVMID    = 6
-		colName    = 32 // Increased for longer VM names
+		colName    = 28 // VM name
 		colState   = 5
-		colCPU     = 6 // CPU%
+		colHCPU    = 6  // HCPU% (host CPU% - normalized)
+		colVMCPU   = 7  // VMCPU% (% of allocated vCPUs)
+		colCPU     = 6  // CPU% (VMCPU% * vCPU)
 		colVCPU    = 5
 		colRAM     = 8
 		colStorage = 8
-		colTarget  = 28 // Increased for full hostname in migration info
+		colTarget  = 24 // Migration info
 	)
-	totalWidth := colDir + colVMID + colName + colState + colCPU + colVCPU + colRAM + colStorage + colTarget + 8
+	totalWidth := colDir + colVMID + colName + colState + colHCPU + colVMCPU + colCPU + colVCPU + colRAM + colStorage + colTarget + 10
 
 	// Scrollbar styles
 	scrollTrackStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
@@ -630,11 +632,13 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 	}
 
 	// Header - aligned with data columns (no extra space between dir and VMID)
-	header := fmt.Sprintf("  %*s%*s %-*s %-*s %*s %*s %*s %*s %-*s",
+	header := fmt.Sprintf("  %*s%*s %-*s %-*s %*s %*s %*s %*s %*s %*s %-*s",
 		colDir, "",
 		colVMID, "VMID",
 		colName, "Name",
 		colState, "State",
+		colHCPU, "HCPU%",
+		colVMCPU, "VMCPU%",
 		colCPU, "CPU%",
 		colVCPU, "vCPU",
 		colRAM, "RAM",
@@ -681,8 +685,18 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 			migrationStr = "← " + vm.Target
 		}
 
-		// CPU% string
-		cpuStr := fmt.Sprintf("%.1f", vm.CPUUsage)
+		// VMCPU%: percentage of allocated vCPUs (already in 0-100)
+		vmCpuStr := fmt.Sprintf("%.1f", vm.CPUUsage)
+
+		// CPU%: total thread consumption = VMCPU% * vCPUs
+		// e.g., if VMCPU% is 10% and VM has 16 vCPUs, CPU% = 160 (1.6 threads worth)
+		cpuPercent := vm.CPUUsage * float64(vm.VCPUs)
+		cpuStr := fmt.Sprintf("%.0f", cpuPercent)
+
+		// HCPU%: host CPU percentage (thread consumption as fraction)
+		// = VMCPU% * vCPUs / 100 (e.g., 10% * 16 / 100 = 1.6% of host capacity per thread)
+		hCpuPercent := vm.CPUUsage * float64(vm.VCPUs) / 100
+		hCpuStr := fmt.Sprintf("%.1f", hCpuPercent)
 
 		// Truncate name to fit column width
 		displayName := vm.Name
@@ -697,10 +711,12 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 		}
 
 		// Build row content with truncated names
-		rowContent := fmt.Sprintf("%*d %-*s %-*s %*s %*d %*s %*s %-*s",
+		rowContent := fmt.Sprintf("%*d %-*s %-*s %*s %*s %*s %*d %*s %*s %-*s",
 			colVMID, vm.VMID,
 			colName, displayName,
 			colState, stateStr,
+			colHCPU, hCpuStr,
+			colVMCPU, vmCpuStr,
 			colCPU, cpuStr,
 			colVCPU, vm.VCPUs,
 			colRAM, components.FormatRAMShort(vm.RAM),
