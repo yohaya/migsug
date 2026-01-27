@@ -693,9 +693,12 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 		cpuPercent := vm.CPUUsage * float64(vm.VCPUs)
 		cpuStr := fmt.Sprintf("%.0f", cpuPercent)
 
-		// HCPU%: host CPU percentage (thread consumption as fraction)
-		// = VMCPU% * vCPUs / 100 (e.g., 10% * 16 / 100 = 1.6% of host capacity per thread)
-		hCpuPercent := vm.CPUUsage * float64(vm.VCPUs) / 100
+		// HCPU%: host CPU percentage contribution
+		// = VMCPU% * vCPUs / hostCores (actual % of this host's capacity the VM uses)
+		hCpuPercent := 0.0
+		if node != nil && node.CPUCores > 0 {
+			hCpuPercent = vm.CPUUsage * float64(vm.VCPUs) / float64(node.CPUCores)
+		}
 		hCpuStr := fmt.Sprintf("%.1f", hCpuPercent)
 
 		// Truncate name to fit column width

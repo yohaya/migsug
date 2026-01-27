@@ -18,6 +18,10 @@ type MigrationSuggestion struct {
 	RAM      int64
 	Storage  int64
 
+	// Host info for CPU% calculations
+	SourceCores int // Source host's CPU cores/threads
+	TargetCores int // Target host's CPU cores/threads
+
 	// Detailed migration reasoning
 	Details *MigrationDetails
 }

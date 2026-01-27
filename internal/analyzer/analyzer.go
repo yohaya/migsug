@@ -37,9 +37,9 @@ func Analyze(cluster *proxmox.Cluster, constraints MigrationConstraints) (*Analy
 
 	// Use specialized algorithm for ModeAll to ensure balanced distribution
 	if constraints.MigrateAll {
-		suggestions = GenerateSuggestionsBalanced(vmsToMigrate, targets, cluster, constraints)
+		suggestions = GenerateSuggestionsBalanced(vmsToMigrate, targets, cluster, sourceNode, constraints)
 	} else {
-		suggestions = GenerateSuggestions(vmsToMigrate, targets, constraints)
+		suggestions = GenerateSuggestions(vmsToMigrate, targets, sourceNode, constraints)
 	}
 
 	// Calculate before/after states
@@ -235,13 +235,21 @@ func selectByStorage(node *proxmox.Node, targetStorage int64) []proxmox.VM {
 }
 
 // GenerateSuggestions creates migration suggestions by finding best targets
-func GenerateSuggestions(vms []proxmox.VM, targets []proxmox.Node, constraints MigrationConstraints) []MigrationSuggestion {
+func GenerateSuggestions(vms []proxmox.VM, targets []proxmox.Node, sourceNode *proxmox.Node, constraints MigrationConstraints) []MigrationSuggestion {
 	var suggestions []MigrationSuggestion
 
 	// Track target states for capacity checking
 	targetStates := make(map[string]NodeState)
+	targetCoresMap := make(map[string]int)
 	for _, target := range targets {
 		targetStates[target.Name] = NewNodeState(&target)
+		targetCoresMap[target.Name] = target.CPUCores
+	}
+
+	// Source node cores for HCPU% calculation
+	sourceCores := 0
+	if sourceNode != nil {
+		sourceCores = sourceNode.CPUCores
 	}
 
 	// Track VMs per target for MaxVMsPerHost constraint
@@ -284,18 +292,20 @@ func GenerateSuggestions(vms []proxmox.VM, targets []proxmox.Node, constraints M
 		}
 
 		suggestion := MigrationSuggestion{
-			VMID:       vm.VMID,
-			VMName:     vm.Name,
-			SourceNode: vm.Node,
-			TargetNode: targetNode,
-			Reason:     reason,
-			Score:      score,
-			Status:     vm.Status,
-			VCPUs:      vm.CPUCores,
-			CPUUsage:   vm.CPUUsage,
-			RAM:        vm.MaxMem, // Use allocated RAM
-			Storage:    storageValue,
-			Details:    details,
+			VMID:        vm.VMID,
+			VMName:      vm.Name,
+			SourceNode:  vm.Node,
+			TargetNode:  targetNode,
+			Reason:      reason,
+			Score:       score,
+			Status:      vm.Status,
+			VCPUs:       vm.CPUCores,
+			CPUUsage:    vm.CPUUsage,
+			RAM:         vm.MaxMem, // Use allocated RAM
+			Storage:     storageValue,
+			SourceCores: sourceCores,
+			TargetCores: targetCoresMap[targetNode],
+			Details:     details,
 		}
 
 		suggestions = append(suggestions, suggestion)
@@ -668,17 +678,25 @@ func CalculateTargetAverages(cluster *proxmox.Cluster, sourceNode string, vmsToM
 // GenerateSuggestionsBalanced creates migration suggestions that distribute
 // ALL VMs from the source host across target nodes.
 // This is used for "Migrate All" mode - every VM MUST be assigned a target.
-func GenerateSuggestionsBalanced(vms []proxmox.VM, targets []proxmox.Node, cluster *proxmox.Cluster, constraints MigrationConstraints) []MigrationSuggestion {
+func GenerateSuggestionsBalanced(vms []proxmox.VM, targets []proxmox.Node, cluster *proxmox.Cluster, sourceNode *proxmox.Node, constraints MigrationConstraints) []MigrationSuggestion {
 	// Calculate target averages for the cluster after migration
 	targetAverages := CalculateTargetAverages(cluster, constraints.SourceNode, vms)
 
 	// Initialize target states (sequential processing for accurate state tracking)
 	targetStates := make(map[string]NodeState)
+	targetCoresMap := make(map[string]int)
 	vmsPerTarget := make(map[string]int)
 
 	for _, target := range targets {
 		targetStates[target.Name] = NewNodeState(&target)
+		targetCoresMap[target.Name] = target.CPUCores
 		vmsPerTarget[target.Name] = len(target.VMs)
+	}
+
+	// Source node cores for HCPU% calculation
+	sourceCores := 0
+	if sourceNode != nil {
+		sourceCores = sourceNode.CPUCores
 	}
 
 	suggestions := make([]MigrationSuggestion, 0, len(vms))
@@ -709,18 +727,20 @@ func GenerateSuggestionsBalanced(vms []proxmox.VM, targets []proxmox.Node, clust
 		}
 
 		suggestion := MigrationSuggestion{
-			VMID:       vm.VMID,
-			VMName:     vm.Name,
-			SourceNode: vm.Node,
-			TargetNode: targetName,
-			Reason:     reason,
-			Score:      score,
-			Status:     vm.Status,
-			VCPUs:      vm.CPUCores,
-			CPUUsage:   vm.CPUUsage,
-			RAM:        vm.MaxMem,
-			Storage:    storageValue,
-			Details:    details,
+			VMID:        vm.VMID,
+			VMName:      vm.Name,
+			SourceNode:  vm.Node,
+			TargetNode:  targetName,
+			Reason:      reason,
+			Score:       score,
+			Status:      vm.Status,
+			VCPUs:       vm.CPUCores,
+			CPUUsage:    vm.CPUUsage,
+			RAM:         vm.MaxMem,
+			Storage:     storageValue,
+			SourceCores: sourceCores,
+			TargetCores: targetCoresMap[targetName],
+			Details:     details,
 		}
 		suggestions = append(suggestions, suggestion)
 	}

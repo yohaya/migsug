@@ -852,9 +852,12 @@ func RenderSuggestionTableWithCursor(suggestions []analyzer.MigrationSuggestion,
 		cpuPercent := sug.CPUUsage * float64(sug.VCPUs)
 		cpuStr := fmt.Sprintf("%.0f", cpuPercent)
 
-		// HCPU%: host CPU percentage (thread consumption as fraction)
-		// = VMCPU% * vCPUs / 100 (e.g., 10% * 16 / 100 = 1.6% of host capacity per thread)
-		hCpuPercent := sug.CPUUsage * float64(sug.VCPUs) / 100
+		// HCPU%: host CPU percentage contribution
+		// = VMCPU% * vCPUs / SourceCores (actual % of source host's capacity this VM uses)
+		hCpuPercent := 0.0
+		if sug.SourceCores > 0 {
+			hCpuPercent = sug.CPUUsage * float64(sug.VCPUs) / float64(sug.SourceCores)
+		}
 		hCpuStr := fmt.Sprintf("%.1f", hCpuPercent)
 
 		row := fmt.Sprintf("%*d %-*s %-*s %-*s %*s %*s %*s %*d %*s %*s",
