@@ -718,11 +718,44 @@ func BuildAnalysisResult(sourceNode *proxmox.Node, targets []proxmox.Node, sugge
 		TargetsAfter:  make(map[string]NodeState),
 	}
 
-	// Source before state - use VM-aggregated values for Migration Impact
-	result.SourceBefore = NewNodeStateFromVMs(sourceNode)
+	// Source before state - use ACTUAL node values from Proxmox API
+	result.SourceBefore = NewNodeState(sourceNode)
 
-	// Source after state (remove migrated VMs)
-	result.SourceAfter = result.SourceBefore.CalculateAfterMigration(nil, vmsToMigrate)
+	// Calculate VM CPU contribution being removed
+	vmCPUContribution := 0.0
+	var vmRAMContribution int64
+	for _, vm := range vmsToMigrate {
+		if vm.Status == "running" {
+			// HCPU% = vm.CPUUsage * vm.CPUCores / hostCores
+			if sourceNode.CPUCores > 0 {
+				vmCPUContribution += vm.CPUUsage * float64(vm.CPUCores) / float64(sourceNode.CPUCores)
+			}
+			vmRAMContribution += vm.MaxMem
+		}
+	}
+
+	// Source after state - actual CPU minus VM contributions being removed
+	result.SourceAfter = result.SourceBefore
+	result.SourceAfter.CPUPercent = result.SourceBefore.CPUPercent - vmCPUContribution
+	if result.SourceAfter.CPUPercent < 0 {
+		result.SourceAfter.CPUPercent = 0
+	}
+	result.SourceAfter.RAMUsed = result.SourceBefore.RAMUsed - vmRAMContribution
+	if result.SourceAfter.RAMUsed < 0 {
+		result.SourceAfter.RAMUsed = 0
+	}
+	if result.SourceBefore.RAMTotal > 0 {
+		result.SourceAfter.RAMPercent = float64(result.SourceAfter.RAMUsed) / float64(result.SourceBefore.RAMTotal) * 100
+	}
+	result.SourceAfter.VMCount = result.SourceBefore.VMCount - len(vmsToMigrate)
+	// Update vCPUs
+	removedVCPUs := 0
+	for _, vm := range vmsToMigrate {
+		if vm.Status == "running" {
+			removedVCPUs += vm.CPUCores
+		}
+	}
+	result.SourceAfter.VCPUs = result.SourceBefore.VCPUs - removedVCPUs
 
 	// Target states
 	targetVMs := make(map[string][]proxmox.VM)
@@ -738,10 +771,37 @@ func BuildAnalysisResult(sourceNode *proxmox.Node, targets []proxmox.Node, sugge
 	}
 
 	for _, target := range targets {
-		// Use VM-aggregated values for Migration Impact
-		result.TargetsBefore[target.Name] = NewNodeStateFromVMs(&target)
+		// Use ACTUAL node values from Proxmox API for "Before"
+		beforeState := NewNodeState(&target)
+		result.TargetsBefore[target.Name] = beforeState
+
+		// Calculate "After" by adding VM contributions
 		addVMs := targetVMs[target.Name]
-		result.TargetsAfter[target.Name] = result.TargetsBefore[target.Name].CalculateAfterMigration(addVMs, nil)
+		afterState := beforeState
+
+		var addedCPU float64
+		var addedRAM int64
+		addedVCPUs := 0
+		for _, vm := range addVMs {
+			if vm.Status == "running" {
+				// HCPU% contribution on target = vm.CPUUsage * vm.CPUCores / targetCores
+				if target.CPUCores > 0 {
+					addedCPU += vm.CPUUsage * float64(vm.CPUCores) / float64(target.CPUCores)
+				}
+				addedRAM += vm.MaxMem
+				addedVCPUs += vm.CPUCores
+			}
+		}
+
+		afterState.CPUPercent = beforeState.CPUPercent + addedCPU
+		afterState.RAMUsed = beforeState.RAMUsed + addedRAM
+		if beforeState.RAMTotal > 0 {
+			afterState.RAMPercent = float64(afterState.RAMUsed) / float64(beforeState.RAMTotal) * 100
+		}
+		afterState.VMCount = beforeState.VMCount + len(addVMs)
+		afterState.VCPUs = beforeState.VCPUs + addedVCPUs
+
+		result.TargetsAfter[target.Name] = afterState
 	}
 
 	// Calculate summary - use Max values (allocated) since Used values are often 0
