@@ -444,9 +444,9 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 	arrowOutStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("1")) // Red for out
 	arrowInStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2"))  // Green for in
 
-	// Title
+	// Title - ensure it's always rendered at the top
 	sb.WriteString(titleStyle.Render("Host Detail: "+hostName) + "\n")
-	sb.WriteString(borderStyle.Render(strings.Repeat("━", width)) + "\n\n")
+	sb.WriteString(borderStyle.Render(strings.Repeat("━", width)) + "\n")
 
 	// Check if this is the source node
 	isSource := (hostName == sourceNodeName || hostName == result.SourceBefore.Name)
