@@ -596,6 +596,27 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 	)
 	totalWidth := colDir + colVMID + colName + colState + colCPU + colVCPU + colRAM + colStorage + colTarget + 8
 
+	// Scrollbar styles
+	scrollTrackStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	scrollThumbStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+
+	totalItems := len(vmList)
+	needsScrollbar := totalItems > maxVisible
+
+	// Calculate scrollbar thumb position and size
+	thumbPos := 0
+	thumbSize := maxVisible
+	if needsScrollbar && totalItems > 0 {
+		thumbSize = max(1, maxVisible*maxVisible/totalItems)
+		if thumbSize > maxVisible {
+			thumbSize = maxVisible
+		}
+		scrollRange := maxVisible - thumbSize
+		if scrollRange > 0 && totalItems > maxVisible {
+			thumbPos = scrollPos * scrollRange / (totalItems - maxVisible)
+		}
+	}
+
 	// Header - aligned with data columns (no extra space between dir and VMID)
 	header := fmt.Sprintf("  %*s%*s %-*s %-*s %*s %*s %*s %*s %-*s",
 		colDir, "",
@@ -607,8 +628,13 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 		colRAM, "RAM",
 		colStorage, "Storage",
 		colTarget, "Migration")
-	sb.WriteString(headerStyle.Render(header) + "\n")
-	sb.WriteString("  " + strings.Repeat("─", totalWidth) + "\n")
+	if needsScrollbar {
+		sb.WriteString(headerStyle.Render(header) + "  \n")
+		sb.WriteString("  " + strings.Repeat("─", totalWidth) + "  \n")
+	} else {
+		sb.WriteString(headerStyle.Render(header) + "\n")
+		sb.WriteString("  " + strings.Repeat("─", totalWidth) + "\n")
+	}
 
 	// Calculate visible range
 	endPos := scrollPos + maxVisible
@@ -663,19 +689,34 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 			selector = "▶ "
 		}
 
+		// Scrollbar character for this row
+		scrollChar := ""
+		if needsScrollbar {
+			rowIdx := i - scrollPos
+			if rowIdx >= thumbPos && rowIdx < thumbPos+thumbSize {
+				scrollChar = " " + scrollThumbStyle.Render("█")
+			} else {
+				scrollChar = " " + scrollTrackStyle.Render("│")
+			}
+		}
+
 		if isSelected {
 			// Pad row for consistent highlighting
 			if len(rowContent) < totalWidth {
 				rowContent += strings.Repeat(" ", totalWidth-len(rowContent))
 			}
-			sb.WriteString(selector + dirStr + selectedStyle.Render(rowContent) + "\n")
+			sb.WriteString(selector + dirStr + selectedStyle.Render(rowContent) + scrollChar + "\n")
 		} else {
-			sb.WriteString(selector + dirStr + rowContent + "\n")
+			sb.WriteString(selector + dirStr + rowContent + scrollChar + "\n")
 		}
 	}
 
 	// Closing line
-	sb.WriteString("  " + strings.Repeat("─", totalWidth) + "\n")
+	if needsScrollbar {
+		sb.WriteString("  " + strings.Repeat("─", totalWidth) + "  \n")
+	} else {
+		sb.WriteString("  " + strings.Repeat("─", totalWidth) + "\n")
+	}
 
 	// Scroll info
 	if len(vmList) > maxVisible {
