@@ -853,10 +853,12 @@ func (m Model) handleHostDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// Calculate max visible rows (height - overhead for headers, titles, help)
-	maxVisible := m.height - 15
-	if maxVisible < 3 {
-		maxVisible = 3
+	// Calculate max visible rows (must match fixedOverhead in results.go RenderHostDetailBrowseable)
+	// Fixed overhead: title+border(2) + CPU(1) + before/after(3) + header+sep(2) + closing(1) + scroll info(1) + reasoning panel(26) + help(1) = 38
+	fixedOverhead := 38
+	maxVisible := m.height - fixedOverhead
+	if maxVisible < 5 {
+		maxVisible = 5
 	}
 
 	switch msg.String() {

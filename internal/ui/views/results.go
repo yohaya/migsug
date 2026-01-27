@@ -603,18 +603,16 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 	totalItems := len(vmList)
 	needsScrollbar := totalItems > maxVisible
 
-	// Adjust scroll position to keep cursor visible
-	if cursorPos < scrollPos {
-		scrollPos = cursorPos
-	}
-	if cursorPos >= scrollPos+maxVisible {
-		scrollPos = cursorPos - maxVisible + 1
-	}
-	if scrollPos+maxVisible > totalItems {
-		scrollPos = totalItems - maxVisible
-	}
+	// Ensure scrollPos is within valid range (don't modify - let the key handler manage this)
 	if scrollPos < 0 {
 		scrollPos = 0
+	}
+	maxScroll := totalItems - maxVisible
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	if scrollPos > maxScroll {
+		scrollPos = maxScroll
 	}
 
 	// Calculate scrollbar thumb position and size
@@ -783,7 +781,7 @@ func renderMigrationReasoning(vm VMListItem, currentHost string) string {
 	details := vm.Details
 
 	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	valueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
+	valueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7")) // Light grey, similar to regular text
 	goodStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
 	warnStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 
