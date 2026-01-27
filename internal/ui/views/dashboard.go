@@ -84,7 +84,10 @@ func RenderDashboardWithHeight(cluster *proxmox.Cluster, selectedIdx int, width,
 	compSortInfo := components.SortInfo{Column: sortInfo.Column, Ascending: sortInfo.Ascending}
 	sb.WriteString(components.RenderNodeTableWideWithScroll(cluster.Nodes, selectedIdx, width, compSortInfo, maxVisibleNodes))
 
-	// Show scroll info if there are more nodes than visible
+	// Graphical separator
+	sb.WriteString(borderStyle.Render(strings.Repeat(boxThinHoriz, width)) + "\n")
+
+	// Show scroll info if there are more nodes than visible (right-aligned below separator)
 	if len(cluster.Nodes) > maxVisibleNodes {
 		scrollPos := 0
 		if selectedIdx >= maxVisibleNodes {
@@ -96,11 +99,13 @@ func RenderDashboardWithHeight(cluster *proxmox.Cluster, selectedIdx int, width,
 		}
 		scrollInfo := fmt.Sprintf("(showing %d-%d of %d nodes)",
 			scrollPos+1, endPos, len(cluster.Nodes))
-		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(scrollInfo) + "\n")
+		// Right-align: pad with spaces so last char aligns with end of separator
+		padding := width - len(scrollInfo)
+		if padding < 0 {
+			padding = 0
+		}
+		sb.WriteString(strings.Repeat(" ", padding) + lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(scrollInfo) + "\n")
 	}
-
-	// Graphical separator
-	sb.WriteString(borderStyle.Render(strings.Repeat(boxThinHoriz, width)) + "\n")
 
 	// Refresh status line
 	refreshStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
