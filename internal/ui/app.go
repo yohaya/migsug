@@ -938,7 +938,12 @@ func (m Model) handleErrorKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleMigrationLogicsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	totalPages := len(views.MigrationLogicContent)
+	totalLines := views.GetMigrationLogicTotalLines()
+	availableHeight := m.height - 4 // Same calculation as in RenderMigrationLogic
+	maxScroll := totalLines - availableHeight
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
 
 	switch msg.String() {
 	case "esc":
@@ -950,23 +955,23 @@ func (m Model) handleMigrationLogicsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.migrationLogicsScrollPos--
 		}
 	case "down", "j":
-		if m.migrationLogicsScrollPos < totalPages-1 {
+		if m.migrationLogicsScrollPos < maxScroll {
 			m.migrationLogicsScrollPos++
 		}
 	case "pgup":
-		m.migrationLogicsScrollPos -= 3
+		m.migrationLogicsScrollPos -= availableHeight
 		if m.migrationLogicsScrollPos < 0 {
 			m.migrationLogicsScrollPos = 0
 		}
 	case "pgdown":
-		m.migrationLogicsScrollPos += 3
-		if m.migrationLogicsScrollPos >= totalPages {
-			m.migrationLogicsScrollPos = totalPages - 1
+		m.migrationLogicsScrollPos += availableHeight
+		if m.migrationLogicsScrollPos > maxScroll {
+			m.migrationLogicsScrollPos = maxScroll
 		}
 	case "home":
 		m.migrationLogicsScrollPos = 0
 	case "end":
-		m.migrationLogicsScrollPos = totalPages - 1
+		m.migrationLogicsScrollPos = maxScroll
 	}
 	return m, nil
 }

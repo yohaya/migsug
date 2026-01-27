@@ -7,11 +7,9 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// MigrationLogicContent contains all the migration algorithm documentation
+// MigrationLogicContent contains all the migration algorithm documentation as a single continuous text
 // This should be updated whenever migration logic changes
-var MigrationLogicContent = []string{
-	// Page 1: Overview
-	`MIGRATION ALGORITHM OVERVIEW
+var MigrationLogicContent = `MIGRATION ALGORITHM OVERVIEW
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 The migration suggestion tool analyzes your Proxmox cluster and recommends optimal
@@ -30,10 +28,10 @@ MIGRATION MODES:
 3. CPU Usage (%)  - Migrate VMs until a target CPU usage percentage is freed
 4. RAM (GiB)      - Migrate VMs until a target RAM amount is freed
 5. Storage (GiB)  - Migrate VMs until a target storage amount is freed
-6. Specific VMs   - Manually select which VMs to migrate`,
+6. Specific VMs   - Manually select which VMs to migrate
 
-	// Page 2: Resource Calculations
-	`RESOURCE CALCULATIONS
+
+RESOURCE CALCULATIONS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 CPU USAGE:
@@ -55,10 +53,10 @@ STORAGE:
 
 LOAD AVERAGE:
 • Shows 1-minute load average from the host
-• Displayed as percentage of total threads: LA / Threads × 100%`,
+• Displayed as percentage of total threads: LA / Threads × 100%
 
-	// Page 3: Target Selection Algorithm
-	`TARGET SELECTION ALGORITHM
+
+TARGET SELECTION ALGORITHM
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 When selecting a target host for a VM, the algorithm:
@@ -82,10 +80,10 @@ When selecting a target host for a VM, the algorithm:
    • Targets must stay below cluster average + 5% margin
    • Prefers targets furthest below average
 
-The highest-scoring valid target is selected for each VM.`,
+The highest-scoring valid target is selected for each VM.
 
-	// Page 4: Migrate All Mode Details
-	`MIGRATE ALL MODE - DETAILED ALGORITHM
+
+MIGRATE ALL MODE - DETAILED ALGORITHM
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Purpose: Evacuate a host by spreading VMs across the cluster while keeping
@@ -109,18 +107,13 @@ PROCESS:
 CLUSTER BALANCE TARGET:
 • Target CPU% must be ≤ Cluster Average CPU% + 5%
 • Target RAM% must be ≤ Cluster Average RAM% + 5%
-• This prevents creating new hotspots while evacuating`,
+• This prevents creating new hotspots while evacuating
 
-	// Page 5: VM Selection Criteria
-	`VM SELECTION CRITERIA
+
+VM SELECTION CRITERIA
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 When selecting which VMs to migrate (for non-"All" modes):
-
-BY VM COUNT:
-• Sorts VMs by combined resource impact (vCPUs × 10 + CPU% + RAM GB)
-• Selects the specified number of VMs
-• Prioritizes VMs with lower resource usage first
 
 BY vCPU:
 • Sorts VMs by vCPU count (smallest first)
@@ -141,10 +134,10 @@ BY STORAGE:
 
 SPECIFIC VMS:
 • User manually selects which VMs to migrate
-• No automatic selection criteria applied`,
+• No automatic selection criteria applied
 
-	// Page 6: Constraints and Restrictions
-	`CONSTRAINTS AND RESTRICTIONS
+
+CONSTRAINTS AND RESTRICTIONS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ALWAYS APPLIED:
@@ -168,10 +161,10 @@ When a target is rejected, the reason is shown:
 • "Insufficient storage capacity" - Can't fit VM's storage
 • "Would violate minimum RAM free constraint"
 • "Would violate minimum CPU free constraint"
-• "Already has N VMs (max: M)" - MaxVMsPerHost exceeded`,
+• "Already has N VMs (max: M)" - MaxVMsPerHost exceeded
 
-	// Page 7: Score Breakdown
-	`SCORE BREAKDOWN EXPLAINED
+
+SCORE BREAKDOWN EXPLAINED
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 The migration reasoning panel shows detailed score breakdown:
@@ -198,10 +191,10 @@ SCORE COMPONENTS:
 
 TOTAL SCORE:
 Standard modes: 0.7 × Utilization + 0.3 × Balance
-Migrate All:    Balance + Headroom (prefers below-average targets)`,
+Migrate All:    Balance + Headroom (prefers below-average targets)
 
-	// Page 8: Alternative Targets
-	`ALTERNATIVE TARGETS
+
+ALTERNATIVE TARGETS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 The migration reasoning shows alternative targets that were considered:
@@ -224,17 +217,16 @@ REJECTED TARGETS:
 TIP: If the selected target seems wrong, check:
 1. Are there constraints excluding better options?
 2. Is the cluster heavily imbalanced?
-3. Does the VM have unusually high resource requirements?`,
+3. Does the VM have unusually high resource requirements?
 
-	// Page 9: Keyboard Shortcuts
-	`KEYBOARD SHORTCUTS
+
+KEYBOARD SHORTCUTS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 NAVIGATION:
-  ↑/↓ or j/k        Navigate up/down
+  ↑/↓ or j/k        Navigate up/down (line by line)
   PgUp/PgDn         Page up/down
-  Home/End          Jump to first/last item
-  Tab               Next section (in Results view)
+  Home/End          Jump to first/last line
 
 SELECTION:
   Enter             Select / Confirm
@@ -244,7 +236,7 @@ SELECTION:
 VIEWS:
   Esc               Go back to previous view
   r                 Refresh cluster data (Dashboard)
-  ?                 Show this help page
+  ?                 Show this documentation
 
 QUIT:
   q                 Quit application
@@ -253,10 +245,20 @@ QUIT:
 RESULTS VIEW:
   Tab               Switch between Migration Summary / Impact tables
   Enter             View host details
-  ↑/↓               Browse VMs or hosts`,
+  ↑/↓               Browse VMs or hosts
+`
+
+// GetMigrationLogicLines returns all documentation lines
+func GetMigrationLogicLines() []string {
+	return strings.Split(MigrationLogicContent, "\n")
 }
 
-// RenderMigrationLogic renders the migration logic explanation page
+// GetMigrationLogicTotalLines returns total number of lines in documentation
+func GetMigrationLogicTotalLines() int {
+	return len(GetMigrationLogicLines())
+}
+
+// RenderMigrationLogic renders the migration logic explanation page with line-by-line scrolling
 func RenderMigrationLogic(width, height, scrollPos int) string {
 	var sb strings.Builder
 
@@ -267,97 +269,105 @@ func RenderMigrationLogic(width, height, scrollPos int) string {
 	scrollTrackStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	scrollThumbStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 
-	// Title
-	sb.WriteString(titleStyle.Render("Migration Algorithm Documentation") + "\n")
-	sb.WriteString(borderStyle.Render(strings.Repeat("━", width)) + "\n")
+	// Get all lines
+	allLines := GetMigrationLogicLines()
+	totalLines := len(allLines)
 
-	// Calculate total lines and pages
-	totalPages := len(MigrationLogicContent)
+	// Calculate available height for content (minus title, border, footer)
+	availableHeight := height - 4
 
 	// Ensure scrollPos is within bounds
+	maxScroll := totalLines - availableHeight
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
 	if scrollPos < 0 {
 		scrollPos = 0
 	}
-	if scrollPos >= totalPages {
-		scrollPos = totalPages - 1
+	if scrollPos > maxScroll {
+		scrollPos = maxScroll
 	}
 
-	// Get current page content
-	pageContent := MigrationLogicContent[scrollPos]
+	// Title
+	title := "Migration Algorithm Documentation"
+	sb.WriteString(titleStyle.Render(title))
+	sb.WriteString(strings.Repeat(" ", width-len(title)-1))
+	sb.WriteString("\n")
+	sb.WriteString(borderStyle.Render(strings.Repeat("━", width-2)))
+	sb.WriteString("\n")
 
-	// Split content into lines
-	lines := strings.Split(pageContent, "\n")
-
-	// Calculate available height for content (minus header, footer, help)
-	availableHeight := height - 6
-
-	// Render content lines with scrollbar
-	needsScrollbar := totalPages > 1
+	// Calculate scrollbar
+	needsScrollbar := totalLines > availableHeight
 	thumbPos := 0
 	thumbSize := 1
 
-	if needsScrollbar && totalPages > 0 {
-		// Calculate thumb position based on current page
-		thumbSize = max(1, availableHeight/totalPages)
+	if needsScrollbar {
+		// Calculate thumb size proportional to visible area
+		thumbSize = availableHeight * availableHeight / totalLines
+		if thumbSize < 1 {
+			thumbSize = 1
+		}
 		if thumbSize > availableHeight {
 			thumbSize = availableHeight
 		}
+
+		// Calculate thumb position
 		scrollRange := availableHeight - thumbSize
-		if scrollRange > 0 {
-			thumbPos = scrollPos * scrollRange / (totalPages - 1)
+		if maxScroll > 0 && scrollRange > 0 {
+			thumbPos = scrollPos * scrollRange / maxScroll
 		}
 	}
 
-	// Render each line of content
-	for i := 0; i < availableHeight && i < len(lines); i++ {
+	// Content width (leave space for scrollbar on right edge)
+	contentWidth := width - 3
+
+	// Render visible content lines
+	for i := 0; i < availableHeight; i++ {
+		lineIdx := scrollPos + i
 		line := ""
-		if i < len(lines) {
-			line = lines[i]
+		if lineIdx < totalLines {
+			line = allLines[lineIdx]
 		}
 
-		// Pad line to width
-		if len(line) < width-4 {
-			line = line + strings.Repeat(" ", width-4-len(line))
-		} else if len(line) > width-4 {
-			line = line[:width-4]
+		// Truncate or pad line to content width
+		lineRunes := []rune(line)
+		if len(lineRunes) > contentWidth {
+			line = string(lineRunes[:contentWidth])
+		} else {
+			line = line + strings.Repeat(" ", contentWidth-len(lineRunes))
 		}
 
 		sb.WriteString(contentStyle.Render(line))
 
-		// Add scrollbar
+		// Add scrollbar at the rightmost position
 		if needsScrollbar {
 			if i >= thumbPos && i < thumbPos+thumbSize {
 				sb.WriteString(" " + scrollThumbStyle.Render("█"))
 			} else {
 				sb.WriteString(" " + scrollTrackStyle.Render("│"))
 			}
+		} else {
+			sb.WriteString("  ")
 		}
 		sb.WriteString("\n")
 	}
 
-	// Fill remaining lines if content is shorter
-	for i := len(lines); i < availableHeight; i++ {
-		sb.WriteString(strings.Repeat(" ", width-2))
-		if needsScrollbar {
-			if i >= thumbPos && i < thumbPos+thumbSize {
-				sb.WriteString(" " + scrollThumbStyle.Render("█"))
-			} else {
-				sb.WriteString(" " + scrollTrackStyle.Render("│"))
-			}
-		}
-		sb.WriteString("\n")
+	// Footer
+	sb.WriteString(borderStyle.Render(strings.Repeat("─", width-2)) + "\n")
+	helpText := "↑/↓: Scroll │ PgUp/PgDn: Page │ Home/End: Jump │ Esc: Close"
+	lineInfo := fmt.Sprintf("Line %d-%d of %d", scrollPos+1, min(scrollPos+availableHeight, totalLines), totalLines)
+	padding := width - len(helpText) - len(lineInfo) - 2
+	if padding < 1 {
+		padding = 1
 	}
-
-	// Footer with page info
-	sb.WriteString(borderStyle.Render(strings.Repeat("─", width)) + "\n")
-	pageInfo := fmt.Sprintf("Page %d of %d", scrollPos+1, totalPages)
-	padding := width - len(pageInfo) - 40
-	if padding < 0 {
-		padding = 0
-	}
-	sb.WriteString(dimStyle.Render("↑/↓/PgUp/PgDn: Navigate pages │ Esc: Close") +
-		strings.Repeat(" ", padding) +
-		dimStyle.Render(pageInfo))
+	sb.WriteString(dimStyle.Render(helpText) + strings.Repeat(" ", padding) + dimStyle.Render(lineInfo))
 
 	return sb.String()
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
