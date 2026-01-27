@@ -643,13 +643,13 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 		colRAM, "RAM",
 		colStorage, "Storage",
 		colTarget, "Migration")
-	if needsScrollbar {
-		sb.WriteString(headerStyle.Render(header) + "  \n")
-		sb.WriteString("  " + strings.Repeat("─", totalWidth) + "  \n")
-	} else {
-		sb.WriteString(headerStyle.Render(header) + "\n")
-		sb.WriteString("  " + strings.Repeat("─", totalWidth) + "\n")
+	// Pad header to totalWidth for alignment
+	headerPadded := header
+	if len(header) < totalWidth+4 {
+		headerPadded = header + strings.Repeat(" ", totalWidth+4-len(header))
 	}
+	sb.WriteString(headerStyle.Render(headerPadded) + "\n")
+	sb.WriteString("  " + strings.Repeat("─", totalWidth) + "\n")
 
 	// Calculate visible range
 	endPos := scrollPos + maxVisible
@@ -698,40 +698,40 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 			colStorage, components.FormatStorageG(vm.Storage),
 			colTarget, migrationStr)
 
+		// Pad row to consistent width
+		if len(rowContent) < totalWidth {
+			rowContent += strings.Repeat(" ", totalWidth-len(rowContent))
+		}
+
 		// Selector prefix
 		selector := "  "
 		if isSelected {
 			selector = "▶ "
 		}
 
-		// Scrollbar character for this row
-		scrollChar := ""
+		// Build the full line first, then add scrollbar
+		var line string
+		if isSelected {
+			line = selector + dirStr + selectedStyle.Render(rowContent)
+		} else {
+			line = selector + dirStr + rowContent
+		}
+
+		// Add scrollbar character at fixed position from right edge
 		if needsScrollbar {
 			rowIdx := i - scrollPos
 			if rowIdx >= thumbPos && rowIdx < thumbPos+thumbSize {
-				scrollChar = " " + scrollThumbStyle.Render("█")
+				sb.WriteString(line + " " + scrollThumbStyle.Render("█") + "\n")
 			} else {
-				scrollChar = " " + scrollTrackStyle.Render("│")
+				sb.WriteString(line + " " + scrollTrackStyle.Render("│") + "\n")
 			}
-		}
-
-		if isSelected {
-			// Pad row for consistent highlighting
-			if len(rowContent) < totalWidth {
-				rowContent += strings.Repeat(" ", totalWidth-len(rowContent))
-			}
-			sb.WriteString(selector + dirStr + selectedStyle.Render(rowContent) + scrollChar + "\n")
 		} else {
-			sb.WriteString(selector + dirStr + rowContent + scrollChar + "\n")
+			sb.WriteString(line + "\n")
 		}
 	}
 
 	// Closing line
-	if needsScrollbar {
-		sb.WriteString("  " + strings.Repeat("─", totalWidth) + "  \n")
-	} else {
-		sb.WriteString("  " + strings.Repeat("─", totalWidth) + "\n")
-	}
+	sb.WriteString("  " + strings.Repeat("─", totalWidth) + "\n")
 
 	// Scroll info
 	if len(vmList) > maxVisible {

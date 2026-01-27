@@ -364,4 +364,3 @@ func RenderMigrationLogic(width, height, scrollPos int) string {
 
 	return sb.String()
 }
-
