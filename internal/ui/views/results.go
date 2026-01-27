@@ -687,20 +687,35 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 		// CPU% string
 		cpuStr := fmt.Sprintf("%.1f", vm.CPUUsage)
 
-		// Build row content - show full names without truncation
+		// Truncate name to fit column width
+		displayName := vm.Name
+		if len(displayName) > colName {
+			displayName = displayName[:colName-1] + "…"
+		}
+
+		// Truncate migration string to fit column width
+		displayMigration := migrationStr
+		if len(displayMigration) > colTarget {
+			displayMigration = displayMigration[:colTarget-1] + "…"
+		}
+
+		// Build row content with truncated names
 		rowContent := fmt.Sprintf("%*d %-*s %-*s %*s %*d %*s %*s %-*s",
 			colVMID, vm.VMID,
-			colName, vm.Name,
+			colName, displayName,
 			colState, stateStr,
 			colCPU, cpuStr,
 			colVCPU, vm.VCPUs,
 			colRAM, components.FormatRAMShort(vm.RAM),
 			colStorage, components.FormatStorageG(vm.Storage),
-			colTarget, migrationStr)
+			colTarget, displayMigration)
 
-		// Pad row to consistent width
-		if len(rowContent) < totalWidth {
-			rowContent += strings.Repeat(" ", totalWidth-len(rowContent))
+		// Truncate if too long, pad if too short for consistent width
+		rowRunes := []rune(rowContent)
+		if len(rowRunes) > totalWidth {
+			rowContent = string(rowRunes[:totalWidth])
+		} else if len(rowRunes) < totalWidth {
+			rowContent += strings.Repeat(" ", totalWidth-len(rowRunes))
 		}
 
 		// Selector prefix
