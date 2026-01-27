@@ -165,21 +165,37 @@ func selectByCPUUsage(node *proxmox.Node, targetUsage float64) []proxmox.VM {
 	// Only select running VMs (don't migrate powered off VMs)
 	vms := filterRunningVMs(node.VMs)
 
-	// Sort VMs by CPU usage
-	sort.Slice(vms, func(i, j int) bool {
-		return vms[i].CPUUsage < vms[j].CPUUsage
+	// Calculate each VM's actual host CPU% contribution
+	// Host CPU% = VMCPU% * vCPUs / hostCores
+	type vmWithHostCPU struct {
+		vm      proxmox.VM
+		hostCPU float64 // Actual host CPU% contribution
+	}
+
+	vmsWithCPU := make([]vmWithHostCPU, len(vms))
+	for i, vm := range vms {
+		hostCPU := 0.0
+		if node.CPUCores > 0 {
+			hostCPU = vm.CPUUsage * float64(vm.CPUCores) / float64(node.CPUCores)
+		}
+		vmsWithCPU[i] = vmWithHostCPU{vm: vm, hostCPU: hostCPU}
+	}
+
+	// Sort VMs by host CPU% contribution (smallest first for greedy selection)
+	sort.Slice(vmsWithCPU, func(i, j int) bool {
+		return vmsWithCPU[i].hostCPU < vmsWithCPU[j].hostCPU
 	})
 
-	// Select VMs until we reach target CPU usage
+	// Select VMs until we reach target host CPU%
 	var selected []proxmox.VM
-	totalUsage := 0.0
+	totalHostCPU := 0.0
 
-	for _, vm := range vms {
-		if totalUsage >= targetUsage {
+	for _, v := range vmsWithCPU {
+		if totalHostCPU >= targetUsage {
 			break
 		}
-		selected = append(selected, vm)
-		totalUsage += vm.CPUUsage
+		selected = append(selected, v.vm)
+		totalHostCPU += v.hostCPU
 	}
 
 	return selected
