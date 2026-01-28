@@ -234,6 +234,9 @@ func CollectClusterDataWithProgress(client ProxmoxClient, progress ProgressCallb
 		}
 	}
 
+	// Update OSD status for nodes (must be done AFTER VMs are assigned)
+	updateNodeOSDStatus(nodeMap)
+
 	// Convert map to slice and calculate totals
 	for _, node := range nodeMap {
 		cluster.Nodes = append(cluster.Nodes, *node)
@@ -830,12 +833,25 @@ func ParseNodeConfigMeta(nodeName string) (map[string]string, error) {
 	// Node config path
 	configPath := fmt.Sprintf("/etc/pve/nodes/%s/config", nodeName)
 
+	// Check if file exists and get its info
+	fileInfo, statErr := os.Stat(configPath)
+	if statErr != nil {
+		if os.IsNotExist(statErr) {
+			log.Printf("Node config file does not exist: %s", configPath)
+		} else {
+			log.Printf("Cannot stat node config file %s: %v", configPath, statErr)
+		}
+		return meta, nil
+	}
+	log.Printf("Node config file %s exists, size=%d bytes", configPath, fileInfo.Size())
+
 	// Read the config file
 	content, err := os.ReadFile(configPath)
 	if err != nil {
-		// File might not exist or not readable, return empty meta
+		log.Printf("Failed to read node config file %s: %v", configPath, err)
 		return meta, nil
 	}
+	log.Printf("Read node config file %s: %d bytes content", configPath, len(content))
 
 	// Parse each line looking for comment lines with metadata
 	lines := strings.Split(string(content), "\n")
@@ -847,6 +863,7 @@ func ParseNodeConfigMeta(nodeName string) (map[string]string, error) {
 			commentContent := strings.TrimPrefix(line, "#")
 			// Check if this looks like metadata (contains = and ,)
 			if strings.Contains(commentContent, "=") {
+				log.Printf("Node config %s: Found metadata line: %s", configPath, commentContent)
 				// Parse comma-separated key=value pairs
 				pairs := strings.Split(commentContent, ",")
 				for _, pair := range pairs {
@@ -855,10 +872,17 @@ func ParseNodeConfigMeta(nodeName string) (map[string]string, error) {
 						key := strings.TrimSpace(strings.ToLower(kv[0]))
 						value := strings.TrimSpace(kv[1])
 						meta[key] = value
+						log.Printf("Node config %s: Parsed key=%s value=%s", configPath, key, value)
 					}
 				}
 			}
 		}
+	}
+
+	if len(meta) == 0 {
+		log.Printf("Node config %s: No metadata found in file", configPath)
+	} else {
+		log.Printf("Node config %s: Found %d metadata keys", configPath, len(meta))
 	}
 
 	return meta, nil
@@ -877,6 +901,8 @@ func CheckNodeHasOSD(vms []VM) bool {
 }
 
 // fetchNodeConfigMeta fetches config metadata for all nodes
+// Note: This should be called BEFORE VMs are assigned to nodes
+// The OSD check should be done separately after VMs are assigned
 func fetchNodeConfigMeta(nodeMap map[string]*Node, progress ProgressCallback) {
 	if len(nodeMap) == 0 {
 		return
@@ -902,11 +928,21 @@ func fetchNodeConfigMeta(nodeMap map[string]*Node, progress ProgressCallback) {
 			// Check for hostprovision flag
 			if hostProv, ok := meta["hostprovision"]; ok {
 				node.AllowProvisioning = strings.ToLower(hostProv) == "true"
+				log.Printf("Node %s: hostprovision=%s, AllowProvisioning=%v", nodeName, hostProv, node.AllowProvisioning)
 			}
 		}
+		// Note: OSD check is done in updateNodeOSDStatus after VMs are assigned
+	}
+}
 
-		// Check if node has OSD VMs
+// updateNodeOSDStatus checks if nodes have OSD VMs
+// This must be called AFTER VMs are assigned to nodes
+func updateNodeOSDStatus(nodeMap map[string]*Node) {
+	for nodeName, node := range nodeMap {
 		node.HasOSD = CheckNodeHasOSD(node.VMs)
+		if node.HasOSD {
+			log.Printf("Node %s: HasOSD=true (found OSD VM among %d VMs)", nodeName, len(node.VMs))
+		}
 	}
 }
 
