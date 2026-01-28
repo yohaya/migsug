@@ -817,8 +817,9 @@ func ParseVMConfigMeta(node string, vmid int, vmType string) (*VMConfigResult, e
 					}
 
 					// Apply unit multiplier
-					var multiplier int64 = 1
-					if len(matches) >= 3 {
+					// Note: No unit suffix means bytes (used for small items like tpmstate, efidisk)
+					var multiplier int64 = 1 // Default to bytes
+					if len(matches) >= 3 && matches[2] != "" {
 						switch matches[2] {
 						case "K":
 							multiplier = 1024
@@ -828,8 +829,6 @@ func ParseVMConfigMeta(node string, vmid int, vmType string) (*VMConfigResult, e
 							multiplier = 1024 * 1024 * 1024
 						case "T":
 							multiplier = 1024 * 1024 * 1024 * 1024
-						case "": // No unit means bytes or default to GB for Proxmox
-							multiplier = 1024 * 1024 * 1024 // Assume GB if no unit
 						}
 					}
 
