@@ -406,27 +406,38 @@ func selectByCreationDate(node *proxmox.Node, minAgeDays int) []proxmox.VM {
 	vms := filterMigratableVMs(node.VMs)
 
 	// Calculate the threshold timestamp (VMs created before this time are selected)
-	thresholdTime := time.Now().Unix() - int64(minAgeDays*24*60*60)
+	now := time.Now()
+	thresholdTime := now.Unix() - int64(minAgeDays*24*60*60)
+	thresholdDate := time.Unix(thresholdTime, 0).Format("2006-01-02")
 
 	// Debug logging
 	log.Printf("selectByCreationDate: Node %s has %d total VMs, %d migratable VMs", node.Name, len(node.VMs), len(vms))
-	log.Printf("selectByCreationDate: Looking for VMs older than %d days (threshold: %d)", minAgeDays, thresholdTime)
+	log.Printf("selectByCreationDate: Today is %s, looking for VMs created before %s (older than %d days)",
+		now.Format("2006-01-02"), thresholdDate, minAgeDays)
+	log.Printf("selectByCreationDate: Threshold timestamp: %d (VMs with ctime < %d will be selected)", thresholdTime, thresholdTime)
 
 	// Count VMs with valid creation time for debugging
 	vmsWithCtime := 0
 	vmsWithoutCtime := 0
+	vmsOlderThanThreshold := 0
 	for _, vm := range vms {
 		if vm.CreationTime > 0 {
 			vmsWithCtime++
-			ageInDays := (time.Now().Unix() - vm.CreationTime) / (24 * 60 * 60)
-			log.Printf("  VM %d (%s): CreationTime=%d, age=%d days, older than %d days: %v",
-				vm.VMID, vm.Name, vm.CreationTime, ageInDays, minAgeDays, vm.CreationTime < thresholdTime)
+			ageInDays := (now.Unix() - vm.CreationTime) / (24 * 60 * 60)
+			createdDate := time.Unix(vm.CreationTime, 0).Format("2006-01-02")
+			isOlder := vm.CreationTime < thresholdTime
+			if isOlder {
+				vmsOlderThanThreshold++
+			}
+			log.Printf("  VM %d (%s): created=%s (ctime=%d), age=%d days, qualifies: %v",
+				vm.VMID, vm.Name, createdDate, vm.CreationTime, ageInDays, isOlder)
 		} else {
 			vmsWithoutCtime++
 			log.Printf("  VM %d (%s): CreationTime=0 (no ctime in config)", vm.VMID, vm.Name)
 		}
 	}
-	log.Printf("selectByCreationDate: %d VMs have valid CreationTime, %d VMs have no ctime", vmsWithCtime, vmsWithoutCtime)
+	log.Printf("selectByCreationDate: Summary: %d with ctime, %d without ctime, %d qualify (older than %d days)",
+		vmsWithCtime, vmsWithoutCtime, vmsOlderThanThreshold, minAgeDays)
 
 	// Filter VMs older than the threshold
 	var oldVMs []proxmox.VM
