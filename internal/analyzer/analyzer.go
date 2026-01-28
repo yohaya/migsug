@@ -74,10 +74,11 @@ func SelectVMsToMigrate(node *proxmox.Node, constraints MigrationConstraints) []
 }
 
 // selectAllVMs returns ALL VMs from the node for "Migrate All" mode (including powered-off)
+// Excludes VMs with nomigrate=true in their config
 func selectAllVMs(node *proxmox.Node) []proxmox.VM {
 	// Return ALL VMs (running and stopped) sorted by resource usage (largest first for better distribution)
-	vms := make([]proxmox.VM, len(node.VMs))
-	copy(vms, node.VMs)
+	// Filter out VMs that cannot be migrated
+	vms := filterMigratableVMs(node.VMs)
 
 	// Sort by combined resource score (descending - distribute largest VMs first)
 	// Running VMs get priority, then by size
@@ -120,9 +121,25 @@ func filterRunningVMs(vms []proxmox.VM) []proxmox.VM {
 	return running
 }
 
+// filterMigratableVMs returns only VMs that can be migrated (excludes VMs with NoMigrate=true)
+func filterMigratableVMs(vms []proxmox.VM) []proxmox.VM {
+	var migratable []proxmox.VM
+	for _, vm := range vms {
+		if !vm.NoMigrate {
+			migratable = append(migratable, vm)
+		}
+	}
+	return migratable
+}
+
+// filterRunningMigratableVMs returns only running VMs that can be migrated
+func filterRunningMigratableVMs(vms []proxmox.VM) []proxmox.VM {
+	return filterMigratableVMs(filterRunningVMs(vms))
+}
+
 func selectByVMCount(node *proxmox.Node, count int) []proxmox.VM {
-	// Only select running VMs (don't migrate powered off VMs)
-	vms := filterRunningVMs(node.VMs)
+	// Only select running VMs that can be migrated
+	vms := filterRunningMigratableVMs(node.VMs)
 
 	// Sort VMs by resource usage (ascending - move least impactful first)
 	sort.Slice(vms, func(i, j int) bool {
@@ -139,8 +156,8 @@ func selectByVMCount(node *proxmox.Node, count int) []proxmox.VM {
 }
 
 func selectByVCPU(node *proxmox.Node, targetVCPUs int) []proxmox.VM {
-	// Only select running VMs (don't migrate powered off VMs)
-	vms := filterRunningVMs(node.VMs)
+	// Only select running VMs that can be migrated
+	vms := filterRunningMigratableVMs(node.VMs)
 
 	// Sort VMs by vCPU count
 	sort.Slice(vms, func(i, j int) bool {
@@ -170,8 +187,8 @@ func selectByCPUUsage(node *proxmox.Node, targetUsage float64) []proxmox.VM {
 // Efficiency = Host CPU% / Disk Size (GiB) - maximizes CPU freed per data migrated
 // This automatically finds the optimal set of VMs for fastest CPU relief
 func selectByCPUUsageEfficient(node *proxmox.Node, targetUsage float64) []proxmox.VM {
-	// Only select running VMs (don't migrate powered off VMs)
-	vms := filterRunningVMs(node.VMs)
+	// Only select running VMs that can be migrated
+	vms := filterRunningMigratableVMs(node.VMs)
 
 	// Calculate each VM's efficiency score
 	type vmWithEfficiency struct {
@@ -233,7 +250,7 @@ func selectByCPUUsageEfficient(node *proxmox.Node, targetUsage float64) []proxmo
 // SelectByCPUUsageDetailed returns selected VMs along with detailed efficiency information
 // This is useful for displaying migration plan details to the user
 func SelectByCPUUsageDetailed(node *proxmox.Node, targetUsage float64) ([]proxmox.VM, *CPUMigrationPlan) {
-	vms := filterRunningVMs(node.VMs)
+	vms := filterRunningMigratableVMs(node.VMs)
 
 	plan := &CPUMigrationPlan{
 		TargetCPUReduction: targetUsage,
@@ -331,8 +348,8 @@ type CPUMigrationPlan struct {
 }
 
 func selectByRAM(node *proxmox.Node, targetRAM int64) []proxmox.VM {
-	// Only select running VMs (don't migrate powered off VMs)
-	vms := filterRunningVMs(node.VMs)
+	// Only select running VMs that can be migrated
+	vms := filterRunningMigratableVMs(node.VMs)
 
 	// Sort VMs by RAM usage
 	sort.Slice(vms, func(i, j int) bool {
@@ -356,9 +373,8 @@ func selectByRAM(node *proxmox.Node, targetRAM int64) []proxmox.VM {
 
 func selectByStorage(node *proxmox.Node, targetStorage int64) []proxmox.VM {
 	// Include ALL VMs (even stopped ones) since we need to free storage
-	// Sort VMs by storage usage
-	vms := make([]proxmox.VM, len(node.VMs))
-	copy(vms, node.VMs)
+	// Filter out VMs that cannot be migrated
+	vms := filterMigratableVMs(node.VMs)
 
 	sort.Slice(vms, func(i, j int) bool {
 		return vms[i].UsedDisk < vms[j].UsedDisk

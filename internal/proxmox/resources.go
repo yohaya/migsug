@@ -170,6 +170,9 @@ func CollectClusterDataWithProgress(client ProxmoxClient, progress ProgressCallb
 		}
 	}
 
+	// Fetch config metadata for all VMs (for nomigrate flag, etc.)
+	fetchVMConfigMeta(vmList, progress)
+
 	// Update node storage with aggregated values from storage resources
 	for nodeName, storage := range nodeStorage {
 		if node, exists := nodeMap[nodeName]; exists {
@@ -690,6 +693,130 @@ func fetchVMStorageFromConfig(client ProxmoxClient, vmList []VM, vmIndices []int
 
 // diskSizeRegex matches size specifications like "100G", "500M", "1T"
 var diskSizeRegex = regexp.MustCompile(`size=(\d+)([KMGT]?)`)
+
+// ParseVMConfigMeta reads the VM config file and parses comment metadata
+// The config file path is: /etc/pve/nodes/{node}/qemu-server/{vmid}.conf
+// Comment format: #key1=value1,key2=value2,nomigrate=true,...
+func ParseVMConfigMeta(node string, vmid int, vmType string) (map[string]string, error) {
+	meta := make(map[string]string)
+
+	// Determine config path based on VM type
+	var configPath string
+	if vmType == "lxc" {
+		configPath = fmt.Sprintf("/etc/pve/nodes/%s/lxc/%d.conf", node, vmid)
+	} else {
+		configPath = fmt.Sprintf("/etc/pve/nodes/%s/qemu-server/%d.conf", node, vmid)
+	}
+
+	// Read the config file
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		// File might not exist or not readable, return empty meta
+		return meta, nil
+	}
+
+	// Parse each line looking for comment lines with metadata
+	lines := strings.Split(string(content), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		// Look for comment lines that contain key=value pairs
+		if strings.HasPrefix(line, "#") {
+			// Remove the # prefix
+			commentContent := strings.TrimPrefix(line, "#")
+			// Check if this looks like metadata (contains = and ,)
+			if strings.Contains(commentContent, "=") {
+				// Parse comma-separated key=value pairs
+				pairs := strings.Split(commentContent, ",")
+				for _, pair := range pairs {
+					kv := strings.SplitN(pair, "=", 2)
+					if len(kv) == 2 {
+						key := strings.TrimSpace(strings.ToLower(kv[0]))
+						value := strings.TrimSpace(kv[1])
+						meta[key] = value
+					}
+				}
+			}
+		}
+	}
+
+	return meta, nil
+}
+
+// vmConfigMetaResult holds the result of parsing VM config metadata
+type vmConfigMetaResult struct {
+	vmIdx int
+	meta  map[string]string
+	err   error
+}
+
+// fetchVMConfigMeta fetches config metadata for all VMs in parallel
+func fetchVMConfigMeta(vmList []VM, progress ProgressCallback) {
+	if len(vmList) == 0 {
+		return
+	}
+
+	totalVMs := len(vmList)
+	var completed int32 = 0
+
+	if progress != nil {
+		progress("Reading VM config metadata", 0, totalVMs)
+	}
+
+	// Create channels for work distribution
+	jobs := make(chan int, len(vmList))
+	results := make(chan vmConfigMetaResult, len(vmList))
+
+	// Determine number of workers
+	numWorkers := maxConcurrentFetches
+	if len(vmList) < numWorkers {
+		numWorkers = len(vmList)
+	}
+
+	// Start worker goroutines
+	var wg sync.WaitGroup
+	for i := 0; i < numWorkers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for vmIdx := range jobs {
+				vm := vmList[vmIdx]
+				meta, err := ParseVMConfigMeta(vm.Node, vm.VMID, vm.Type)
+				results <- vmConfigMetaResult{
+					vmIdx: vmIdx,
+					meta:  meta,
+					err:   err,
+				}
+			}
+		}()
+	}
+
+	// Send jobs
+	for i := range vmList {
+		jobs <- i
+	}
+	close(jobs)
+
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	// Collect results
+	for result := range results {
+		current := int(atomic.AddInt32(&completed, 1))
+		if progress != nil {
+			progress("Reading VM config metadata", current, totalVMs)
+		}
+
+		if result.err == nil && result.meta != nil {
+			vmList[result.vmIdx].ConfigMeta = result.meta
+			// Check for nomigrate flag
+			if noMigrate, ok := result.meta["nomigrate"]; ok {
+				vmList[result.vmIdx].NoMigrate = strings.ToLower(noMigrate) == "true"
+			}
+		}
+	}
+}
 
 // parseDiskSizesFromConfig extracts total disk size from VM config
 // Looks for scsi*, ide*, virtio*, sata* entries and sums their sizes

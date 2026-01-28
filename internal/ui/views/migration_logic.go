@@ -195,6 +195,43 @@ When a target is rejected, the reason is shown:
 • "Already has N VMs (max: M)" - MaxVMsPerHost exceeded
 
 
+VM CONFIG METADATA RESTRICTIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+The tool reads VM config files to check for migration restrictions.
+Config files are located at: /etc/pve/nodes/{node}/qemu-server/{vmid}.conf
+
+COMMENT METADATA FORMAT:
+VMs can have metadata in comment lines (starting with #) in CSV format:
+#key1=value1,key2=value2,key3=value3,...
+
+EXAMPLE:
+#provisionedStorage=344,backup=7,cpuUsage=300,nomigrate=true,managed=no
+
+SUPPORTED RESTRICTIONS:
+
+1. nomigrate=true
+   • VM will be completely excluded from migration suggestions
+   • VM won't appear in any migration mode (All, CPU, RAM, etc.)
+   • Use this for VMs that must stay on their current host
+   • Example reasons: hardware passthrough, local storage dependency,
+     licensing tied to hardware, etc.
+
+FUTURE RESTRICTIONS (planned):
+• migratetokvm={nodename} - Restrict migration to specific target node
+• managed=no - Exclude from automated management
+• (Additional restrictions can be added based on your metadata)
+
+HOW IT WORKS:
+1. During data collection, each VM's config file is read
+2. Comment lines are parsed for key=value metadata
+3. VMs with nomigrate=true are filtered out before analysis
+4. All other VMs are processed normally
+
+NOTE: If the config file cannot be read (permissions, file not found),
+the VM is treated as migratable by default.
+
+
 SCORE BREAKDOWN EXPLAINED
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

@@ -42,6 +42,10 @@ type VM struct {
 	MaxDisk  int64   // allocated disk in bytes
 	UsedDisk int64   // actual disk usage in bytes
 	Uptime   int64   // seconds
+
+	// Config metadata parsed from VM config file comments
+	NoMigrate bool              // If true, VM should not be migrated (from nomigrate=true in config)
+	ConfigMeta map[string]string // All key=value pairs from config comment line
 }
 
 // Cluster represents the entire Proxmox cluster
