@@ -23,10 +23,10 @@ type Node struct {
 	PVEVersion  string // Proxmox VE version
 
 	// Node status indicators (parsed from config and VMs)
-	HasOSD                bool              // True if node has VMs with name matching osd*.cloudwm.com
-	AllowProvisioning     bool              // True if node config has hostprovision=true
-	HasRecentlyCreatedVMs bool              // True if node has P flag and VMs created in last 90 days
-	ConfigMeta            map[string]string // All key=value pairs from node config comment line
+	HasOSD            bool              // True if node has VMs with name matching osd*.cloudwm.com
+	AllowProvisioning bool              // True if node config has hostprovision=true
+	HasOldVMs         bool              // True if node has P flag and VMs older than 90 days (C flag)
+	ConfigMeta        map[string]string // All key=value pairs from node config comment line
 }
 
 // HasActiveSwap returns true if swap is configured and in use
@@ -34,7 +34,7 @@ func (n *Node) HasActiveSwap() bool {
 	return n.SwapTotal > 0 && n.SwapUsed > 0
 }
 
-// GetStatusIndicators returns status indicator letters (e.g., "OPC" for OSD + Provisioning + Recently Created)
+// GetStatusIndicators returns status indicator letters (e.g., "OPC" for OSD + Provisioning + old VMs needing migration)
 func (n *Node) GetStatusIndicators() string {
 	indicators := ""
 	if n.HasOSD {
@@ -43,7 +43,7 @@ func (n *Node) GetStatusIndicators() string {
 	if n.AllowProvisioning {
 		indicators += "P"
 	}
-	if n.HasRecentlyCreatedVMs {
+	if n.HasOldVMs {
 		indicators += "C"
 	}
 	return indicators

@@ -238,7 +238,7 @@ func CollectClusterDataWithProgress(client ProxmoxClient, progress ProgressCallb
 	updateNodeOSDStatus(nodeMap)
 
 	// Update recently created VMs status for P-flagged nodes (must be done AFTER VMs are assigned)
-	updateNodeRecentlyCreatedStatus(nodeMap)
+	updateNodeOldVMsStatus(nodeMap)
 
 	// Convert map to slice and calculate totals
 	for _, node := range nodeMap {
@@ -985,10 +985,12 @@ func updateNodeOSDStatus(nodeMap map[string]*Node) {
 // RecentlyCreatedThresholdDays is the number of days to consider a VM as "recently created"
 const RecentlyCreatedThresholdDays = 90
 
-// updateNodeRecentlyCreatedStatus checks if P-flagged nodes have VMs created in the last 90 days
+// updateNodeOldVMsStatus checks if P-flagged nodes have VMs older than 90 days
+// This indicates hosts with old VMs that may need migration
 // This must be called AFTER VMs are assigned to nodes
-func updateNodeRecentlyCreatedStatus(nodeMap map[string]*Node) {
+func updateNodeOldVMsStatus(nodeMap map[string]*Node) {
 	// Calculate the threshold timestamp (90 days ago)
+	// VMs created BEFORE this time are considered OLD
 	now := time.Now()
 	thresholdTime := now.Unix() - (RecentlyCreatedThresholdDays * 24 * 60 * 60)
 	thresholdDate := time.Unix(thresholdTime, 0).Format("2006-01-02")
@@ -1005,7 +1007,7 @@ func updateNodeRecentlyCreatedStatus(nodeMap map[string]*Node) {
 		recentVMs := 0
 		oldVMs := 0
 
-		log.Printf("C-flag check for node %s: %d VMs, threshold=%s (ctime >= %d = recent)",
+		log.Printf("C-flag check for node %s: %d VMs, threshold=%s (ctime < %d = old, triggers C)",
 			nodeName, len(node.VMs), thresholdDate, thresholdTime)
 
 		for _, vm := range node.VMs {
@@ -1013,18 +1015,18 @@ func updateNodeRecentlyCreatedStatus(nodeMap map[string]*Node) {
 				vmsWithCtime++
 				ageInDays := (now.Unix() - vm.CreationTime) / (24 * 60 * 60)
 				createdDate := time.Unix(vm.CreationTime, 0).Format("2006-01-02")
-				isRecent := vm.CreationTime >= thresholdTime
+				isOld := vm.CreationTime < thresholdTime // VM is OLD if created BEFORE threshold
 
-				if isRecent {
-					recentVMs++
-					if !node.HasRecentlyCreatedVMs {
-						node.HasRecentlyCreatedVMs = true
-						log.Printf("  VM %d (%s): created=%s, age=%d days - RECENT (triggers C flag)",
+				if isOld {
+					oldVMs++
+					if !node.HasOldVMs {
+						node.HasOldVMs = true // Flag indicates OLD VMs exist
+						log.Printf("  VM %d (%s): created=%s, age=%d days - OLD (triggers C flag)",
 							vm.VMID, vm.Name, createdDate, ageInDays)
 					}
 				} else {
-					oldVMs++
-					log.Printf("  VM %d (%s): created=%s, age=%d days - OLD (>%d days)",
+					recentVMs++
+					log.Printf("  VM %d (%s): created=%s, age=%d days - RECENT (<%d days)",
 						vm.VMID, vm.Name, createdDate, ageInDays, RecentlyCreatedThresholdDays)
 				}
 			} else {
@@ -1032,8 +1034,8 @@ func updateNodeRecentlyCreatedStatus(nodeMap map[string]*Node) {
 			}
 		}
 
-		log.Printf("C-flag summary for %s: %d with ctime (%d recent, %d old), %d without ctime, C=%v",
-			nodeName, vmsWithCtime, recentVMs, oldVMs, vmsWithoutCtime, node.HasRecentlyCreatedVMs)
+		log.Printf("C-flag summary for %s: %d with ctime (%d old, %d recent), %d without ctime, C=%v",
+			nodeName, vmsWithCtime, oldVMs, recentVMs, vmsWithoutCtime, node.HasOldVMs)
 	}
 }
 
