@@ -705,18 +705,21 @@ var diskSizeRegex = regexp.MustCompile(`size=(\d+)([KMGT]?)`)
 
 // VMConfigResult holds parsed VM config data including metadata and creation time
 type VMConfigResult struct {
-	Meta         map[string]string
-	CreationTime int64 // Unix timestamp from meta: ctime=
+	Meta          map[string]string
+	CreationTime  int64 // Unix timestamp from meta: ctime=
+	TotalDiskSize int64 // Total disk size in bytes (sum of all disks)
 }
 
-// ParseVMConfigMeta reads the VM config file and parses comment metadata and creation time
+// ParseVMConfigMeta reads the VM config file and parses comment metadata, creation time, and disk sizes
 // The config file path is: /etc/pve/nodes/{node}/qemu-server/{vmid}.conf
 // Comment format: #key1=value1,key2=value2,nomigrate=true,...
 // Also parses meta: line for ctime (e.g., meta: creation-qemu=9.2.0,ctime=1767793774)
+// Also sums up all disk sizes from scsi*, ide*, virtio*, sata*, efidisk*, tpmstate* entries
 func ParseVMConfigMeta(node string, vmid int, vmType string) (*VMConfigResult, error) {
 	result := &VMConfigResult{
-		Meta:         make(map[string]string),
-		CreationTime: 0,
+		Meta:          make(map[string]string),
+		CreationTime:  0,
+		TotalDiskSize: 0,
 	}
 
 	// Determine config path based on VM type
@@ -733,6 +736,9 @@ func ParseVMConfigMeta(node string, vmid int, vmType string) (*VMConfigResult, e
 		// File might not exist or not readable, return empty result
 		return result, nil
 	}
+
+	// Disk prefixes to look for
+	diskPrefixes := []string{"scsi", "ide", "virtio", "sata", "efidisk", "tpmstate", "rootfs", "mp"}
 
 	// Parse each line
 	lines := strings.Split(string(content), "\n")
@@ -756,6 +762,7 @@ func ParseVMConfigMeta(node string, vmid int, vmType string) (*VMConfigResult, e
 					}
 				}
 			}
+			continue
 		}
 
 		// Look for meta: line which contains ctime (creation time)
@@ -776,6 +783,54 @@ func ParseVMConfigMeta(node string, vmid int, vmType string) (*VMConfigResult, e
 						}
 					}
 				}
+			}
+			continue
+		}
+
+		// Check for disk entries (scsi0:, ide0:, virtio0:, sata0:, etc.)
+		// Format: scsi0: storage:vmid/disk.qcow2,size=100G,other=options
+		for _, prefix := range diskPrefixes {
+			if strings.HasPrefix(line, prefix) {
+				// Extract the part after the colon
+				parts := strings.SplitN(line, ":", 2)
+				if len(parts) != 2 {
+					continue
+				}
+				diskValue := strings.TrimSpace(parts[1])
+
+				// Skip CD-ROM and empty drives
+				if strings.Contains(diskValue, "media=cdrom") || diskValue == "none" {
+					continue
+				}
+
+				// Extract size from the disk specification using regex
+				matches := diskSizeRegex.FindStringSubmatch(diskValue)
+				if len(matches) >= 2 {
+					sizeNum, err := strconv.ParseInt(matches[1], 10, 64)
+					if err != nil {
+						continue
+					}
+
+					// Apply unit multiplier
+					var multiplier int64 = 1
+					if len(matches) >= 3 {
+						switch matches[2] {
+						case "K":
+							multiplier = 1024
+						case "M":
+							multiplier = 1024 * 1024
+						case "G":
+							multiplier = 1024 * 1024 * 1024
+						case "T":
+							multiplier = 1024 * 1024 * 1024 * 1024
+						case "": // No unit means bytes or default to GB for Proxmox
+							multiplier = 1024 * 1024 * 1024 // Assume GB if no unit
+						}
+					}
+
+					result.TotalDiskSize += sizeNum * multiplier
+				}
+				break // Found matching prefix, no need to check others
 			}
 		}
 	}
@@ -852,6 +907,10 @@ func fetchVMConfigMeta(vmList []VM, progress ProgressCallback) {
 		if result.err == nil && result.result != nil {
 			vmList[result.vmIdx].ConfigMeta = result.result.Meta
 			vmList[result.vmIdx].CreationTime = result.result.CreationTime
+			// Set total disk size from config file (more accurate than API)
+			if result.result.TotalDiskSize > 0 {
+				vmList[result.vmIdx].MaxDisk = result.result.TotalDiskSize
+			}
 			// Check for nomigrate flag
 			if noMigrate, ok := result.result.Meta["nomigrate"]; ok {
 				vmList[result.vmIdx].NoMigrate = strings.ToLower(noMigrate) == "true"
