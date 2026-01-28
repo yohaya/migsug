@@ -369,7 +369,8 @@ func GetClusterSummary(cluster *Cluster) map[string]interface{} {
 	}
 }
 
-// GetAvailableTargets returns nodes that can accept migrations (excluding source and offline nodes)
+// GetAvailableTargets returns nodes that can accept migrations
+// Excludes: source node, offline nodes, explicitly excluded nodes, and provisioning hosts (P flag)
 func GetAvailableTargets(cluster *Cluster, sourceNode string, excludeNodes []string) []Node {
 	var targets []Node
 
@@ -384,6 +385,10 @@ func GetAvailableTargets(cluster *Cluster, sourceNode string, excludeNodes []str
 			continue
 		}
 		if node.Status != "online" {
+			continue
+		}
+		// Skip provisioning hosts - they should not receive migrated VMs
+		if node.AllowProvisioning {
 			continue
 		}
 		targets = append(targets, node)
