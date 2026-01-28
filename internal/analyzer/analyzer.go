@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"time"
 
 	"github.com/yourusername/migsug/internal/proxmox"
 )
@@ -68,6 +69,8 @@ func SelectVMsToMigrate(node *proxmox.Node, constraints MigrationConstraints) []
 		return selectByRAM(node, *constraints.RAMAmount)
 	case ModeStorage:
 		return selectByStorage(node, *constraints.StorageAmount)
+	case ModeCreationDate:
+		return selectByCreationDate(node, *constraints.CreationAge)
 	default:
 		return []proxmox.VM{}
 	}
@@ -395,6 +398,32 @@ func selectByStorage(node *proxmox.Node, targetStorage int64) []proxmox.VM {
 	return selected
 }
 
+// selectByCreationDate selects VMs that were created more than N days ago
+// This helps migrate older VMs that may be stale or need to be moved to different hosts
+func selectByCreationDate(node *proxmox.Node, minAgeDays int) []proxmox.VM {
+	// Include ALL VMs (running and stopped) that can be migrated
+	vms := filterMigratableVMs(node.VMs)
+
+	// Calculate the threshold timestamp (VMs created before this time are selected)
+	thresholdTime := time.Now().Unix() - int64(minAgeDays*24*60*60)
+
+	// Filter VMs older than the threshold
+	var oldVMs []proxmox.VM
+	for _, vm := range vms {
+		// Only include VMs that have a valid creation time and are older than threshold
+		if vm.CreationTime > 0 && vm.CreationTime < thresholdTime {
+			oldVMs = append(oldVMs, vm)
+		}
+	}
+
+	// Sort by creation time (oldest first)
+	sort.Slice(oldVMs, func(i, j int) bool {
+		return oldVMs[i].CreationTime < oldVMs[j].CreationTime
+	})
+
+	return oldVMs
+}
+
 // GenerateSuggestions creates migration suggestions by finding best targets
 func GenerateSuggestions(vms []proxmox.VM, targets []proxmox.Node, sourceNode *proxmox.Node, constraints MigrationConstraints) []MigrationSuggestion {
 	var suggestions []MigrationSuggestion
@@ -493,6 +522,8 @@ func getSelectionReason(constraints MigrationConstraints) string {
 		return fmt.Sprintf("Selected to free up %d GB RAM from source host", *constraints.RAMAmount/(1024*1024*1024))
 	case ModeStorage:
 		return fmt.Sprintf("Selected to free up %d GB storage from source host", *constraints.StorageAmount/(1024*1024*1024))
+	case ModeCreationDate:
+		return fmt.Sprintf("Selected because VM was created more than %d days ago", *constraints.CreationAge)
 	default:
 		return "Selected based on migration criteria"
 	}

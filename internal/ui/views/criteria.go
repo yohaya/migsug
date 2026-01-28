@@ -23,6 +23,7 @@ type CriteriaState struct {
 	CPUUsage       string
 	RAMAmount      string
 	StorageAmount  string
+	CreationAge    string // Days old for creation date mode (default 75)
 	SelectedVMs    map[int]bool
 	ExcludeNodes   []string
 	CursorPosition int
@@ -112,6 +113,7 @@ func RenderCriteriaFull(state CriteriaState, sourceNode string, node *proxmox.No
 		{analyzer.ModeCPUUsage, "CPU Usage (%)", "Migrate VMs based on the CPU Usage Percentage to migrate from the Host"},
 		{analyzer.ModeRAM, "RAM (GiB)", "Migrate VMs based on the amount of GiB RAM to migrate from the Host"},
 		{analyzer.ModeStorage, "Storage (GiB)", "Migrate VMs based on the amount of GiB of VM Storage to migrate from Host"},
+		{analyzer.ModeCreationDate, "Create Date", "Migrate VMs created more than N days ago (default: 75 days)"},
 		{analyzer.ModeSpecific, "Specific VMs", "Manually select which VMs to migrate"},
 	}
 
@@ -177,6 +179,10 @@ func RenderCriteriaFull(state CriteriaState, sourceNode string, node *proxmox.No
 		case analyzer.ModeStorage:
 			inputLabel = "Storage to free (GiB)"
 			inputValue = state.StorageAmount
+		case analyzer.ModeCreationDate:
+			inputLabel = "Migrate VMs older than (days)"
+			inputValue = state.CreationAge
+			inputHint = "(selects VMs created more than N days ago based on ctime)"
 		}
 
 		labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
@@ -208,8 +214,8 @@ func RenderCriteriaFull(state CriteriaState, sourceNode string, node *proxmox.No
 		// Show hint for Migrate All mode
 		noteStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Italic(true)
 		sb.WriteString(noteStyle.Render("  ℹ Press Enter to migrate all VMs, balanced across cluster (no target exceeds average)") + "\n")
-	} else if state.SelectedMode == analyzer.ModeSpecific && state.CursorPosition == 5 {
-		// Show hint only when Specific VMs mode is highlighted (now at position 6)
+	} else if state.SelectedMode == analyzer.ModeSpecific && state.CursorPosition == 6 {
+		// Show hint only when Specific VMs mode is highlighted (at position 6)
 		noteStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Italic(true)
 		sb.WriteString(noteStyle.Render("  ℹ Press Enter to select specific VMs on the next screen") + "\n")
 	}

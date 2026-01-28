@@ -427,13 +427,14 @@ func (m Model) handleCriteriaKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "enter":
 		// Select mode based on cursor position
-		// Mode order: ModeAll, ModeVCPU, ModeCPUUsage, ModeRAM, ModeStorage, ModeSpecific
+		// Mode order: ModeAll, ModeVCPU, ModeCPUUsage, ModeRAM, ModeStorage, ModeCreationDate, ModeSpecific
 		modeMap := []analyzer.MigrationMode{
 			analyzer.ModeAll,
 			analyzer.ModeVCPU,
 			analyzer.ModeCPUUsage,
 			analyzer.ModeRAM,
 			analyzer.ModeStorage,
+			analyzer.ModeCreationDate,
 			analyzer.ModeSpecific,
 		}
 		m.criteriaState.SelectedMode = modeMap[m.criteriaState.CursorPosition]
@@ -483,6 +484,7 @@ func (m Model) handleCriteriaInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.criteriaState.CPUUsage = ""
 		m.criteriaState.RAMAmount = ""
 		m.criteriaState.StorageAmount = ""
+		m.criteriaState.CreationAge = ""
 		return m, tea.ClearScreen
 	case "backspace", "ctrl+h", "delete":
 		m.deleteLastChar()
@@ -550,6 +552,19 @@ func (m *Model) validateCriteriaInput() string {
 		if amount <= 0 {
 			return "Storage amount must be greater than 0"
 		}
+
+	case analyzer.ModeCreationDate:
+		if m.criteriaState.CreationAge == "" {
+			// Default to 75 days if empty
+			m.criteriaState.CreationAge = "75"
+		}
+		days, err := strconv.Atoi(m.criteriaState.CreationAge)
+		if err != nil {
+			return "Invalid number"
+		}
+		if days <= 0 {
+			return "Days must be greater than 0"
+		}
 	}
 
 	return "" // No error
@@ -565,6 +580,8 @@ func (m *Model) appendToInput(char string) {
 		m.criteriaState.RAMAmount += char
 	case analyzer.ModeStorage:
 		m.criteriaState.StorageAmount += char
+	case analyzer.ModeCreationDate:
+		m.criteriaState.CreationAge += char
 	}
 }
 
@@ -585,6 +602,8 @@ func (m *Model) deleteLastChar() {
 		m.criteriaState.RAMAmount = deleteFrom(m.criteriaState.RAMAmount)
 	case analyzer.ModeStorage:
 		m.criteriaState.StorageAmount = deleteFrom(m.criteriaState.StorageAmount)
+	case analyzer.ModeCreationDate:
+		m.criteriaState.CreationAge = deleteFrom(m.criteriaState.CreationAge)
 	}
 }
 
@@ -1145,6 +1164,17 @@ func (m Model) startAnalysis() tea.Cmd {
 			}
 		case analyzer.ModeAll:
 			constraints.MigrateAll = true
+		case analyzer.ModeCreationDate:
+			// Default to 75 days if not specified
+			daysStr := m.criteriaState.CreationAge
+			if daysStr == "" {
+				daysStr = "75"
+			}
+			days, parseErr := strconv.Atoi(daysStr)
+			if parseErr != nil {
+				return errMsg{fmt.Errorf("invalid days value: %w", parseErr)}
+			}
+			constraints.CreationAge = &days
 		}
 
 		// Run analysis

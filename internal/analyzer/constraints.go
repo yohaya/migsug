@@ -12,6 +12,7 @@ type MigrationConstraints struct {
 	StorageAmount *int64   // migrate VMs using N GB storage (in bytes)
 	SpecificVMs   []int    // migrate these specific VMIDs
 	MigrateAll    bool     // migrate all VMs from host, spread across cluster
+	CreationAge   *int     // migrate VMs older than N days (based on ctime)
 
 	// Additional constraints
 	ExcludeNodes  []string // don't migrate to these nodes
@@ -30,7 +31,8 @@ const (
 	ModeRAM
 	ModeStorage
 	ModeSpecific
-	ModeAll // Migrate all VMs from host, spread across cluster below average
+	ModeAll          // Migrate all VMs from host, spread across cluster below average
+	ModeCreationDate // Migrate VMs older than N days based on creation time
 )
 
 // String returns the string representation of a MigrationMode
@@ -50,6 +52,8 @@ func (m MigrationMode) String() string {
 		return "specific"
 	case ModeAll:
 		return "all"
+	case ModeCreationDate:
+		return "creation_date"
 	default:
 		return "unknown"
 	}
@@ -78,6 +82,9 @@ func (c *MigrationConstraints) GetMode() MigrationMode {
 	if c.StorageAmount != nil {
 		return ModeStorage
 	}
+	if c.CreationAge != nil {
+		return ModeCreationDate
+	}
 	return ModeVMCount // default
 }
 
@@ -94,7 +101,8 @@ func (c *MigrationConstraints) Validate() error {
 		c.RAMAmount != nil ||
 		c.StorageAmount != nil ||
 		len(c.SpecificVMs) > 0 ||
-		c.MigrateAll
+		c.MigrateAll ||
+		c.CreationAge != nil
 
 	if !hasConstraint {
 		return &ValidationError{
@@ -118,6 +126,9 @@ func (c *MigrationConstraints) Validate() error {
 	}
 	if c.StorageAmount != nil && *c.StorageAmount <= 0 {
 		return &ValidationError{Field: "StorageAmount", Message: "must be greater than 0"}
+	}
+	if c.CreationAge != nil && *c.CreationAge <= 0 {
+		return &ValidationError{Field: "CreationAge", Message: "must be greater than 0"}
 	}
 
 	return nil
