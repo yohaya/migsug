@@ -802,6 +802,23 @@ func BuildAnalysisResult(sourceNode *proxmox.Node, targets []proxmox.Node, sugge
 	// Source before state - use ACTUAL node values from Proxmox API
 	result.SourceBefore = NewNodeState(sourceNode)
 
+	// For storage, use VM-aggregated values instead of node.UsedDisk
+	// This ensures before/after calculations are consistent (both use VM allocated sizes)
+	// The node's UsedDisk includes non-VM data (templates, ISOs, backups) which makes
+	// the subtraction of VM allocated sizes incorrect
+	var totalVMStorage int64
+	for _, vm := range sourceNode.VMs {
+		storage := vm.MaxDisk
+		if storage == 0 {
+			storage = vm.UsedDisk
+		}
+		totalVMStorage += storage
+	}
+	result.SourceBefore.StorageUsed = totalVMStorage
+	if result.SourceBefore.StorageTotal > 0 {
+		result.SourceBefore.StoragePercent = float64(totalVMStorage) / float64(result.SourceBefore.StorageTotal) * 100
+	}
+
 	// Calculate VM contributions being removed (CPU, RAM, Storage)
 	vmCPUContribution := 0.0
 	var vmRAMContribution int64
