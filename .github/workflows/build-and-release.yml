@@ -1,0 +1,168 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    name: Build and Commit Binaries
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+
+      - name: Download dependencies
+        run: |
+          go mod download
+          go mod tidy
+
+      - name: Run tests
+        run: go test -v ./...
+
+      - name: Increment version (main branch only)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          bash scripts/increment-version.sh patch
+          NEW_VERSION=$(cat VERSION)
+          echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+          echo "Version incremented to: $NEW_VERSION"
+
+      - name: Get version
+        run: |
+          VERSION=$(cat VERSION)
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "Building version: $VERSION"
+
+      - name: Build binaries for all platforms
+        run: |
+          # Make scripts executable
+          chmod +x scripts/*.sh
+
+          # Create bin directory structure
+          mkdir -p bin/{linux-amd64,linux-arm64,darwin-amd64,darwin-arm64,windows-amd64}
+
+          # Build for Linux (Proxmox)
+          bash scripts/build-with-version.sh linux amd64
+          bash scripts/build-with-version.sh linux arm64
+
+          # Build for macOS
+          bash scripts/build-with-version.sh darwin amd64
+          bash scripts/build-with-version.sh darwin arm64
+
+          # Build for Windows
+          bash scripts/build-with-version.sh windows amd64
+
+          # Create checksums for each platform with unique names
+          cd bin
+          for dir in */; do
+            if [ -d "$dir" ]; then
+              # Extract platform name (remove trailing slash)
+              platform="${dir%/}"
+              # Create checksum file with platform-specific name
+              (cd "$dir" && sha256sum migsug* > "checksums-${platform}.txt")
+            fi
+          done
+          cd ..
+
+          echo "Build complete!"
+          echo "Directory structure:"
+          ls -lh bin/*/
+
+      - name: Prepare release assets (main branch only)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          # Create release directory with uniquely named files
+          mkdir -p release
+
+          # Copy binaries with platform-specific names for GitHub release
+          cp bin/linux-amd64/migsug release/migsug-linux-amd64
+          cp bin/linux-arm64/migsug release/migsug-linux-arm64
+          cp bin/darwin-amd64/migsug release/migsug-darwin-amd64
+          cp bin/darwin-arm64/migsug release/migsug-darwin-arm64
+          cp bin/windows-amd64/migsug.exe release/migsug-windows-amd64.exe
+
+          # Copy checksum files
+          cp bin/linux-amd64/checksums-linux-amd64.txt release/
+          cp bin/linux-arm64/checksums-linux-arm64.txt release/
+          cp bin/darwin-amd64/checksums-darwin-amd64.txt release/
+          cp bin/darwin-arm64/checksums-darwin-arm64.txt release/
+          cp bin/windows-amd64/checksums-windows-amd64.txt release/
+
+          echo "Release assets prepared:"
+          ls -lh release/
+
+      - name: Create GitHub Release (main branch only)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ env.VERSION }}
+          name: Release v${{ env.VERSION }}
+          body: |
+            ## Release v${{ env.VERSION }}
+
+            Automated release with compiled binaries.
+
+            ### Downloads
+            Download the binary for your platform:
+            - **Linux (amd64)**: `migsug-linux-amd64` - For Proxmox hosts (most common)
+            - **Linux (arm64)**: `migsug-linux-arm64` - For ARM-based systems
+            - **macOS (amd64)**: `migsug-darwin-amd64` - For Intel Macs
+            - **macOS (arm64)**: `migsug-darwin-arm64` - For Apple Silicon Macs (M1/M2/M3)
+            - **Windows (amd64)**: `migsug-windows-amd64.exe` - For Windows
+
+            ### Installation
+            ```bash
+            # Download and install (Linux example)
+            wget https://github.com/${{ github.repository }}/releases/download/v${{ env.VERSION }}/migsug-linux-amd64
+            chmod +x migsug-linux-amd64
+            sudo mv migsug-linux-amd64 /usr/local/bin/migsug
+
+            # Run
+            migsug --api-token=YOUR_TOKEN
+            ```
+
+            ### Verification
+            Each platform includes a checksum file for integrity verification.
+
+            ### Changes
+            See commit history for detailed changes.
+          files: |
+            release/migsug-linux-amd64
+            release/migsug-linux-arm64
+            release/migsug-darwin-amd64
+            release/migsug-darwin-arm64
+            release/migsug-windows-amd64.exe
+            release/checksums-linux-amd64.txt
+            release/checksums-linux-arm64.txt
+            release/checksums-darwin-amd64.txt
+            release/checksums-darwin-arm64.txt
+            release/checksums-windows-amd64.txt
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ env.VERSION }}
+          path: bin/*
+          retention-days: 30

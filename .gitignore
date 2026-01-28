@@ -1,0 +1,36 @@
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+
+# Go
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.sum
+vendor/
+
+# Build artifacts - binaries built by GitHub Actions (download from Releases)
+/migsug
+migsug-*
+bin/*/migsug
+bin/*/migsug.exe
+bin/*/checksums*.txt
+
+# Logs
+*.log
+
+# Coverage
+coverage.out
+coverage.html
