@@ -237,6 +237,9 @@ func CollectClusterDataWithProgress(client ProxmoxClient, progress ProgressCallb
 	// Update OSD status for nodes (must be done AFTER VMs are assigned)
 	updateNodeOSDStatus(nodeMap)
 
+	// Update recently created VMs status for P-flagged nodes (must be done AFTER VMs are assigned)
+	updateNodeRecentlyCreatedStatus(nodeMap)
+
 	// Convert map to slice and calculate totals
 	for _, node := range nodeMap {
 		cluster.Nodes = append(cluster.Nodes, *node)
@@ -700,11 +703,21 @@ func fetchVMStorageFromConfig(client ProxmoxClient, vmList []VM, vmIndices []int
 // diskSizeRegex matches size specifications like "100G", "500M", "1T"
 var diskSizeRegex = regexp.MustCompile(`size=(\d+)([KMGT]?)`)
 
-// ParseVMConfigMeta reads the VM config file and parses comment metadata
+// VMConfigResult holds parsed VM config data including metadata and creation time
+type VMConfigResult struct {
+	Meta         map[string]string
+	CreationTime int64 // Unix timestamp from meta: ctime=
+}
+
+// ParseVMConfigMeta reads the VM config file and parses comment metadata and creation time
 // The config file path is: /etc/pve/nodes/{node}/qemu-server/{vmid}.conf
 // Comment format: #key1=value1,key2=value2,nomigrate=true,...
-func ParseVMConfigMeta(node string, vmid int, vmType string) (map[string]string, error) {
-	meta := make(map[string]string)
+// Also parses meta: line for ctime (e.g., meta: creation-qemu=9.2.0,ctime=1767793774)
+func ParseVMConfigMeta(node string, vmid int, vmType string) (*VMConfigResult, error) {
+	result := &VMConfigResult{
+		Meta:         make(map[string]string),
+		CreationTime: 0,
+	}
 
 	// Determine config path based on VM type
 	var configPath string
@@ -717,15 +730,16 @@ func ParseVMConfigMeta(node string, vmid int, vmType string) (map[string]string,
 	// Read the config file
 	content, err := os.ReadFile(configPath)
 	if err != nil {
-		// File might not exist or not readable, return empty meta
-		return meta, nil
+		// File might not exist or not readable, return empty result
+		return result, nil
 	}
 
-	// Parse each line looking for comment lines with metadata
+	// Parse each line
 	lines := strings.Split(string(content), "\n")
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-		// Look for comment lines that contain key=value pairs
+
+		// Look for comment lines that contain key=value pairs (custom metadata)
 		if strings.HasPrefix(line, "#") {
 			// Remove the # prefix
 			commentContent := strings.TrimPrefix(line, "#")
@@ -738,21 +752,42 @@ func ParseVMConfigMeta(node string, vmid int, vmType string) (map[string]string,
 					if len(kv) == 2 {
 						key := strings.TrimSpace(strings.ToLower(kv[0]))
 						value := strings.TrimSpace(kv[1])
-						meta[key] = value
+						result.Meta[key] = value
+					}
+				}
+			}
+		}
+
+		// Look for meta: line which contains ctime (creation time)
+		// Format: meta: creation-qemu=9.2.0,ctime=1767793774
+		if strings.HasPrefix(line, "meta:") {
+			metaContent := strings.TrimPrefix(line, "meta:")
+			metaContent = strings.TrimSpace(metaContent)
+			// Parse comma-separated key=value pairs
+			pairs := strings.Split(metaContent, ",")
+			for _, pair := range pairs {
+				kv := strings.SplitN(pair, "=", 2)
+				if len(kv) == 2 {
+					key := strings.TrimSpace(strings.ToLower(kv[0]))
+					value := strings.TrimSpace(kv[1])
+					if key == "ctime" {
+						if ctime, err := strconv.ParseInt(value, 10, 64); err == nil {
+							result.CreationTime = ctime
+						}
 					}
 				}
 			}
 		}
 	}
 
-	return meta, nil
+	return result, nil
 }
 
 // vmConfigMetaResult holds the result of parsing VM config metadata
 type vmConfigMetaResult struct {
-	vmIdx int
-	meta  map[string]string
-	err   error
+	vmIdx  int
+	result *VMConfigResult
+	err    error
 }
 
 // fetchVMConfigMeta fetches config metadata for all VMs in parallel
@@ -786,11 +821,11 @@ func fetchVMConfigMeta(vmList []VM, progress ProgressCallback) {
 			defer wg.Done()
 			for vmIdx := range jobs {
 				vm := vmList[vmIdx]
-				meta, err := ParseVMConfigMeta(vm.Node, vm.VMID, vm.Type)
+				result, err := ParseVMConfigMeta(vm.Node, vm.VMID, vm.Type)
 				results <- vmConfigMetaResult{
-					vmIdx: vmIdx,
-					meta:  meta,
-					err:   err,
+					vmIdx:  vmIdx,
+					result: result,
+					err:    err,
 				}
 			}
 		}()
@@ -814,10 +849,11 @@ func fetchVMConfigMeta(vmList []VM, progress ProgressCallback) {
 			progress("Reading VM config metadata", current, totalVMs)
 		}
 
-		if result.err == nil && result.meta != nil {
-			vmList[result.vmIdx].ConfigMeta = result.meta
+		if result.err == nil && result.result != nil {
+			vmList[result.vmIdx].ConfigMeta = result.result.Meta
+			vmList[result.vmIdx].CreationTime = result.result.CreationTime
 			// Check for nomigrate flag
-			if noMigrate, ok := result.meta["nomigrate"]; ok {
+			if noMigrate, ok := result.result.Meta["nomigrate"]; ok {
 				vmList[result.vmIdx].NoMigrate = strings.ToLower(noMigrate) == "true"
 			}
 		}
@@ -942,6 +978,33 @@ func updateNodeOSDStatus(nodeMap map[string]*Node) {
 		node.HasOSD = CheckNodeHasOSD(node.VMs)
 		if node.HasOSD {
 			log.Printf("Node %s: HasOSD=true (found OSD VM among %d VMs)", nodeName, len(node.VMs))
+		}
+	}
+}
+
+// RecentlyCreatedThresholdDays is the number of days to consider a VM as "recently created"
+const RecentlyCreatedThresholdDays = 90
+
+// updateNodeRecentlyCreatedStatus checks if P-flagged nodes have VMs created in the last 90 days
+// This must be called AFTER VMs are assigned to nodes
+func updateNodeRecentlyCreatedStatus(nodeMap map[string]*Node) {
+	// Calculate the threshold timestamp (90 days ago)
+	thresholdTime := time.Now().Unix() - (RecentlyCreatedThresholdDays * 24 * 60 * 60)
+
+	for nodeName, node := range nodeMap {
+		// Only check nodes with AllowProvisioning (P flag)
+		if !node.AllowProvisioning {
+			continue
+		}
+
+		// Check if any VM on this node was created in the last 90 days
+		for _, vm := range node.VMs {
+			if vm.CreationTime > 0 && vm.CreationTime >= thresholdTime {
+				node.HasRecentlyCreatedVMs = true
+				log.Printf("Node %s: HasRecentlyCreatedVMs=true (VM %d '%s' created at %d, threshold %d)",
+					nodeName, vm.VMID, vm.Name, vm.CreationTime, thresholdTime)
+				break
+			}
 		}
 	}
 }
