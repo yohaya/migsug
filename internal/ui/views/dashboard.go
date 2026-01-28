@@ -127,6 +127,10 @@ func RenderDashboardWithHeight(cluster *proxmox.Cluster, selectedIdx int, width,
 		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("(Press 'r' to refresh now)") + "\n")
 	}
 
+	// Status flags legend
+	flagStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	sb.WriteString(flagStyle.Render("Status flags: O=OSD, P=Provisioning Enabled, C=Create Date 90+ days") + "\n")
+
 	// Help text
 	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	sb.WriteString(helpStyle.Render("↑/↓/PgUp/PgDn/Home/End: Navigate │ 1-8: Sort columns │ Enter: Select │ r: Refresh │ q: Quit"))
@@ -214,6 +218,10 @@ func RenderDashboardWithSort(cluster *proxmox.Cluster, selectedIdx int, width in
 		sb.WriteString(refreshStyle.Render(fmt.Sprintf("⟳ Auto-refresh in %ds", countdown)) + "  ")
 		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("(Press 'r' to refresh now)") + "\n")
 	}
+
+	// Status flags legend
+	flagStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	sb.WriteString(flagStyle.Render("Status flags: O=OSD, P=Provisioning Enabled, C=Create Date 90+ days") + "\n")
 
 	// Help text
 	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
