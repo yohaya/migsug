@@ -379,7 +379,7 @@ func (m *Model) sortNodes() {
 		case SortByName:
 			less = nodes[i].Name < nodes[j].Name
 		case SortByStatus:
-			less = nodes[i].Status < nodes[j].Status
+			less = nodes[i].GetStatusWithIndicators() < nodes[j].GetStatusWithIndicators()
 		case SortByVMs:
 			less = len(nodes[i].VMs) < len(nodes[j].VMs)
 		case SortByVCPUs:
