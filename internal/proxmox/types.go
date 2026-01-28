@@ -70,7 +70,7 @@ type VM struct {
 	Uptime   int64   // seconds
 
 	// Config metadata parsed from VM config file comments
-	NoMigrate bool              // If true, VM should not be migrated (from nomigrate=true in config)
+	NoMigrate  bool              // If true, VM should not be migrated (from nomigrate=true in config)
 	ConfigMeta map[string]string // All key=value pairs from config comment line
 }
 
