@@ -86,16 +86,17 @@ jobs:
           echo "Directory structure:"
           ls -lh bin/*/
 
-      - name: Commit version update (main branch only)
+      - name: Commit binaries and version (main branch only)
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
+          git add bin/
           git add VERSION
           if git diff --staged --quiet; then
-            echo "No version changes to commit"
+            echo "No changes to commit"
           else
-            git commit -m "chore: Bump version to ${VERSION} [skip ci]"
+            git commit -m "chore: Build binaries for version ${VERSION} [skip ci]"
             git push
           fi
 
@@ -141,7 +142,7 @@ jobs:
             - **macOS (arm64)**: `migsug-darwin-arm64` - For Apple Silicon Macs (M1/M2/M3)
             - **Windows (amd64)**: `migsug-windows-amd64.exe` - For Windows
 
-            ### Installation
+            ### Installation from Release
             ```bash
             # Download and install (Linux example)
             wget https://github.com/${{ github.repository }}/releases/download/v${{ env.VERSION }}/migsug-linux-amd64
@@ -150,6 +151,15 @@ jobs:
 
             # Run
             migsug --api-token=YOUR_TOKEN
+            ```
+
+            ### Or Clone Repository
+            ```bash
+            # Binaries are also committed to the repository
+            git clone https://github.com/${{ github.repository }}.git
+            cd migsug
+            chmod +x bin/linux-amd64/migsug
+            ./bin/linux-amd64/migsug --api-token=YOUR_TOKEN
             ```
 
             ### Verification

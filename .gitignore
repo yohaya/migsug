@@ -21,12 +21,9 @@
 go.sum
 vendor/
 
-# Build artifacts - binaries built by GitHub Actions (download from Releases)
+# Build artifacts (local builds, not bin/ which is tracked)
 /migsug
 migsug-*
-bin/*/migsug
-bin/*/migsug.exe
-bin/*/checksums*.txt
 
 # Logs
 *.log
