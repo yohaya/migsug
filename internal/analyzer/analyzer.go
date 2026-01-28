@@ -2,6 +2,7 @@ package analyzer
 
 import (
 	"fmt"
+	"log"
 	"math"
 	"sort"
 	"time"
@@ -407,6 +408,22 @@ func selectByCreationDate(node *proxmox.Node, minAgeDays int) []proxmox.VM {
 	// Calculate the threshold timestamp (VMs created before this time are selected)
 	thresholdTime := time.Now().Unix() - int64(minAgeDays*24*60*60)
 
+	// Debug logging
+	log.Printf("selectByCreationDate: Node %s has %d total VMs, %d migratable VMs", node.Name, len(node.VMs), len(vms))
+	log.Printf("selectByCreationDate: Looking for VMs older than %d days (threshold: %d)", minAgeDays, thresholdTime)
+
+	// Count VMs with valid creation time for debugging
+	vmsWithCtime := 0
+	for _, vm := range vms {
+		if vm.CreationTime > 0 {
+			vmsWithCtime++
+			ageInDays := (time.Now().Unix() - vm.CreationTime) / (24 * 60 * 60)
+			log.Printf("  VM %d (%s): CreationTime=%d, age=%d days, threshold check: %v",
+				vm.VMID, vm.Name, vm.CreationTime, ageInDays, vm.CreationTime < thresholdTime)
+		}
+	}
+	log.Printf("selectByCreationDate: %d VMs have valid CreationTime", vmsWithCtime)
+
 	// Filter VMs older than the threshold
 	var oldVMs []proxmox.VM
 	for _, vm := range vms {
@@ -415,6 +432,8 @@ func selectByCreationDate(node *proxmox.Node, minAgeDays int) []proxmox.VM {
 			oldVMs = append(oldVMs, vm)
 		}
 	}
+
+	log.Printf("selectByCreationDate: Selected %d VMs older than %d days", len(oldVMs), minAgeDays)
 
 	// Sort by creation time (oldest first)
 	sort.Slice(oldVMs, func(i, j int) bool {
