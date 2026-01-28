@@ -337,8 +337,16 @@ func RenderNodeTableWideWithScroll(nodes []proxmox.Node, selectedIdx int, width 
 			// VMs
 			coloredRow.WriteString(fmt.Sprintf("%*d ", colVMs, len(node.VMs)))
 
-			// vCPUs (running only)
-			coloredRow.WriteString(fmt.Sprintf("%*s ", colVCPUs, vcpuStr))
+			// vCPUs with color based on overcommit percentage
+			// Below 300%: green, 300-499%: yellow, 500%+: red
+			vcpuColor := "2" // green
+			if vcpuOvercommit >= 500 {
+				vcpuColor = "9" // bright red
+			} else if vcpuOvercommit >= 300 {
+				vcpuColor = "3" // yellow
+			}
+			vcpuStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(vcpuColor))
+			coloredRow.WriteString(vcpuStyle.Render(fmt.Sprintf("%*s", colVCPUs, vcpuStr)) + " ")
 
 			// CPU % with color (bright red if error)
 			cpuPctColor := getUsageColor(node.GetCPUPercent())
