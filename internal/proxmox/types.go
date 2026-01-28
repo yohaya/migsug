@@ -21,11 +21,37 @@ type Node struct {
 	VMs         []VM
 	Uptime      int64  // seconds
 	PVEVersion  string // Proxmox VE version
+
+	// Node status indicators (parsed from config and VMs)
+	HasOSD            bool              // True if node has VMs with name matching osd*.cloudwm.com
+	AllowProvisioning bool              // True if node config has allowProvisioning=true
+	ConfigMeta        map[string]string // All key=value pairs from node config comment line
 }
 
 // HasActiveSwap returns true if swap is configured and in use
 func (n *Node) HasActiveSwap() bool {
 	return n.SwapTotal > 0 && n.SwapUsed > 0
+}
+
+// GetStatusIndicators returns status indicator letters (e.g., "OP" for OSD + Provisioning)
+func (n *Node) GetStatusIndicators() string {
+	indicators := ""
+	if n.HasOSD {
+		indicators += "O"
+	}
+	if n.AllowProvisioning {
+		indicators += "P"
+	}
+	return indicators
+}
+
+// GetStatusWithIndicators returns status with indicators (e.g., "online (OP)")
+func (n *Node) GetStatusWithIndicators() string {
+	indicators := n.GetStatusIndicators()
+	if indicators == "" {
+		return n.Status
+	}
+	return fmt.Sprintf("%s (%s)", n.Status, indicators)
 }
 
 // VM represents a virtual machine

@@ -135,7 +135,7 @@ func RenderNodeTableWideWithScroll(nodes []proxmox.Node, selectedIdx int, width 
 	// Column widths - fit to terminal width
 	// Note: Headers include sort numbers like "[1]" and sort arrow "▼", so widths must accommodate
 	colName := maxNameLen + 2
-	colStatus := 13 // "Status [2] ▼" = 12 chars
+	colStatus := 16 // "Status [2] ▼" = 12 chars + "(OP)" = 16 chars
 	colVMs := 10    // "VMs [3] ▼" = 9 chars
 	colVCPUs := 14  // "vCPUs [4] ▼" = 11 chars
 	colCPUPct := 11 // "CPU% [5] ▼" = 10 chars
@@ -279,10 +279,13 @@ func RenderNodeTableWideWithScroll(nodes []proxmox.Node, selectedIdx int, width 
 			swapStr = "Yes"
 		}
 
+		// Get status with indicators (e.g., "online (OP)")
+		statusWithIndicators := node.GetStatusWithIndicators()
+
 		// Build the row content (plain text for width calculation)
 		rowContent := fmt.Sprintf("%-*s %-*s %*d %*s %*s %*s %*s %*s %-*s %s",
 			colName, truncate(node.Name, colName),
-			colStatus, node.Status,
+			colStatus, statusWithIndicators,
 			colVMs, len(node.VMs),
 			colVCPUs, vcpuStr,
 			colCPUPct, cpuPctStr,
@@ -323,13 +326,13 @@ func RenderNodeTableWideWithScroll(nodes []proxmox.Node, selectedIdx int, width 
 			nodeName := truncate(node.Name, colName)
 			coloredRow.WriteString(fmt.Sprintf("%-*s ", colName, nodeName))
 
-			// Status with color
+			// Status with indicators and color
 			statusColor := "2" // green for online
 			if node.Status != "online" {
 				statusColor = "9" // bright red for offline
 			}
 			statusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(statusColor))
-			coloredRow.WriteString(statusStyle.Render(fmt.Sprintf("%-*s", colStatus, node.Status)) + " ")
+			coloredRow.WriteString(statusStyle.Render(fmt.Sprintf("%-*s", colStatus, statusWithIndicators)) + " ")
 
 			// VMs
 			coloredRow.WriteString(fmt.Sprintf("%*d ", colVMs, len(node.VMs)))

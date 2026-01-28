@@ -232,6 +232,42 @@ NOTE: If the config file cannot be read (permissions, file not found),
 the VM is treated as migratable by default.
 
 
+NODE STATUS INDICATORS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+The Status column in the main dashboard shows indicators in parentheses:
+Example: "online (OP)" means the node is online with both O and P indicators
+
+INDICATORS:
+
+O - OSD Node
+   • Shown when the node has VMs with names matching osd*.cloudwm.com
+   • Indicates the node hosts Ceph OSD services
+   • These VMs are typically storage-critical
+
+P - Provisioning Allowed
+   • Shown when the node config has allowProvisioning=true
+   • Config file: /etc/pve/nodes/{nodename}/config
+   • Comment format: #allowProvisioning=true,...
+   • Indicates new VMs can be provisioned to this node
+
+EXAMPLES:
+• "online"      - Standard online node
+• "online (O)"  - Node has OSD VMs
+• "online (P)"  - Node allows provisioning
+• "online (OP)" - Node has OSD VMs and allows provisioning
+
+NODE CONFIG FORMAT:
+The node config file can contain metadata in comment lines:
+#hoststate=1,allowProvisioning=true,otherkey=value
+
+HOW IT WORKS:
+1. During data collection, each node's config file is read
+2. Comment lines are parsed for key=value metadata
+3. VM names are checked against the osd*.cloudwm.com pattern
+4. Indicators are displayed in the Status column
+
+
 SCORE BREAKDOWN EXPLAINED
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

@@ -173,6 +173,9 @@ func CollectClusterDataWithProgress(client ProxmoxClient, progress ProgressCallb
 	// Fetch config metadata for all VMs (for nomigrate flag, etc.)
 	fetchVMConfigMeta(vmList, progress)
 
+	// Fetch config metadata for all nodes (for allowProvisioning flag, OSD detection, etc.)
+	fetchNodeConfigMeta(nodeMap, progress)
+
 	// Update node storage with aggregated values from storage resources
 	for nodeName, storage := range nodeStorage {
 		if node, exists := nodeMap[nodeName]; exists {
@@ -815,6 +818,96 @@ func fetchVMConfigMeta(vmList []VM, progress ProgressCallback) {
 				vmList[result.vmIdx].NoMigrate = strings.ToLower(noMigrate) == "true"
 			}
 		}
+	}
+}
+
+// ParseNodeConfigMeta reads the node config file and parses comment metadata
+// The config file path is: /etc/pve/nodes/{nodename}/config
+// Comment format: #key1=value1,key2=value2,allowProvisioning=true,...
+func ParseNodeConfigMeta(nodeName string) (map[string]string, error) {
+	meta := make(map[string]string)
+
+	// Node config path
+	configPath := fmt.Sprintf("/etc/pve/nodes/%s/config", nodeName)
+
+	// Read the config file
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		// File might not exist or not readable, return empty meta
+		return meta, nil
+	}
+
+	// Parse each line looking for comment lines with metadata
+	lines := strings.Split(string(content), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		// Look for comment lines that contain key=value pairs
+		if strings.HasPrefix(line, "#") {
+			// Remove the # prefix
+			commentContent := strings.TrimPrefix(line, "#")
+			// Check if this looks like metadata (contains = and ,)
+			if strings.Contains(commentContent, "=") {
+				// Parse comma-separated key=value pairs
+				pairs := strings.Split(commentContent, ",")
+				for _, pair := range pairs {
+					kv := strings.SplitN(pair, "=", 2)
+					if len(kv) == 2 {
+						key := strings.TrimSpace(strings.ToLower(kv[0]))
+						value := strings.TrimSpace(kv[1])
+						meta[key] = value
+					}
+				}
+			}
+		}
+	}
+
+	return meta, nil
+}
+
+// osdVMRegex matches VM names like osd*.cloudwm.com
+var osdVMRegex = regexp.MustCompile(`^osd.*\.cloudwm\.com$`)
+
+// CheckNodeHasOSD checks if a node has any VMs with names matching osd*.cloudwm.com
+func CheckNodeHasOSD(vms []VM) bool {
+	for _, vm := range vms {
+		if osdVMRegex.MatchString(vm.Name) {
+			return true
+		}
+	}
+	return false
+}
+
+// fetchNodeConfigMeta fetches config metadata for all nodes
+func fetchNodeConfigMeta(nodeMap map[string]*Node, progress ProgressCallback) {
+	if len(nodeMap) == 0 {
+		return
+	}
+
+	totalNodes := len(nodeMap)
+	current := 0
+
+	if progress != nil {
+		progress("Reading node config metadata", 0, totalNodes)
+	}
+
+	for nodeName, node := range nodeMap {
+		current++
+		if progress != nil {
+			progress("Reading node config metadata", current, totalNodes)
+		}
+
+		// Parse node config
+		meta, err := ParseNodeConfigMeta(nodeName)
+		if err == nil && meta != nil {
+			node.ConfigMeta = meta
+			// Check for allowProvisioning flag
+			if allowProv, ok := meta["allowprovisioning"]; ok {
+				node.AllowProvisioning = strings.ToLower(allowProv) == "true"
+			}
+		}
+
+		// Check if node has OSD VMs
+		node.HasOSD = CheckNodeHasOSD(node.VMs)
 	}
 }
 
