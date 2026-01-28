@@ -414,15 +414,19 @@ func selectByCreationDate(node *proxmox.Node, minAgeDays int) []proxmox.VM {
 
 	// Count VMs with valid creation time for debugging
 	vmsWithCtime := 0
+	vmsWithoutCtime := 0
 	for _, vm := range vms {
 		if vm.CreationTime > 0 {
 			vmsWithCtime++
 			ageInDays := (time.Now().Unix() - vm.CreationTime) / (24 * 60 * 60)
-			log.Printf("  VM %d (%s): CreationTime=%d, age=%d days, threshold check: %v",
-				vm.VMID, vm.Name, vm.CreationTime, ageInDays, vm.CreationTime < thresholdTime)
+			log.Printf("  VM %d (%s): CreationTime=%d, age=%d days, older than %d days: %v",
+				vm.VMID, vm.Name, vm.CreationTime, ageInDays, minAgeDays, vm.CreationTime < thresholdTime)
+		} else {
+			vmsWithoutCtime++
+			log.Printf("  VM %d (%s): CreationTime=0 (no ctime in config)", vm.VMID, vm.Name)
 		}
 	}
-	log.Printf("selectByCreationDate: %d VMs have valid CreationTime", vmsWithCtime)
+	log.Printf("selectByCreationDate: %d VMs have valid CreationTime, %d VMs have no ctime", vmsWithCtime, vmsWithoutCtime)
 
 	// Filter VMs older than the threshold
 	var oldVMs []proxmox.VM
