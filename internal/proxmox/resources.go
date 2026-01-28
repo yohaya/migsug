@@ -864,13 +864,12 @@ func ParseNodeConfigMeta(nodeName string) (map[string]string, error) {
 	return meta, nil
 }
 
-// osdVMRegex matches VM names like osd*.cloudwm.com
-var osdVMRegex = regexp.MustCompile(`^osd.*\.cloudwm\.com$`)
-
-// CheckNodeHasOSD checks if a node has any VMs with names matching osd*.cloudwm.com
+// CheckNodeHasOSD checks if a node has any VMs with names starting with "osd" and containing "cloudwm.com"
+// Examples: osd050.vsan001.il.cloudwm.com, osd001.cloudwm.com
 func CheckNodeHasOSD(vms []VM) bool {
 	for _, vm := range vms {
-		if osdVMRegex.MatchString(vm.Name) {
+		nameLower := strings.ToLower(vm.Name)
+		if strings.HasPrefix(nameLower, "osd") && strings.Contains(nameLower, "cloudwm.com") {
 			return true
 		}
 	}
