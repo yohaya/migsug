@@ -989,7 +989,9 @@ const RecentlyCreatedThresholdDays = 90
 // This must be called AFTER VMs are assigned to nodes
 func updateNodeRecentlyCreatedStatus(nodeMap map[string]*Node) {
 	// Calculate the threshold timestamp (90 days ago)
-	thresholdTime := time.Now().Unix() - (RecentlyCreatedThresholdDays * 24 * 60 * 60)
+	now := time.Now()
+	thresholdTime := now.Unix() - (RecentlyCreatedThresholdDays * 24 * 60 * 60)
+	thresholdDate := time.Unix(thresholdTime, 0).Format("2006-01-02")
 
 	for nodeName, node := range nodeMap {
 		// Only check nodes with AllowProvisioning (P flag)
@@ -997,15 +999,41 @@ func updateNodeRecentlyCreatedStatus(nodeMap map[string]*Node) {
 			continue
 		}
 
-		// Check if any VM on this node was created in the last 90 days
+		// Log all VMs and their creation times for debugging
+		vmsWithCtime := 0
+		vmsWithoutCtime := 0
+		recentVMs := 0
+		oldVMs := 0
+
+		log.Printf("C-flag check for node %s: %d VMs, threshold=%s (ctime >= %d = recent)",
+			nodeName, len(node.VMs), thresholdDate, thresholdTime)
+
 		for _, vm := range node.VMs {
-			if vm.CreationTime > 0 && vm.CreationTime >= thresholdTime {
-				node.HasRecentlyCreatedVMs = true
-				log.Printf("Node %s: HasRecentlyCreatedVMs=true (VM %d '%s' created at %d, threshold %d)",
-					nodeName, vm.VMID, vm.Name, vm.CreationTime, thresholdTime)
-				break
+			if vm.CreationTime > 0 {
+				vmsWithCtime++
+				ageInDays := (now.Unix() - vm.CreationTime) / (24 * 60 * 60)
+				createdDate := time.Unix(vm.CreationTime, 0).Format("2006-01-02")
+				isRecent := vm.CreationTime >= thresholdTime
+
+				if isRecent {
+					recentVMs++
+					if !node.HasRecentlyCreatedVMs {
+						node.HasRecentlyCreatedVMs = true
+						log.Printf("  VM %d (%s): created=%s, age=%d days - RECENT (triggers C flag)",
+							vm.VMID, vm.Name, createdDate, ageInDays)
+					}
+				} else {
+					oldVMs++
+					log.Printf("  VM %d (%s): created=%s, age=%d days - OLD (>%d days)",
+						vm.VMID, vm.Name, createdDate, ageInDays, RecentlyCreatedThresholdDays)
+				}
+			} else {
+				vmsWithoutCtime++
 			}
 		}
+
+		log.Printf("C-flag summary for %s: %d with ctime (%d recent, %d old), %d without ctime, C=%v",
+			nodeName, vmsWithCtime, recentVMs, oldVMs, vmsWithoutCtime, node.HasRecentlyCreatedVMs)
 	}
 }
 
