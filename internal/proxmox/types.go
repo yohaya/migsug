@@ -23,10 +23,10 @@ type Node struct {
 	PVEVersion  string // Proxmox VE version
 
 	// Node status indicators (parsed from config and VMs)
-	HasOSD                 bool              // True if node has VMs with name matching osd*.cloudwm.com
-	AllowProvisioning      bool              // True if node config has hostprovision=true
-	HasRecentlyCreatedVMs  bool              // True if node has P flag and VMs created in last 90 days
-	ConfigMeta             map[string]string // All key=value pairs from node config comment line
+	HasOSD                bool              // True if node has VMs with name matching osd*.cloudwm.com
+	AllowProvisioning     bool              // True if node config has hostprovision=true
+	HasRecentlyCreatedVMs bool              // True if node has P flag and VMs created in last 90 days
+	ConfigMeta            map[string]string // All key=value pairs from node config comment line
 }
 
 // HasActiveSwap returns true if swap is configured and in use
