@@ -246,9 +246,9 @@ O - OSD Node
    • These VMs are typically storage-critical
 
 P - Provisioning Allowed
-   • Shown when the node config has allowProvisioning=true
+   • Shown when the node config has hostprovision=true
    • Config file: /etc/pve/nodes/{nodename}/config
-   • Comment format: #allowProvisioning=true,...
+   • Comment format: #hostprovision=true,...
    • Indicates new VMs can be provisioned to this node
 
 EXAMPLES:
@@ -259,7 +259,7 @@ EXAMPLES:
 
 NODE CONFIG FORMAT:
 The node config file can contain metadata in comment lines:
-#hoststate=1,allowProvisioning=true,otherkey=value
+#hoststate=1,hostprovision=true,otherkey=value
 
 HOW IT WORKS:
 1. During data collection, each node's config file is read

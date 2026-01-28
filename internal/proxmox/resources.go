@@ -900,9 +900,9 @@ func fetchNodeConfigMeta(nodeMap map[string]*Node, progress ProgressCallback) {
 		meta, err := ParseNodeConfigMeta(nodeName)
 		if err == nil && meta != nil {
 			node.ConfigMeta = meta
-			// Check for allowProvisioning flag
-			if allowProv, ok := meta["allowprovisioning"]; ok {
-				node.AllowProvisioning = strings.ToLower(allowProv) == "true"
+			// Check for hostprovision flag
+			if hostProv, ok := meta["hostprovision"]; ok {
+				node.AllowProvisioning = strings.ToLower(hostProv) == "true"
 			}
 		}
 
