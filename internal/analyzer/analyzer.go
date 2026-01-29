@@ -517,12 +517,12 @@ func selectForBalanceCluster(sourceNode *proxmox.Node, cluster *proxmox.Cluster,
 	// Calculate each VM's contribution and score
 	const maxPreferredStorageGiB = 500.0
 	type vmScore struct {
-		vm            proxmox.VM
-		cpuContrib    float64 // Host CPU% contribution
-		ramContrib    float64 // RAM GiB
-		storageGiB    float64
-		score         float64 // Higher = better candidate (more impact per storage, smaller preferred)
-		isSmall       bool    // < 500 GiB
+		vm         proxmox.VM
+		cpuContrib float64 // Host CPU% contribution
+		ramContrib float64 // RAM GiB
+		storageGiB float64
+		score      float64 // Higher = better candidate (more impact per storage, smaller preferred)
+		isSmall    bool    // < 500 GiB
 	}
 
 	scored := make([]vmScore, 0, len(vms))
@@ -561,12 +561,12 @@ func selectForBalanceCluster(sourceNode *proxmox.Node, cluster *proxmox.Cluster,
 		}
 
 		scored = append(scored, vmScore{
-			vm:            vm,
-			cpuContrib:    cpuContrib,
-			ramContrib:    ramContribGiB,
-			storageGiB:    storageGiB,
-			score:         efficiencyScore * sizeBonus,
-			isSmall:       isSmall,
+			vm:         vm,
+			cpuContrib: cpuContrib,
+			ramContrib: ramContribGiB,
+			storageGiB: storageGiB,
+			score:      efficiencyScore * sizeBonus,
+			isSmall:    isSmall,
 		})
 	}
 
