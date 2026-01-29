@@ -596,19 +596,21 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 		}
 	}
 
-	// Calculate max visible rows with fixed reservation for reasoning panel
-	// Fixed overhead:
-	// - Title + border: 2 lines
-	// - CPU info: 1 line
-	// - Before/After summary: 2 lines + 1 blank
-	// - Table header + separator: 2 lines
-	// - Table closing line: 1 line
-	// - Scroll info: 1 line
-	// - Blank before reasoning: 1 line
-	// - Reasoning panel (fixed): 20 lines (max height, content is truncated if larger)
-	// - Help text: 1 line
-	// Total: 32 lines
-	fixedOverhead := 32
+	// Fixed heights for consistent layout
+	const (
+		headerLines        = 2  // Title + border
+		cpuInfoLines       = 1  // CPU info
+		beforeAfterLines   = 3  // Before, After, blank
+		tableHeaderLines   = 2  // Header + separator
+		tableFooterLines   = 2  // Closing line + scroll info
+		reasoningMaxLines  = 15 // Fixed max height for reasoning panel (scrollable)
+		reasoningExtraLines = 2 // Scroll info + blank before reasoning
+		helpLines          = 2  // Blank + help text
+	)
+
+	// Calculate VM table height
+	fixedOverhead := headerLines + cpuInfoLines + beforeAfterLines + tableHeaderLines +
+		tableFooterLines + reasoningMaxLines + reasoningExtraLines + helpLines
 	maxVisible := height - fixedOverhead
 	if maxVisible < 5 {
 		maxVisible = 5
@@ -828,20 +830,15 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 		fixedLines++ // scroll info line
 	}
 
-	// Calculate available lines for reasoning panel
-	// Reserve 2 lines for help text + 1 blank line
-	availableReasoningLines := height - fixedLines - 3
-	if availableReasoningLines < 5 {
-		availableReasoningLines = 5
-	}
-
-	// Add reasoning panel with scroll support
+	// Add reasoning panel with scroll support (fixed height)
 	if len(reasoningLines) > 0 {
 		sb.WriteString("\n")
-		fixedLines++ // blank line before reasoning
 
-		// Determine if reasoning panel is focused (has scroll indicator)
+		// Determine if reasoning panel is focused
 		reasoningFocused := focusedSection == 1
+
+		// Use fixed max height for reasoning panel
+		availableReasoningLines := reasoningMaxLines
 
 		// Clamp scroll position
 		maxReasoningScroll := len(reasoningLines) - availableReasoningLines
@@ -855,18 +852,17 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 			reasoningScrollPos = maxReasoningScroll
 		}
 
-		// Render visible reasoning lines
+		// Calculate visible range
 		endReasoningPos := reasoningScrollPos + availableReasoningLines
 		if endReasoningPos > len(reasoningLines) {
 			endReasoningPos = len(reasoningLines)
 		}
-
-		// Calculate scrollbar dimensions for reasoning panel
-		needsReasoningScrollbar := len(reasoningLines) > availableReasoningLines
 		visibleCount := endReasoningPos - reasoningScrollPos
+
+		// Calculate scrollbar dimensions
+		needsReasoningScrollbar := len(reasoningLines) > availableReasoningLines
 		var thumbPos, thumbSize int
 		if needsReasoningScrollbar && visibleCount > 0 {
-			// Calculate thumb size (minimum 1)
 			thumbSize = (visibleCount * visibleCount) / len(reasoningLines)
 			if thumbSize < 1 {
 				thumbSize = 1
@@ -874,7 +870,6 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 			if thumbSize > visibleCount {
 				thumbSize = visibleCount
 			}
-			// Calculate thumb position
 			if maxReasoningScroll > 0 {
 				thumbPos = (reasoningScrollPos * (visibleCount - thumbSize)) / maxReasoningScroll
 			}
@@ -885,15 +880,19 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 		reasoningScrollThumb := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 
 		// Render visible reasoning lines with scrollbar
-		for i := reasoningScrollPos; i < endReasoningPos; i++ {
+		// Use totalWidth to match VM table width
+		lineWidth := totalWidth + 2 // +2 for left padding
+		linesRendered := 0
+		for i := reasoningScrollPos; i < endReasoningPos && linesRendered < availableReasoningLines; i++ {
 			rowIdx := i - reasoningScrollPos
 			line := reasoningLines[i]
 
-			// Pad line to consistent width for alignment
-			lineWidth := 80 // Approximate width for reasoning panel
+			// Pad line to match VM table width
 			visibleLen := len(line)
 			if visibleLen < lineWidth {
 				line = line + strings.Repeat(" ", lineWidth-visibleLen)
+			} else if visibleLen > lineWidth {
+				line = line[:lineWidth]
 			}
 
 			// Add scrollbar on the right side
@@ -906,36 +905,42 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 			} else {
 				sb.WriteString(line + "\n")
 			}
-			fixedLines++
+			linesRendered++
 		}
 
-		// Show reasoning scroll info if there are more lines
+		// Pad remaining lines if content is shorter than max
+		for linesRendered < availableReasoningLines {
+			if needsReasoningScrollbar {
+				sb.WriteString(strings.Repeat(" ", lineWidth) + " " + reasoningScrollTrack.Render("│") + "\n")
+			} else {
+				sb.WriteString("\n")
+			}
+			linesRendered++
+		}
+
+		// Show reasoning scroll info
+		scrollInfo := ""
 		if needsReasoningScrollbar {
-			scrollInfo := fmt.Sprintf("Showing %d-%d of %d lines", reasoningScrollPos+1, endReasoningPos, len(reasoningLines))
+			scrollInfo = fmt.Sprintf("Showing %d-%d of %d lines", reasoningScrollPos+1, endReasoningPos, len(reasoningLines))
 			if reasoningFocused {
 				scrollInfo = "▶ " + scrollInfo + " (Tab to switch)"
 			}
-			sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(scrollInfo) + "\n")
-			fixedLines++
+		}
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(scrollInfo) + "\n")
+	} else {
+		// No reasoning - still render empty space to maintain layout
+		for i := 0; i < reasoningMaxLines+1; i++ {
+			sb.WriteString("\n")
 		}
 	}
 
 	// Help text with Tab instruction
 	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	tabHint := ""
-	hasScrollableReasoning := len(reasoningLines) > 0 && len(reasoningLines) > availableReasoningLines
-	if hasScrollableReasoning {
+	if len(reasoningLines) > reasoningMaxLines {
 		tabHint = "Tab: Switch focus │ "
 	}
 	sb.WriteString("\n" + helpStyle.Render("↑/↓/PgUp/PgDn/Home/End: Navigate  "+tabHint+"Esc: Back  q: Quit"))
-	fixedLines += 2 // blank line + help text
-
-	// Pad with empty lines to fill the screen and clear old content
-	// This ensures content from previous renders is overwritten
-	for fixedLines < height {
-		sb.WriteString("\n" + strings.Repeat(" ", width))
-		fixedLines++
-	}
 
 	return sb.String()
 }
