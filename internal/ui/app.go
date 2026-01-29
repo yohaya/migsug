@@ -1033,6 +1033,21 @@ func (m Model) handleHostDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case "enter":
+		// Show VM details for the selected VM (only when focused on VM list)
+		if m.hostDetailFocusedSection == 0 {
+			// Get the VM at cursor position
+			vmid, nodeName := m.getHostDetailVMAtCursor()
+			if vmid > 0 {
+				m.selectedVMID = vmid
+				m.selectedVMNode = nodeName
+				m.showVMDetails = true
+				m.vmDetailsScrollPos = 0
+				return m, tea.ClearScreen
+			}
+		}
+		return m, nil
+
 	case "esc":
 		m.currentView = ViewResults
 		m.hostDetailScrollPos = 0
@@ -1042,6 +1057,62 @@ func (m Model) handleHostDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.ClearScreen
 	}
 	return m, nil
+}
+
+// getHostDetailVMAtCursor returns the VMID and node name for the VM at the current cursor position
+func (m Model) getHostDetailVMAtCursor() (int, string) {
+	isSource := (m.selectedHostName == m.sourceNode || m.selectedHostName == m.result.SourceBefore.Name)
+
+	// Create a map of VMs being migrated for quick lookup
+	migratingVMs := make(map[int]analyzer.MigrationSuggestion)
+	for _, sug := range m.result.Suggestions {
+		migratingVMs[sug.VMID] = sug
+	}
+
+	if isSource {
+		// Source node: VMs from the source node
+		sourceNodeObj := proxmox.GetNodeByName(m.cluster, m.sourceNode)
+		if sourceNodeObj != nil && m.hostDetailCursorPos >= 0 && m.hostDetailCursorPos < len(sourceNodeObj.VMs) {
+			vm := sourceNodeObj.VMs[m.hostDetailCursorPos]
+			return vm.VMID, m.sourceNode
+		}
+	} else {
+		// Target node: build combined list (existing + incoming)
+		var vmList []struct {
+			VMID     int
+			NodeName string
+		}
+
+		// Existing VMs on target
+		targetNode := proxmox.GetNodeByName(m.cluster, m.selectedHostName)
+		if targetNode != nil {
+			for _, vm := range targetNode.VMs {
+				// Skip VMs being migrated out
+				if _, migrating := migratingVMs[vm.VMID]; !migrating {
+					vmList = append(vmList, struct {
+						VMID     int
+						NodeName string
+					}{vm.VMID, m.selectedHostName})
+				}
+			}
+		}
+
+		// Add VMs being migrated in
+		for _, sug := range m.result.Suggestions {
+			if sug.TargetNode == m.selectedHostName {
+				vmList = append(vmList, struct {
+					VMID     int
+					NodeName string
+				}{sug.VMID, sug.SourceNode})
+			}
+		}
+
+		if m.hostDetailCursorPos >= 0 && m.hostDetailCursorPos < len(vmList) {
+			return vmList[m.hostDetailCursorPos].VMID, vmList[m.hostDetailCursorPos].NodeName
+		}
+	}
+
+	return 0, ""
 }
 
 func (m Model) handleErrorKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
