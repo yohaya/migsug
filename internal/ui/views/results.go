@@ -857,21 +857,24 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 		if endReasoningPos > len(reasoningLines) {
 			endReasoningPos = len(reasoningLines)
 		}
-		visibleCount := endReasoningPos - reasoningScrollPos
 
-		// Calculate scrollbar dimensions
+		// Calculate scrollbar dimensions (same formula as VM table)
 		needsReasoningScrollbar := len(reasoningLines) > availableReasoningLines
-		var thumbPos, thumbSize int
-		if needsReasoningScrollbar && visibleCount > 0 {
-			thumbSize = (visibleCount * visibleCount) / len(reasoningLines)
+		thumbPos := 0
+		thumbSize := availableReasoningLines
+		if needsReasoningScrollbar && len(reasoningLines) > 0 {
+			// Thumb size proportional to visible/total ratio
+			thumbSize = availableReasoningLines * availableReasoningLines / len(reasoningLines)
 			if thumbSize < 1 {
 				thumbSize = 1
 			}
-			if thumbSize > visibleCount {
-				thumbSize = visibleCount
+			if thumbSize > availableReasoningLines {
+				thumbSize = availableReasoningLines
 			}
-			if maxReasoningScroll > 0 {
-				thumbPos = (reasoningScrollPos * (visibleCount - thumbSize)) / maxReasoningScroll
+			// Thumb position based on scroll position
+			scrollRange := availableReasoningLines - thumbSize
+			if scrollRange > 0 && maxReasoningScroll > 0 {
+				thumbPos = reasoningScrollPos * scrollRange / maxReasoningScroll
 			}
 		}
 
@@ -918,15 +921,21 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 			linesRendered++
 		}
 
-		// Show reasoning scroll info
-		scrollInfo := ""
+		// Show reasoning scroll info (right-aligned like VM table)
 		if needsReasoningScrollbar {
-			scrollInfo = fmt.Sprintf("Showing %d-%d of %d lines", reasoningScrollPos+1, endReasoningPos, len(reasoningLines))
+			scrollInfo := fmt.Sprintf("Showing %d-%d of %d lines", reasoningScrollPos+1, endReasoningPos, len(reasoningLines))
 			if reasoningFocused {
 				scrollInfo = "▶ " + scrollInfo + " (Tab to switch)"
 			}
+			// Right-align to match VM table width
+			padding := lineWidth - len(scrollInfo)
+			if padding > 0 {
+				scrollInfo = strings.Repeat(" ", padding) + scrollInfo
+			}
+			sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(scrollInfo) + "\n")
+		} else {
+			sb.WriteString("\n")
 		}
-		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(scrollInfo) + "\n")
 	} else {
 		// No reasoning - still render empty space to maintain layout
 		for i := 0; i < reasoningMaxLines+1; i++ {
