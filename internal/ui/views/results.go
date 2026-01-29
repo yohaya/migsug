@@ -422,8 +422,10 @@ type VMListItem struct {
 	Target    string // Target/Source node for migration
 
 	// Host info for CPU calculations
-	SourceCores int // Source host's thread count
-	TargetCores int // Target host's thread count
+	SourceCores int    // Source host's thread count
+	TargetCores int    // Target host's thread count
+	SourceModel string // Source host's CPU model
+	TargetModel string // Target host's CPU model
 
 	// Migration details (only set for migrating VMs)
 	Details *analyzer.MigrationDetails
@@ -431,6 +433,13 @@ type VMListItem struct {
 
 // RenderHostDetailBrowseable renders a browseable list of all VMs on a host
 func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmox.Cluster, hostName, sourceNodeName string, width, height, scrollPos, cursorPos int) string {
+	return RenderHostDetailWithReasoningScroll(result, cluster, hostName, sourceNodeName, width, height, scrollPos, cursorPos, 0, 0)
+}
+
+// RenderHostDetailWithReasoningScroll renders the host detail view with Tab support for reasoning panel
+// focusedSection: 0=VM list, 1=reasoning panel
+// reasoningScrollPos: scroll position within the reasoning panel
+func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluster *proxmox.Cluster, hostName, sourceNodeName string, width, height, scrollPos, cursorPos, focusedSection, reasoningScrollPos int) string {
 	var sb strings.Builder
 
 	if width < 80 {
@@ -498,11 +507,17 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 		migratingVMs[sug.VMID] = sug
 	}
 
+	// Get source node info for CPU model
+	sourceNodeObj := proxmox.GetNodeByName(cluster, sourceNodeName)
+	sourceModel := ""
+	if sourceNodeObj != nil {
+		sourceModel = sourceNodeObj.CPUModel
+	}
+
 	if isSource {
 		// Source node: show all VMs from the node
-		sourceNode := proxmox.GetNodeByName(cluster, sourceNodeName)
-		if sourceNode != nil {
-			for _, vm := range sourceNode.VMs {
+		if sourceNodeObj != nil {
+			for _, vm := range sourceNodeObj.VMs {
 				item := VMListItem{
 					VMID:     vm.VMID,
 					Name:     vm.Name,
@@ -523,6 +538,11 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 					item.Details = sug.Details
 					item.SourceCores = sug.SourceCores
 					item.TargetCores = sug.TargetCores
+					item.SourceModel = sourceModel
+					// Get target node CPU model
+					if targetNodeObj := proxmox.GetNodeByName(cluster, sug.TargetNode); targetNodeObj != nil {
+						item.TargetModel = targetNodeObj.CPUModel
+					}
 				}
 
 				vmList = append(vmList, item)
@@ -565,6 +585,11 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 					Details:     sug.Details,
 					SourceCores: sug.SourceCores,
 					TargetCores: sug.TargetCores,
+					SourceModel: sourceModel,
+				}
+				// Get target node CPU model (this host)
+				if targetNode != nil {
+					item.TargetModel = targetNode.CPUModel
 				}
 				vmList = append(vmList, item)
 			}
@@ -782,11 +807,11 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 	}
 
 	// Show migration reasoning panel if selected VM is migrating
-	reasoningContent := ""
+	var reasoningLines []string
 	if cursorPos >= 0 && cursorPos < len(vmList) {
 		selectedVM := vmList[cursorPos]
 		if selectedVM.Details != nil && selectedVM.Direction != "" {
-			reasoningContent = renderMigrationReasoning(selectedVM, hostName)
+			reasoningLines = renderMigrationReasoningLines(selectedVM, hostName)
 		}
 	}
 
@@ -803,19 +828,67 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 		fixedLines++ // scroll info line
 	}
 
-	// Add reasoning panel
-	if reasoningContent != "" {
-		sb.WriteString("\n")
-		sb.WriteString(reasoningContent)
-		fixedLines++ // blank line before reasoning
-		// Count lines in reasoning content
-		reasoningLines := strings.Count(reasoningContent, "\n")
-		fixedLines += reasoningLines
+	// Calculate available lines for reasoning panel
+	// Reserve 2 lines for help text + 1 blank line
+	availableReasoningLines := height - fixedLines - 3
+	if availableReasoningLines < 5 {
+		availableReasoningLines = 5
 	}
 
-	// Help text
+	// Add reasoning panel with scroll support
+	if len(reasoningLines) > 0 {
+		sb.WriteString("\n")
+		fixedLines++ // blank line before reasoning
+
+		// Determine if reasoning panel is focused (has scroll indicator)
+		reasoningFocused := focusedSection == 1
+		focusIndicator := ""
+		if reasoningFocused {
+			focusIndicator = lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Render("▶ ")
+		}
+
+		// Clamp scroll position
+		maxReasoningScroll := len(reasoningLines) - availableReasoningLines
+		if maxReasoningScroll < 0 {
+			maxReasoningScroll = 0
+		}
+		if reasoningScrollPos < 0 {
+			reasoningScrollPos = 0
+		}
+		if reasoningScrollPos > maxReasoningScroll {
+			reasoningScrollPos = maxReasoningScroll
+		}
+
+		// Render visible reasoning lines
+		endReasoningPos := reasoningScrollPos + availableReasoningLines
+		if endReasoningPos > len(reasoningLines) {
+			endReasoningPos = len(reasoningLines)
+		}
+
+		for i := reasoningScrollPos; i < endReasoningPos; i++ {
+			prefix := "  "
+			if i == reasoningScrollPos && focusIndicator != "" {
+				prefix = focusIndicator
+			}
+			sb.WriteString(prefix + reasoningLines[i] + "\n")
+			fixedLines++
+		}
+
+		// Show reasoning scroll info if there are more lines
+		if len(reasoningLines) > availableReasoningLines {
+			scrollInfo := fmt.Sprintf("Showing %d-%d of %d lines", reasoningScrollPos+1, endReasoningPos, len(reasoningLines))
+			sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("  "+scrollInfo) + "\n")
+			fixedLines++
+		}
+	}
+
+	// Help text with Tab instruction
 	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	sb.WriteString("\n" + helpStyle.Render("↑/↓/PgUp/PgDn/Home/End: Navigate  Esc: Back  q: Quit"))
+	tabHint := ""
+	if len(reasoningLines) > availableReasoningLines {
+		tabHint = "Tab: Switch focus │ "
+	}
+	sb.WriteString("\n" + helpStyle.Render("↑/↓/PgUp/PgDn/Home/End: Navigate  "+tabHint+"Esc: Back  q: Quit"))
 	fixedLines += 2 // blank line + help text
 
 	// Pad with empty lines to fill the screen and clear old content
@@ -828,14 +901,18 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 	return sb.String()
 }
 
-// renderMigrationReasoning renders the detailed reasoning panel for a migrating VM
-// Limited to maxLines (default 20) to prevent screen overflow
+// renderMigrationReasoning renders the detailed reasoning panel for a migrating VM (legacy)
 func renderMigrationReasoning(vm VMListItem, currentHost string) string {
+	lines := renderMigrationReasoningLines(vm, currentHost)
+	return strings.Join(lines, "\n") + "\n"
+}
+
+// renderMigrationReasoningLines returns all reasoning lines (for scrollable display)
+func renderMigrationReasoningLines(vm VMListItem, currentHost string) []string {
 	if vm.Details == nil {
-		return ""
+		return nil
 	}
 
-	const maxLines = 20 // Maximum lines for the reasoning panel
 	var lines []string
 	details := vm.Details
 
@@ -870,7 +947,47 @@ func renderMigrationReasoning(vm VMListItem, currentHost string) string {
 		lines = append(lines, "  "+valueStyle.Render(scoreStr))
 	}
 
-	// Target state before/after (compact)
+	// Host CPU info - show source and target
+	lines = append(lines, "")
+	lines = append(lines, labelStyle.Render("Host CPU info:"))
+
+	// Source host
+	sourceInfo := fmt.Sprintf("Source: %d threads", vm.SourceCores)
+	if vm.SourceModel != "" {
+		sourceInfo = fmt.Sprintf("Source: %s (%d threads)", vm.SourceModel, vm.SourceCores)
+	}
+	lines = append(lines, "  "+valueStyle.Render(sourceInfo))
+
+	// Target host
+	targetInfo := fmt.Sprintf("Target: %d threads", vm.TargetCores)
+	if vm.TargetModel != "" {
+		targetInfo = fmt.Sprintf("Target: %s (%d threads)", vm.TargetModel, vm.TargetCores)
+	}
+	lines = append(lines, "  "+valueStyle.Render(targetInfo))
+
+	// Calculate and explain CPU% difference
+	if vm.SourceCores > 0 && vm.TargetCores > 0 && vm.Status == "running" {
+		// HCPU% on source = vm.CPUUsage * vm.VCPUs / sourceThreads
+		sourceHCPU := vm.CPUUsage * float64(vm.VCPUs) / float64(vm.SourceCores)
+		// HCPU% on target = vm.CPUUsage * vm.VCPUs / targetThreads
+		targetHCPU := vm.CPUUsage * float64(vm.VCPUs) / float64(vm.TargetCores)
+
+		lines = append(lines, "  "+labelStyle.Render("VM HCPU%: ")+
+			valueStyle.Render(fmt.Sprintf("%.1f%% on source → %.1f%% on target", sourceHCPU, targetHCPU)))
+
+		if vm.SourceCores != vm.TargetCores {
+			if vm.TargetCores > vm.SourceCores {
+				lines = append(lines, "  "+dimStyle.Render(fmt.Sprintf(
+					"(Target has more threads, so VM uses less Host CPU%%)")))
+			} else {
+				lines = append(lines, "  "+dimStyle.Render(fmt.Sprintf(
+					"(Target has fewer threads, so VM uses more Host CPU%%)")))
+			}
+		}
+	}
+
+	// Target state before/after
+	lines = append(lines, "")
 	lines = append(lines, labelStyle.Render("Target state change:"))
 
 	lines = append(lines, "  "+labelStyle.Render("Before: ")+
@@ -901,8 +1018,13 @@ func renderMigrationReasoning(vm VMListItem, currentHost string) string {
 			details.TargetAfter.StoragePercent,
 			details.TargetAfter.VMCount)))
 
+	// Show CPU delta explanation
+	cpuDelta := details.TargetAfter.CPUPercent - details.TargetBefore.CPUPercent
+	lines = append(lines, "  "+dimStyle.Render(fmt.Sprintf("(CPU increase: +%.1f%%)", cpuDelta)))
+
 	// Cluster context (for MigrateAll mode) - compact
 	if details.ClusterAvgCPU > 0 || details.ClusterAvgRAM > 0 {
+		lines = append(lines, "")
 		clusterStr := fmt.Sprintf("Cluster avg: CPU %.1f%%, RAM %.1f%%", details.ClusterAvgCPU, details.ClusterAvgRAM)
 		if details.BelowAverage {
 			clusterStr += " " + goodStyle.Render("✓ below avg")
@@ -912,77 +1034,32 @@ func renderMigrationReasoning(vm VMListItem, currentHost string) string {
 		lines = append(lines, labelStyle.Render("Cluster: ")+valueStyle.Render(clusterStr))
 	}
 
-	// Calculate remaining space for alternatives and constraints
-	currentLines := len(lines)
-	remainingLines := maxLines - currentLines - 1 // -1 for safety margin
-
-	// Alternatives considered (limited)
-	if len(details.Alternatives) > 0 && remainingLines > 2 {
+	// Alternatives considered (no limit since it's scrollable)
+	if len(details.Alternatives) > 0 {
+		lines = append(lines, "")
 		lines = append(lines, labelStyle.Render("Alternatives:"))
-		remainingLines--
 
-		maxAlts := remainingLines / 2 // Reserve half for constraints
-		if maxAlts > 3 {
-			maxAlts = 3 // Show at most 3 alternatives
-		}
-		if maxAlts < 1 {
-			maxAlts = 1
-		}
-
-		shown := 0
 		for _, alt := range details.Alternatives {
-			if shown >= maxAlts {
-				break
-			}
 			var altStr string
 			if alt.Score > 0 {
 				altStr = fmt.Sprintf("• %s (%.1f) - %s", alt.Name, alt.Score, alt.RejectionReason)
 			} else {
 				altStr = fmt.Sprintf("• %s - %s", alt.Name, alt.RejectionReason)
 			}
-			// Truncate long lines
-			if len(altStr) > 80 {
-				altStr = altStr[:77] + "..."
-			}
 			lines = append(lines, "  "+valueStyle.Render(altStr))
-			shown++
-			remainingLines--
-		}
-		if len(details.Alternatives) > shown {
-			lines = append(lines, "  "+dimStyle.Render(fmt.Sprintf("... and %d more", len(details.Alternatives)-shown)))
-			remainingLines--
 		}
 	}
 
-	// Constraints applied (limited)
-	if len(details.ConstraintsApplied) > 0 && remainingLines > 1 {
-		// Show constraints on single line if space is tight
-		if remainingLines <= 2 {
-			constraintStr := fmt.Sprintf("Constraints: %d checked", len(details.ConstraintsApplied))
-			lines = append(lines, dimStyle.Render(constraintStr))
-		} else {
-			lines = append(lines, labelStyle.Render("Constraints:"))
-			remainingLines--
-			maxConstraints := remainingLines
-			if maxConstraints > 3 {
-				maxConstraints = 3
-			}
-			shown := 0
-			for _, c := range details.ConstraintsApplied {
-				if shown >= maxConstraints {
-					break
-				}
-				lines = append(lines, "  "+valueStyle.Render("• "+c))
-				shown++
-			}
-			if len(details.ConstraintsApplied) > shown {
-				lines = append(lines, "  "+dimStyle.Render(fmt.Sprintf("... and %d more", len(details.ConstraintsApplied)-shown)))
-			}
+	// Constraints applied (no limit since it's scrollable)
+	if len(details.ConstraintsApplied) > 0 {
+		lines = append(lines, "")
+		lines = append(lines, labelStyle.Render("Constraints checked:"))
+		for _, c := range details.ConstraintsApplied {
+			lines = append(lines, "  "+valueStyle.Render("• "+c))
 		}
 	}
 
-	// Join lines and return
-	return strings.Join(lines, "\n") + "\n"
+	return lines
 }
 
 // truncateString truncates a string to maxLen characters

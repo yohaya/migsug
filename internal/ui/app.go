@@ -77,8 +77,10 @@ type Model struct {
 	impactHostNames  []string // Sorted list of host names in impact table
 
 	// Host detail view state
-	hostDetailScrollPos int // Scroll position for VM list
-	hostDetailCursorPos int // Cursor position in VM list
+	hostDetailScrollPos        int // Scroll position for VM list
+	hostDetailCursorPos        int // Cursor position in VM list
+	hostDetailFocusedSection   int // 0 = VM list, 1 = reasoning panel
+	hostDetailReasoningScroll  int // Scroll position for reasoning panel
 
 	// UI state
 	width      int
@@ -887,70 +889,126 @@ func (m Model) handleHostDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// Calculate max visible rows (must match fixedOverhead in results.go RenderHostDetailBrowseable)
-	// Fixed overhead: title+border(2) + CPU(1) + before/after(3) + header+sep(2) + closing(1) + scroll info(1) + reasoning panel(26) + help(1) = 38
-	fixedOverhead := 38
+	// Calculate max visible rows (must match fixedOverhead in results.go RenderHostDetailWithReasoningScroll)
+	// Fixed overhead: title+border(2) + CPU(1) + before/after(3) + header+sep(2) + closing(1) + scroll info(1) + reasoning panel(20) + help(2) = 32
+	fixedOverhead := 32
 	maxVisible := m.height - fixedOverhead
 	if maxVisible < 5 {
 		maxVisible = 5
 	}
 
 	switch msg.String() {
+	case "tab":
+		// Toggle focus between VM list (0) and reasoning panel (1)
+		if m.hostDetailFocusedSection == 0 {
+			m.hostDetailFocusedSection = 1
+			m.hostDetailReasoningScroll = 0
+		} else {
+			m.hostDetailFocusedSection = 0
+		}
+		return m, nil
+
 	case "up", "k":
-		if m.hostDetailCursorPos > 0 {
-			m.hostDetailCursorPos--
-			if m.hostDetailCursorPos < m.hostDetailScrollPos {
-				m.hostDetailScrollPos = m.hostDetailCursorPos
+		if m.hostDetailFocusedSection == 0 {
+			// VM list navigation
+			if m.hostDetailCursorPos > 0 {
+				m.hostDetailCursorPos--
+				if m.hostDetailCursorPos < m.hostDetailScrollPos {
+					m.hostDetailScrollPos = m.hostDetailCursorPos
+				}
+				// Reset reasoning scroll when changing VMs
+				m.hostDetailReasoningScroll = 0
+			}
+		} else {
+			// Reasoning panel scroll up
+			if m.hostDetailReasoningScroll > 0 {
+				m.hostDetailReasoningScroll--
 			}
 		}
 		return m, nil
 
 	case "down", "j":
-		if m.hostDetailCursorPos < totalVMCount-1 {
-			m.hostDetailCursorPos++
-			if m.hostDetailCursorPos >= m.hostDetailScrollPos+maxVisible {
-				m.hostDetailScrollPos = m.hostDetailCursorPos - maxVisible + 1
+		if m.hostDetailFocusedSection == 0 {
+			// VM list navigation
+			if m.hostDetailCursorPos < totalVMCount-1 {
+				m.hostDetailCursorPos++
+				if m.hostDetailCursorPos >= m.hostDetailScrollPos+maxVisible {
+					m.hostDetailScrollPos = m.hostDetailCursorPos - maxVisible + 1
+				}
+				// Reset reasoning scroll when changing VMs
+				m.hostDetailReasoningScroll = 0
 			}
+		} else {
+			// Reasoning panel scroll down
+			m.hostDetailReasoningScroll++
 		}
 		return m, nil
 
 	case "pgup":
-		m.hostDetailCursorPos -= maxVisible
-		if m.hostDetailCursorPos < 0 {
-			m.hostDetailCursorPos = 0
-		}
-		if m.hostDetailCursorPos < m.hostDetailScrollPos {
-			m.hostDetailScrollPos = m.hostDetailCursorPos
+		if m.hostDetailFocusedSection == 0 {
+			// VM list page up
+			m.hostDetailCursorPos -= maxVisible
+			if m.hostDetailCursorPos < 0 {
+				m.hostDetailCursorPos = 0
+			}
+			if m.hostDetailCursorPos < m.hostDetailScrollPos {
+				m.hostDetailScrollPos = m.hostDetailCursorPos
+			}
+			m.hostDetailReasoningScroll = 0
+		} else {
+			// Reasoning panel page up
+			m.hostDetailReasoningScroll -= 10
+			if m.hostDetailReasoningScroll < 0 {
+				m.hostDetailReasoningScroll = 0
+			}
 		}
 		return m, nil
 
 	case "pgdown":
-		m.hostDetailCursorPos += maxVisible
-		if m.hostDetailCursorPos >= totalVMCount {
-			m.hostDetailCursorPos = totalVMCount - 1
-		}
-		if m.hostDetailCursorPos < 0 {
-			m.hostDetailCursorPos = 0
-		}
-		if m.hostDetailCursorPos >= m.hostDetailScrollPos+maxVisible {
-			m.hostDetailScrollPos = m.hostDetailCursorPos - maxVisible + 1
+		if m.hostDetailFocusedSection == 0 {
+			// VM list page down
+			m.hostDetailCursorPos += maxVisible
+			if m.hostDetailCursorPos >= totalVMCount {
+				m.hostDetailCursorPos = totalVMCount - 1
+			}
+			if m.hostDetailCursorPos < 0 {
+				m.hostDetailCursorPos = 0
+			}
+			if m.hostDetailCursorPos >= m.hostDetailScrollPos+maxVisible {
+				m.hostDetailScrollPos = m.hostDetailCursorPos - maxVisible + 1
+			}
+			m.hostDetailReasoningScroll = 0
+		} else {
+			// Reasoning panel page down
+			m.hostDetailReasoningScroll += 10
 		}
 		return m, nil
 
 	case "home":
-		m.hostDetailCursorPos = 0
-		m.hostDetailScrollPos = 0
+		if m.hostDetailFocusedSection == 0 {
+			m.hostDetailCursorPos = 0
+			m.hostDetailScrollPos = 0
+			m.hostDetailReasoningScroll = 0
+		} else {
+			m.hostDetailReasoningScroll = 0
+		}
 		return m, nil
 
 	case "end":
-		m.hostDetailCursorPos = totalVMCount - 1
-		if m.hostDetailCursorPos < 0 {
-			m.hostDetailCursorPos = 0
-		}
-		if totalVMCount > maxVisible {
-			m.hostDetailScrollPos = totalVMCount - maxVisible
+		if m.hostDetailFocusedSection == 0 {
+			m.hostDetailCursorPos = totalVMCount - 1
+			if m.hostDetailCursorPos < 0 {
+				m.hostDetailCursorPos = 0
+			}
+			if totalVMCount > maxVisible {
+				m.hostDetailScrollPos = totalVMCount - maxVisible
+			} else {
+				m.hostDetailScrollPos = 0
+			}
+			m.hostDetailReasoningScroll = 0
 		} else {
-			m.hostDetailScrollPos = 0
+			// Scroll to end of reasoning (will be clamped in render)
+			m.hostDetailReasoningScroll = 9999
 		}
 		return m, nil
 
@@ -958,6 +1016,8 @@ func (m Model) handleHostDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.currentView = ViewResults
 		m.hostDetailScrollPos = 0
 		m.hostDetailCursorPos = 0
+		m.hostDetailFocusedSection = 0
+		m.hostDetailReasoningScroll = 0
 		return m, tea.ClearScreen
 	}
 	return m, nil
@@ -1103,7 +1163,7 @@ func (m Model) View() string {
 		return "No results available"
 	case ViewHostDetail:
 		if m.result != nil && m.selectedHostName != "" {
-			return views.RenderHostDetailBrowseable(m.result, m.cluster, m.selectedHostName, m.sourceNode, m.width, m.height, m.hostDetailScrollPos, m.hostDetailCursorPos)
+			return views.RenderHostDetailWithReasoningScroll(m.result, m.cluster, m.selectedHostName, m.sourceNode, m.width, m.height, m.hostDetailScrollPos, m.hostDetailCursorPos, m.hostDetailFocusedSection, m.hostDetailReasoningScroll)
 		}
 		return "No host selected"
 	case ViewError:
