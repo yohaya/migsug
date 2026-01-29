@@ -1121,6 +1121,7 @@ type ClusterAverages struct {
 	CPUPercent     float64
 	RAMPercent     float64
 	StoragePercent float64
+	VCPUPercent    float64 // vCPUs / threads * 100 (e.g., 400% means 4x overcommit)
 }
 
 // CalculateTargetAverages calculates what the cluster average should be after
@@ -1131,6 +1132,7 @@ func CalculateTargetAverages(cluster *proxmox.Cluster, sourceNode string, vmsToM
 	var totalCPUUsage float64
 	var totalRAM, usedRAM int64
 	var totalStorage, usedStorage int64
+	var totalVCPUs int // Total vCPUs allocated across all target nodes
 	var nodeCount int
 
 	for _, node := range cluster.Nodes {
@@ -1144,6 +1146,10 @@ func CalculateTargetAverages(cluster *proxmox.Cluster, sourceNode string, vmsToM
 		usedRAM += node.UsedMem
 		totalStorage += node.MaxDisk
 		usedStorage += node.UsedDisk
+		// Count existing vCPUs on target nodes
+		for _, vm := range node.VMs {
+			totalVCPUs += vm.CPUCores
+		}
 	}
 
 	// Add resources from VMs being migrated to the pool
@@ -1155,12 +1161,17 @@ func CalculateTargetAverages(cluster *proxmox.Cluster, sourceNode string, vmsToM
 			storage = vm.UsedDisk
 		}
 		usedStorage += storage
+		// Add vCPUs from migrating VMs
+		totalVCPUs += vm.CPUCores
 	}
 
 	// Calculate target averages
 	averages := ClusterAverages{}
 	if totalCPUCores > 0 {
 		averages.CPUPercent = (totalCPUUsage / float64(totalCPUCores)) * 100
+		// vCPU% = total vCPUs / total threads * 100
+		// e.g., 1200 vCPUs / 300 threads = 400%
+		averages.VCPUPercent = float64(totalVCPUs) / float64(totalCPUCores) * 100
 	}
 	if totalRAM > 0 {
 		averages.RAMPercent = float64(usedRAM) / float64(totalRAM) * 100
@@ -1168,6 +1179,9 @@ func CalculateTargetAverages(cluster *proxmox.Cluster, sourceNode string, vmsToM
 	if totalStorage > 0 {
 		averages.StoragePercent = float64(usedStorage) / float64(totalStorage) * 100
 	}
+
+	log.Printf("CalculateTargetAverages: totalVCPUs=%d, totalCPUCores=%d, VCPUPercent=%.1f%%",
+		totalVCPUs, totalCPUCores, averages.VCPUPercent)
 
 	return averages
 }
@@ -1265,7 +1279,7 @@ func findBestTargetForMigrateAll(vm proxmox.VM, targetStates map[string]NodeStat
 
 	constraintsApplied = append(constraintsApplied, "RAM capacity check")
 	constraintsApplied = append(constraintsApplied, "Storage capacity check")
-	constraintsApplied = append(constraintsApplied, fmt.Sprintf("Cluster balance target (CPU: %.1f%%, RAM: %.1f%%)", averages.CPUPercent, averages.RAMPercent))
+	constraintsApplied = append(constraintsApplied, fmt.Sprintf("Cluster balance target (CPU: %.1f%%, RAM: %.1f%%, vCPU: %.1f%%)", averages.CPUPercent, averages.RAMPercent, averages.VCPUPercent))
 	if constraints.MaxVMsPerHost != nil {
 		constraintsApplied = append(constraintsApplied, fmt.Sprintf("Max VMs per host: %d", *constraints.MaxVMsPerHost))
 	}
@@ -1311,16 +1325,25 @@ func findBestTargetForMigrateAll(vm proxmox.VM, targetStates map[string]NodeStat
 		newState := state.CalculateAfterMigration([]proxmox.VM{vm}, nil)
 		cand.stateAfter = newState
 
-		// Check if this target stays below cluster average
+		// Calculate vCPU% after adding this VM
+		// vCPU% = (current vCPUs + VM vCPUs) / host threads * 100
+		newVCPUPercent := 0.0
+		if state.CPUCores > 0 {
+			newVCPUPercent = float64(state.VCPUs+vm.CPUCores) / float64(state.CPUCores) * 100
+		}
+
+		// Check if this target stays below cluster average (CPU%, RAM%, and vCPU%)
 		margin := 5.0 // 5% margin
 		belowAverage := newState.CPUPercent <= averages.CPUPercent+margin &&
-			newState.RAMPercent <= averages.RAMPercent+margin
+			newState.RAMPercent <= averages.RAMPercent+margin &&
+			newVCPUPercent <= averages.VCPUPercent+margin
 		cand.belowAverage = belowAverage
 
-		// Calculate detailed score breakdown
+		// Calculate detailed score breakdown (include vCPU% headroom)
 		cpuHeadroom := averages.CPUPercent - newState.CPUPercent
 		ramHeadroom := averages.RAMPercent - newState.RAMPercent
-		headroomScore := cpuHeadroom*0.4 + ramHeadroom*0.4
+		vcpuHeadroom := averages.VCPUPercent - newVCPUPercent
+		headroomScore := cpuHeadroom*0.3 + ramHeadroom*0.4 + vcpuHeadroom*0.1
 		balanceScore := calculateBalanceScoreDetailed(newState)
 
 		cand.breakdown = ScoreBreakdown{
@@ -1333,9 +1356,9 @@ func findBestTargetForMigrateAll(vm proxmox.VM, targetStates map[string]NodeStat
 		cand.score = cand.breakdown.TotalScore
 
 		if belowAverage {
-			cand.reason = fmt.Sprintf("Balanced (CPU: %.1f%%, RAM: %.1f%%)", newState.CPUPercent, newState.RAMPercent)
+			cand.reason = fmt.Sprintf("Balanced (CPU: %.1f%%, RAM: %.1f%%, vCPU: %.0f%%)", newState.CPUPercent, newState.RAMPercent, newVCPUPercent)
 		} else {
-			cand.reason = fmt.Sprintf("Best available (CPU: %.1f%%, RAM: %.1f%%)", newState.CPUPercent, newState.RAMPercent)
+			cand.reason = fmt.Sprintf("Best available (CPU: %.1f%%, RAM: %.1f%%, vCPU: %.0f%%)", newState.CPUPercent, newState.RAMPercent, newVCPUPercent)
 		}
 
 		allCandidates = append(allCandidates, cand)
