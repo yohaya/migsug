@@ -954,9 +954,10 @@ func FindBestTarget(vm proxmox.VM, targetStates map[string]NodeState, vmsPerTarg
 			cpuPriorityScore = GetCPUPriorityScore(targetNode.CPUModel, cpuPriorityInfo)
 		}
 
-		// CPU priority weight: 0.1 for non-MigrateAll mode (less aggressive)
-		cpuPriorityWeight := 0.1
-		totalScore := 0.6*utilizationScore + 0.3*balanceScore + cpuPriorityWeight*cpuPriorityScore
+		// CPU priority is the PRIMARY factor - we strongly prefer newer CPUs
+		// cpuPriorityScore is 0-100, scaled to be the main factor
+		// utilization and balance are secondary factors (tiebreakers within same CPU tier)
+		totalScore := cpuPriorityScore*10 + utilizationScore*0.5 + balanceScore*0.3
 
 		cand.breakdown = ScoreBreakdown{
 			UtilizationScore:  utilizationScore,
@@ -1001,8 +1002,15 @@ func FindBestTarget(vm proxmox.VM, targetStates map[string]NodeState, vmsPerTarg
 		return "", 0, "No suitable target found", details
 	}
 
-	// Sort by score (higher is better)
+	// Sort candidates: prefer newer CPUs first (CPU priority score), then by overall score
 	sort.Slice(validCandidates, func(i, j int) bool {
+		// First, strongly prefer newer CPUs (higher CPU priority score)
+		cpuPriorityDiff := validCandidates[i].breakdown.CPUPriorityScore - validCandidates[j].breakdown.CPUPriorityScore
+		if cpuPriorityDiff > 5 || cpuPriorityDiff < -5 {
+			// Significant CPU generation difference - prefer newer
+			return cpuPriorityDiff > 0
+		}
+		// Within same CPU tier, sort by overall score
 		return validCandidates[i].score > validCandidates[j].score
 	})
 
@@ -1530,10 +1538,11 @@ func findBestTargetForMigrateAll(vm proxmox.VM, targetStates map[string]NodeStat
 			cpuPriorityScore = GetCPUPriorityScore(targetNode.CPUModel, cpuPriorityInfo)
 		}
 
-		// CPU priority weight: 0.15 means newer CPUs get a boost in scoring
-		// This ensures VMs prefer newer hardware when other factors are similar
-		cpuPriorityWeight := 0.15
-		totalScore := headroomScore + balanceScore*0.2 + cpuPriorityScore*cpuPriorityWeight
+		// CPU priority is now the PRIMARY factor - we strongly prefer newer CPUs
+		// The score is structured so CPU priority dominates when hosts have capacity
+		// cpuPriorityScore is 0-100, we scale it to be the main factor
+		// headroom and balance are secondary factors (tiebreakers within same CPU tier)
+		totalScore := cpuPriorityScore*10 + headroomScore*0.3 + balanceScore*0.2
 
 		cand.breakdown = ScoreBreakdown{
 			HeadroomScore:     headroomScore,
@@ -1581,11 +1590,20 @@ func findBestTargetForMigrateAll(vm proxmox.VM, targetStates map[string]NodeStat
 		return "NONE", 0, "No target has capacity for this VM", details
 	}
 
-	// Sort candidates: prefer below-average first, then by score
+	// Sort candidates: prefer newer CPUs first (CPU priority score), then balance
+	// We use CPU priority as the primary sort key to ensure newer hardware is filled first
 	sort.Slice(validCandidates, func(i, j int) bool {
+		// First, strongly prefer newer CPUs (higher CPU priority score)
+		cpuPriorityDiff := validCandidates[i].breakdown.CPUPriorityScore - validCandidates[j].breakdown.CPUPriorityScore
+		if cpuPriorityDiff > 5 || cpuPriorityDiff < -5 {
+			// Significant CPU generation difference - prefer newer
+			return cpuPriorityDiff > 0
+		}
+		// Within same CPU tier (within 5 points), prefer below-average hosts
 		if validCandidates[i].belowAverage != validCandidates[j].belowAverage {
 			return validCandidates[i].belowAverage // below-average first
 		}
+		// Then by overall score (which includes headroom and balance)
 		return validCandidates[i].score > validCandidates[j].score
 	})
 
