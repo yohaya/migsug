@@ -750,6 +750,12 @@ func ParseVMConfigMeta(node string, vmid int, vmType string) (*VMConfigResult, e
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 
+		// Stop parsing when we hit a snapshot section (e.g., [Backup-2026-01-19-000230])
+		// Snapshot sections duplicate disk entries which would multiply our storage count
+		if strings.HasPrefix(line, "[") {
+			break
+		}
+
 		// Look for comment lines that contain key=value pairs (custom metadata)
 		if strings.HasPrefix(line, "#") {
 			// Remove the # prefix
