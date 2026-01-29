@@ -580,10 +580,10 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 	// - Table closing line: 1 line
 	// - Scroll info: 1 line
 	// - Blank before reasoning: 1 line
-	// - Reasoning panel (fixed): 26 lines (max height including all sections)
+	// - Reasoning panel (fixed): 20 lines (max height, content is truncated if larger)
 	// - Help text: 1 line
-	// Total: 38 lines
-	fixedOverhead := 38
+	// Total: 32 lines
+	fixedOverhead := 32
 	maxVisible := height - fixedOverhead
 	if maxVisible < 5 {
 		maxVisible = 5
@@ -829,21 +829,25 @@ func RenderHostDetailBrowseable(result *analyzer.AnalysisResult, cluster *proxmo
 }
 
 // renderMigrationReasoning renders the detailed reasoning panel for a migrating VM
+// Limited to maxLines (default 20) to prevent screen overflow
 func renderMigrationReasoning(vm VMListItem, currentHost string) string {
 	if vm.Details == nil {
 		return ""
 	}
 
-	var sb strings.Builder
+	const maxLines = 20 // Maximum lines for the reasoning panel
+	var lines []string
 	details := vm.Details
 
 	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	valueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7")) // Light grey, similar to regular text
 	goodStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
 	warnStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 
 	// VM Selection Reason
-	sb.WriteString(labelStyle.Render("Why selected: ") + valueStyle.Render(details.SelectionReason) + "\n\n")
+	lines = append(lines, labelStyle.Render("Why selected: ")+valueStyle.Render(details.SelectionReason))
+	lines = append(lines, "")
 
 	// Target Selection
 	targetName := vm.Target
@@ -852,42 +856,29 @@ func renderMigrationReasoning(vm VMListItem, currentHost string) string {
 		targetName = vm.Target
 	}
 
-	sb.WriteString(labelStyle.Render("Why this target (") + valueStyle.Render(targetName) + labelStyle.Render("):") + "\n")
+	lines = append(lines, labelStyle.Render("Why this target (")+valueStyle.Render(targetName)+labelStyle.Render("):"))
 
-	// Score breakdown
+	// Score breakdown (compact - single line)
 	if details.ScoreBreakdown.TotalScore > 0 {
-		sb.WriteString("  " + labelStyle.Render("Score: ") + valueStyle.Render(fmt.Sprintf("%.1f", details.ScoreBreakdown.TotalScore)) + "\n")
-		if details.ScoreBreakdown.UtilizationScore > 0 {
-			sb.WriteString("    " + valueStyle.Render(fmt.Sprintf("- Utilization: %.1f (weight: %.0f%%)",
-				details.ScoreBreakdown.UtilizationScore, details.ScoreBreakdown.UtilizationWeight*100)) + "\n")
-		}
+		scoreStr := fmt.Sprintf("Score: %.1f", details.ScoreBreakdown.TotalScore)
 		if details.ScoreBreakdown.BalanceScore > 0 {
-			sb.WriteString("    " + valueStyle.Render(fmt.Sprintf("- Balance: %.1f (weight: %.0f%%)",
-				details.ScoreBreakdown.BalanceScore, details.ScoreBreakdown.BalanceWeight*100)) + "\n")
+			scoreStr += fmt.Sprintf(", Balance: %.1f", details.ScoreBreakdown.BalanceScore)
 		}
 		if details.ScoreBreakdown.HeadroomScore != 0 {
-			sb.WriteString("    " + valueStyle.Render(fmt.Sprintf("- Headroom: %.1f (below cluster avg)",
-				details.ScoreBreakdown.HeadroomScore)) + "\n")
+			scoreStr += fmt.Sprintf(", Headroom: %.1f", details.ScoreBreakdown.HeadroomScore)
 		}
-	}
-	sb.WriteString("\n")
-
-	// Target state before/after
-	sb.WriteString(labelStyle.Render("Target state change:") + "\n")
-
-	// Calculate VM's CPU contribution to target (if we have target cores)
-	// This explains why HCPU% in the list (source-based) differs from the delta here (target-based)
-	vmTargetCPU := 0.0
-	if vm.TargetCores > 0 {
-		vmTargetCPU = vm.CPUUsage * float64(vm.VCPUs) / float64(vm.TargetCores)
+		lines = append(lines, "  "+valueStyle.Render(scoreStr))
 	}
 
-	sb.WriteString("  " + labelStyle.Render("Before: ") +
+	// Target state before/after (compact)
+	lines = append(lines, labelStyle.Render("Target state change:"))
+
+	lines = append(lines, "  "+labelStyle.Render("Before: ")+
 		valueStyle.Render(fmt.Sprintf("CPU: %.1f%%, RAM: %.1f%%, Storage: %.1f%%, VMs: %d",
 			details.TargetBefore.CPUPercent,
 			details.TargetBefore.RAMPercent,
 			details.TargetBefore.StoragePercent,
-			details.TargetBefore.VMCount)) + "\n")
+			details.TargetBefore.VMCount)))
 
 	// Color the after values based on impact
 	cpuAfterStr := fmt.Sprintf("%.1f%%", details.TargetAfter.CPUPercent)
@@ -903,54 +894,95 @@ func renderMigrationReasoning(vm VMListItem, currentHost string) string {
 		ramAfterStr = goodStyle.Render(ramAfterStr)
 	}
 
-	sb.WriteString("  " + labelStyle.Render("After:  ") +
-		labelStyle.Render("CPU: ") + cpuAfterStr +
-		labelStyle.Render(", RAM: ") + ramAfterStr +
+	lines = append(lines, "  "+labelStyle.Render("After:  ")+
+		labelStyle.Render("CPU: ")+cpuAfterStr+
+		labelStyle.Render(", RAM: ")+ramAfterStr+
 		labelStyle.Render(fmt.Sprintf(", Storage: %.1f%%, VMs: %d",
 			details.TargetAfter.StoragePercent,
-			details.TargetAfter.VMCount)) + "\n")
+			details.TargetAfter.VMCount)))
 
-	// Show VM's contribution to target (explains why it differs from HCPU% in the list)
-	if vmTargetCPU > 0 && vm.TargetCores > 0 && vm.SourceCores > 0 && vm.TargetCores != vm.SourceCores {
-		sb.WriteString("  " + valueStyle.Render(fmt.Sprintf("(VM adds %.1f%% CPU - target has %d threads vs source %d)",
-			vmTargetCPU, vm.TargetCores, vm.SourceCores)) + "\n")
+	// Cluster context (for MigrateAll mode) - compact
+	if details.ClusterAvgCPU > 0 || details.ClusterAvgRAM > 0 {
+		clusterStr := fmt.Sprintf("Cluster avg: CPU %.1f%%, RAM %.1f%%", details.ClusterAvgCPU, details.ClusterAvgRAM)
+		if details.BelowAverage {
+			clusterStr += " " + goodStyle.Render("✓ below avg")
+		} else {
+			clusterStr += " " + warnStyle.Render("! above avg")
+		}
+		lines = append(lines, labelStyle.Render("Cluster: ")+valueStyle.Render(clusterStr))
 	}
 
-	// Cluster context (for MigrateAll mode)
-	if details.ClusterAvgCPU > 0 || details.ClusterAvgRAM > 0 {
-		sb.WriteString("\n" + labelStyle.Render("Cluster balance target:") + "\n")
-		sb.WriteString("  " + valueStyle.Render(fmt.Sprintf("Avg CPU: %.1f%%, Avg RAM: %.1f%%",
-			details.ClusterAvgCPU, details.ClusterAvgRAM)) + "\n")
-		if details.BelowAverage {
-			sb.WriteString("  " + goodStyle.Render("✓ Target stays below cluster average") + "\n")
-		} else {
-			sb.WriteString("  " + warnStyle.Render("! Target will exceed cluster average") + "\n")
+	// Calculate remaining space for alternatives and constraints
+	currentLines := len(lines)
+	remainingLines := maxLines - currentLines - 1 // -1 for safety margin
+
+	// Alternatives considered (limited)
+	if len(details.Alternatives) > 0 && remainingLines > 2 {
+		lines = append(lines, labelStyle.Render("Alternatives:"))
+		remainingLines--
+
+		maxAlts := remainingLines / 2 // Reserve half for constraints
+		if maxAlts > 3 {
+			maxAlts = 3 // Show at most 3 alternatives
+		}
+		if maxAlts < 1 {
+			maxAlts = 1
+		}
+
+		shown := 0
+		for _, alt := range details.Alternatives {
+			if shown >= maxAlts {
+				break
+			}
+			var altStr string
+			if alt.Score > 0 {
+				altStr = fmt.Sprintf("• %s (%.1f) - %s", alt.Name, alt.Score, alt.RejectionReason)
+			} else {
+				altStr = fmt.Sprintf("• %s - %s", alt.Name, alt.RejectionReason)
+			}
+			// Truncate long lines
+			if len(altStr) > 80 {
+				altStr = altStr[:77] + "..."
+			}
+			lines = append(lines, "  "+valueStyle.Render(altStr))
+			shown++
+			remainingLines--
+		}
+		if len(details.Alternatives) > shown {
+			lines = append(lines, "  "+dimStyle.Render(fmt.Sprintf("... and %d more", len(details.Alternatives)-shown)))
+			remainingLines--
 		}
 	}
 
-	// Alternatives considered
-	if len(details.Alternatives) > 0 {
-		sb.WriteString("\n" + labelStyle.Render("Alternative targets:") + "\n")
-		for _, alt := range details.Alternatives {
-			if alt.Score > 0 {
-				sb.WriteString("  " + valueStyle.Render(fmt.Sprintf("• %s (score: %.1f) - %s",
-					alt.Name, alt.Score, alt.RejectionReason)) + "\n")
-			} else {
-				sb.WriteString("  " + valueStyle.Render(fmt.Sprintf("• %s - %s",
-					alt.Name, alt.RejectionReason)) + "\n")
+	// Constraints applied (limited)
+	if len(details.ConstraintsApplied) > 0 && remainingLines > 1 {
+		// Show constraints on single line if space is tight
+		if remainingLines <= 2 {
+			constraintStr := fmt.Sprintf("Constraints: %d checked", len(details.ConstraintsApplied))
+			lines = append(lines, dimStyle.Render(constraintStr))
+		} else {
+			lines = append(lines, labelStyle.Render("Constraints:"))
+			remainingLines--
+			maxConstraints := remainingLines
+			if maxConstraints > 3 {
+				maxConstraints = 3
+			}
+			shown := 0
+			for _, c := range details.ConstraintsApplied {
+				if shown >= maxConstraints {
+					break
+				}
+				lines = append(lines, "  "+valueStyle.Render("• "+c))
+				shown++
+			}
+			if len(details.ConstraintsApplied) > shown {
+				lines = append(lines, "  "+dimStyle.Render(fmt.Sprintf("... and %d more", len(details.ConstraintsApplied)-shown)))
 			}
 		}
 	}
 
-	// Constraints applied
-	if len(details.ConstraintsApplied) > 0 {
-		sb.WriteString("\n" + labelStyle.Render("Constraints checked:") + "\n")
-		for _, c := range details.ConstraintsApplied {
-			sb.WriteString("  " + valueStyle.Render("• "+c) + "\n")
-		}
-	}
-
-	return sb.String()
+	// Join lines and return
+	return strings.Join(lines, "\n") + "\n"
 }
 
 // truncateString truncates a string to maxLen characters
