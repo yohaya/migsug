@@ -836,9 +836,6 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 	if len(reasoningLines) > 0 {
 		sb.WriteString("\n")
 
-		// Determine if reasoning panel is focused
-		reasoningFocused := focusedSection == 1
-
 		// Use fixed max height for reasoning panel
 		availableReasoningLines := reasoningMaxLines
 
