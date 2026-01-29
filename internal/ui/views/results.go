@@ -601,6 +601,11 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 		}
 	}
 
+	// Sort VM list by name
+	sort.Slice(vmList, func(i, j int) bool {
+		return vmList[i].Name < vmList[j].Name
+	})
+
 	// Fixed heights for consistent layout
 	const (
 		headerLines        = 2  // Title + border

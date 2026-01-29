@@ -775,6 +775,14 @@ func RenderSuggestionTableWithScroll(suggestions []analyzer.MigrationSuggestion,
 func RenderSuggestionTableWithCursor(suggestions []analyzer.MigrationSuggestion, scrollPos, maxVisible, cursorPos int) string {
 	var sb strings.Builder
 
+	// Sort suggestions by VM name (make a copy to avoid modifying original)
+	sortedSuggestions := make([]analyzer.MigrationSuggestion, len(suggestions))
+	copy(sortedSuggestions, suggestions)
+	sort.Slice(sortedSuggestions, func(i, j int) bool {
+		return sortedSuggestions[i].VMName < sortedSuggestions[j].VMName
+	})
+	suggestions = sortedSuggestions
+
 	// Column widths
 	const (
 		colVMID    = 6
