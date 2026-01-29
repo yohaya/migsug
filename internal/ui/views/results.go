@@ -891,12 +891,12 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 			line := reasoningLines[i]
 
 			// Pad line to match VM table width
-			visibleLen := len(line)
+			// Use lipgloss.Width() to get visible width (ignoring ANSI codes)
+			visibleLen := lipgloss.Width(line)
 			if visibleLen < lineWidth {
 				line = line + strings.Repeat(" ", lineWidth-visibleLen)
-			} else if visibleLen > lineWidth {
-				line = line[:lineWidth]
 			}
+			// Don't truncate lines with ANSI codes - just let them overflow slightly
 
 			// Add scrollbar on the right side
 			if needsReasoningScrollbar {
@@ -923,7 +923,6 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 
 		// Show reasoning scroll info (right-aligned like VM table)
 		// VM table uses: padding := totalWidth + 2 - len(scrollInfo)
-		// This aligns with scrollbar position (scrollbar is at totalWidth + 4 + 1)
 		if needsReasoningScrollbar {
 			scrollInfo := fmt.Sprintf("Showing %d-%d of %d", reasoningScrollPos+1, endReasoningPos, len(reasoningLines))
 			// Right-align to match VM table scroll info position
