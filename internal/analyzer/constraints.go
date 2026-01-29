@@ -5,15 +5,15 @@ type MigrationConstraints struct {
 	SourceNode string
 
 	// Migration criteria (one or more can be set)
-	VMCount       *int     // migrate N VMs
-	VCPUCount     *int     // migrate VMs totaling N vCPUs
-	CPUUsage      *float64 // migrate VMs using N% CPU (uses efficiency algorithm)
-	RAMAmount     *int64   // migrate VMs using N GB RAM (in bytes)
-	StorageAmount *int64   // migrate VMs using N GB storage (in bytes)
-	SpecificVMs   []int    // migrate these specific VMIDs
-	MigrateAll     bool // migrate all VMs from host, spread across cluster
-	CreationAge    *int // migrate VMs older than N days (based on ctime)
-	BalanceCluster bool // migrate VMs to bring host CPU/RAM to cluster average with minimum moves
+	VMCount        *int     // migrate N VMs
+	VCPUCount      *int     // migrate VMs totaling N vCPUs
+	CPUUsage       *float64 // migrate VMs using N% CPU (uses efficiency algorithm)
+	RAMAmount      *int64   // migrate VMs using N GB RAM (in bytes)
+	StorageAmount  *int64   // migrate VMs using N GB storage (in bytes)
+	SpecificVMs    []int    // migrate these specific VMIDs
+	MigrateAll     bool     // migrate all VMs from host, spread across cluster
+	CreationAge    *int     // migrate VMs older than N days (based on ctime)
+	BalanceCluster bool     // migrate VMs to bring host CPU/RAM to cluster average with minimum moves
 
 	// Additional constraints
 	ExcludeNodes  []string // don't migrate to these nodes

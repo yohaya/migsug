@@ -21,7 +21,7 @@ type CPUPriority struct {
 
 // CPUPriorityInfo contains information about CPU priorities in the cluster
 type CPUPriorityInfo struct {
-	Priorities []CPUPriority
+	Priorities  []CPUPriority
 	MaxPriority int
 	MinPriority int
 }

@@ -78,10 +78,10 @@ type Model struct {
 	impactHostNames  []string // Sorted list of host names in impact table
 
 	// Host detail view state
-	hostDetailScrollPos        int // Scroll position for VM list
-	hostDetailCursorPos        int // Cursor position in VM list
-	hostDetailFocusedSection   int // 0 = VM list, 1 = reasoning panel
-	hostDetailReasoningScroll  int // Scroll position for reasoning panel
+	hostDetailScrollPos       int // Scroll position for VM list
+	hostDetailCursorPos       int // Cursor position in VM list
+	hostDetailFocusedSection  int // 0 = VM list, 1 = reasoning panel
+	hostDetailReasoningScroll int // Scroll position for reasoning panel
 
 	// UI state
 	width      int
