@@ -848,7 +848,7 @@ func getSelectionReason(constraints MigrationConstraints) string {
 }
 
 // FindBestTarget finds the best target node for a VM and returns detailed reasoning
-func FindBestTarget(vm proxmox.VM, targetStates map[string]NodeState, vmsPerTarget map[string]int, constraints MigrationConstraints) (string, float64, string, *MigrationDetails) {
+func FindBestTarget(vm proxmox.VM, targetStates map[string]NodeState, vmsPerTarget map[string]int, constraints MigrationConstraints, cluster *proxmox.Cluster, targetNodesMap map[string]*proxmox.Node, plannedMigrations map[string]string) (string, float64, string, *MigrationDetails) {
 	type candidate struct {
 		name         string
 		score        float64
@@ -866,6 +866,7 @@ func FindBestTarget(vm proxmox.VM, targetStates map[string]NodeState, vmsPerTarg
 	// Track which constraints are being checked
 	constraintsApplied = append(constraintsApplied, "RAM capacity check")
 	constraintsApplied = append(constraintsApplied, "Storage capacity check")
+	constraintsApplied = append(constraintsApplied, "CPU priority: prefer newer CPU generations")
 	if constraints.MinRAMFree != nil {
 		constraintsApplied = append(constraintsApplied, fmt.Sprintf("Min RAM free: %d GB", *constraints.MinRAMFree/(1024*1024*1024)))
 	}
@@ -875,11 +876,32 @@ func FindBestTarget(vm proxmox.VM, targetStates map[string]NodeState, vmsPerTarg
 	if constraints.MaxVMsPerHost != nil {
 		constraintsApplied = append(constraintsApplied, fmt.Sprintf("Max VMs per host: %d", *constraints.MaxVMsPerHost))
 	}
+	// Add VM placement constraints to applied constraints list
+	if vm.HostCPUModel != "" {
+		constraintsApplied = append(constraintsApplied, fmt.Sprintf("Host CPU model must contain: %s", vm.HostCPUModel))
+	}
+	if len(vm.WithVM) > 0 {
+		constraintsApplied = append(constraintsApplied, fmt.Sprintf("Must be with VMs: %s", strings.Join(vm.WithVM, ", ")))
+	}
+	if len(vm.WithoutVM) > 0 {
+		constraintsApplied = append(constraintsApplied, fmt.Sprintf("Cannot be with VMs: %s", strings.Join(vm.WithoutVM, ", ")))
+	}
 
 	for name, state := range targetStates {
 		cand := candidate{
 			name:        name,
 			stateBefore: state,
+		}
+
+		// Check VM placement constraints (hostcpumodel, withvm, without)
+		if targetNode, ok := targetNodesMap[name]; ok {
+			placementCheck := CheckVMPlacementConstraints(vm, targetNode, cluster, plannedMigrations)
+			if placementCheck.Violated {
+				cand.rejected = true
+				cand.rejectReason = placementCheck.Reason
+				allCandidates = append(allCandidates, cand)
+				continue
+			}
 		}
 
 		// Check capacity
@@ -925,12 +947,24 @@ func FindBestTarget(vm proxmox.VM, targetStates map[string]NodeState, vmsPerTarg
 		utilizationScore := 100 - newState.GetUtilizationScore()
 		balanceScore := calculateBalanceScoreDetailed(newState)
 
+		// Get CPU priority score (normalized 0-100, higher = newer CPU)
+		cpuPriorityScore := 0.0
+		if targetNode, ok := targetNodesMap[name]; ok {
+			cpuPriorityInfo := GetClusterCPUPriorities(cluster)
+			cpuPriorityScore = GetCPUPriorityScore(targetNode.CPUModel, cpuPriorityInfo)
+		}
+
+		// CPU priority weight: 0.1 for non-MigrateAll mode (less aggressive)
+		cpuPriorityWeight := 0.1
+		totalScore := 0.6*utilizationScore + 0.3*balanceScore + cpuPriorityWeight*cpuPriorityScore
+
 		cand.breakdown = ScoreBreakdown{
 			UtilizationScore:  utilizationScore,
 			BalanceScore:      balanceScore,
-			UtilizationWeight: 0.7,
+			CPUPriorityScore:  cpuPriorityScore,
+			UtilizationWeight: 0.6,
 			BalanceWeight:     0.3,
-			TotalScore:        0.7*utilizationScore + 0.3*balanceScore,
+			TotalScore:        totalScore,
 		}
 		cand.score = cand.breakdown.TotalScore
 
