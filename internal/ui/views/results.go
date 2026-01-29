@@ -885,8 +885,9 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 		reasoningScrollThumb := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 
 		// Render visible reasoning lines with scrollbar
-		// Use totalWidth to match VM table width
-		lineWidth := totalWidth + 2 // +2 for left padding
+		// VM table lines are: selector(2) + dirStr(2) + rowContent(totalWidth) = totalWidth + 4
+		// Match that width for alignment
+		lineWidth := totalWidth + 4
 		linesRendered := 0
 		for i := reasoningScrollPos; i < endReasoningPos && linesRendered < availableReasoningLines; i++ {
 			rowIdx := i - reasoningScrollPos
@@ -924,13 +925,12 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 		}
 
 		// Show reasoning scroll info (right-aligned like VM table)
+		// VM table uses: padding := totalWidth + 2 - len(scrollInfo)
+		// This aligns with scrollbar position (scrollbar is at totalWidth + 4 + 1)
 		if needsReasoningScrollbar {
-			scrollInfo := fmt.Sprintf("Showing %d-%d of %d lines", reasoningScrollPos+1, endReasoningPos, len(reasoningLines))
-			if reasoningFocused {
-				scrollInfo = "▶ " + scrollInfo + " (Tab to switch)"
-			}
-			// Right-align to match VM table width
-			padding := lineWidth - len(scrollInfo)
+			scrollInfo := fmt.Sprintf("Showing %d-%d of %d", reasoningScrollPos+1, endReasoningPos, len(reasoningLines))
+			// Right-align to match VM table scroll info position
+			padding := totalWidth + 2 - len(scrollInfo)
 			if padding > 0 {
 				scrollInfo = strings.Repeat(" ", padding) + scrollInfo
 			}
