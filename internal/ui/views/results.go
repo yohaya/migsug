@@ -129,6 +129,7 @@ func RenderResultsWithSource(result *analyzer.AnalysisResult, cluster *proxmox.C
 		result.SourceAfter,
 		result.TargetsBefore,
 		result.TargetsAfter,
+		cluster,
 	))
 
 	// Help text
@@ -236,6 +237,7 @@ func RenderResultsInteractive(result *analyzer.AnalysisResult, cluster *proxmox.
 			result.TargetsBefore,
 			result.TargetsAfter,
 			impactCursor,
+			cluster,
 		))
 	} else {
 		sb.WriteString(components.RenderImpactTable(
@@ -243,6 +245,7 @@ func RenderResultsInteractive(result *analyzer.AnalysisResult, cluster *proxmox.
 			result.SourceAfter,
 			result.TargetsBefore,
 			result.TargetsAfter,
+			cluster,
 		))
 	}
 

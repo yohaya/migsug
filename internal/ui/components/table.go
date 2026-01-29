@@ -947,7 +947,7 @@ func max(a, b int) int {
 }
 
 // RenderImpactTable renders a combined table showing before/after for all nodes
-func RenderImpactTable(sourceBefore, sourceAfter analyzer.NodeState, targetsBefore, targetsAfter map[string]analyzer.NodeState) string {
+func RenderImpactTable(sourceBefore, sourceAfter analyzer.NodeState, targetsBefore, targetsAfter map[string]analyzer.NodeState, cluster *proxmox.Cluster) string {
 	var sb strings.Builder
 
 	// Column widths - increased for used/total (percent) display
@@ -994,6 +994,19 @@ func RenderImpactTable(sourceBefore, sourceAfter analyzer.NodeState, targetsBefo
 
 	// Separator
 	sb.WriteString("  " + strings.Repeat("─", totalWidth) + "\n")
+
+	// Helper function to get status indicators for a node
+	getStatusIndicators := func(nodeName string) string {
+		if cluster == nil {
+			return ""
+		}
+		for _, node := range cluster.Nodes {
+			if node.Name == nodeName {
+				return node.GetStatusIndicators()
+			}
+		}
+		return ""
+	}
 
 	// Helper function to render a row
 	renderRow := func(name string, before, after analyzer.NodeState, isSource bool) {
@@ -1063,7 +1076,12 @@ func RenderImpactTable(sourceBefore, sourceAfter analyzer.NodeState, targetsBefo
 	}
 
 	// Render source node first
-	renderRow(sourceBefore.Name+" (src)", sourceBefore, sourceAfter, true)
+	sourceFlags := getStatusIndicators(sourceBefore.Name)
+	sourceLabel := sourceBefore.Name + " (src)"
+	if sourceFlags != "" {
+		sourceLabel = sourceBefore.Name + " (" + sourceFlags + ",src)"
+	}
+	renderRow(sourceLabel, sourceBefore, sourceAfter, true)
 
 	// Render target nodes (sorted)
 	var targetNames []string
@@ -1077,7 +1095,12 @@ func RenderImpactTable(sourceBefore, sourceAfter analyzer.NodeState, targetsBefo
 		beforeState := targetsBefore[name]
 		// Only show targets that receive VMs
 		if afterState.VMCount != beforeState.VMCount {
-			renderRow(name, beforeState, afterState, false)
+			targetFlags := getStatusIndicators(name)
+			targetLabel := name
+			if targetFlags != "" {
+				targetLabel = name + " (" + targetFlags + ")"
+			}
+			renderRow(targetLabel, beforeState, afterState, false)
 		}
 	}
 
@@ -1088,7 +1111,7 @@ func RenderImpactTable(sourceBefore, sourceAfter analyzer.NodeState, targetsBefo
 }
 
 // RenderImpactTableWithCursor renders the impact table with cursor highlighting
-func RenderImpactTableWithCursor(sourceBefore, sourceAfter analyzer.NodeState, targetsBefore, targetsAfter map[string]analyzer.NodeState, cursorPos int) string {
+func RenderImpactTableWithCursor(sourceBefore, sourceAfter analyzer.NodeState, targetsBefore, targetsAfter map[string]analyzer.NodeState, cursorPos int, cluster *proxmox.Cluster) string {
 	var sb strings.Builder
 
 	// Column widths - increased for used/total (percent) display
@@ -1138,6 +1161,19 @@ func RenderImpactTableWithCursor(sourceBefore, sourceAfter analyzer.NodeState, t
 	sb.WriteString("  " + strings.Repeat("─", totalWidth) + "\n")
 
 	rowIndex := 0
+
+	// Helper function to get status indicators for a node
+	getStatusIndicators := func(nodeName string) string {
+		if cluster == nil {
+			return ""
+		}
+		for _, node := range cluster.Nodes {
+			if node.Name == nodeName {
+				return node.GetStatusIndicators()
+			}
+		}
+		return ""
+	}
 
 	// Helper function to render a row with optional cursor highlight
 	renderRowWithCursor := func(name string, before, after analyzer.NodeState, isSource bool) {
@@ -1228,7 +1264,12 @@ func RenderImpactTableWithCursor(sourceBefore, sourceAfter analyzer.NodeState, t
 	}
 
 	// Render source node first
-	renderRowWithCursor(sourceBefore.Name+" (src)", sourceBefore, sourceAfter, true)
+	sourceFlags := getStatusIndicators(sourceBefore.Name)
+	sourceLabel := sourceBefore.Name + " (src)"
+	if sourceFlags != "" {
+		sourceLabel = sourceBefore.Name + " (" + sourceFlags + ",src)"
+	}
+	renderRowWithCursor(sourceLabel, sourceBefore, sourceAfter, true)
 
 	// Render target nodes (sorted)
 	var targetNames []string
@@ -1241,7 +1282,12 @@ func RenderImpactTableWithCursor(sourceBefore, sourceAfter analyzer.NodeState, t
 		afterState := targetsAfter[name]
 		beforeState := targetsBefore[name]
 		if afterState.VMCount != beforeState.VMCount {
-			renderRowWithCursor(name, beforeState, afterState, false)
+			targetFlags := getStatusIndicators(name)
+			targetLabel := name
+			if targetFlags != "" {
+				targetLabel = name + " (" + targetFlags + ")"
+			}
+			renderRowWithCursor(targetLabel, beforeState, afterState, false)
 		}
 	}
 
