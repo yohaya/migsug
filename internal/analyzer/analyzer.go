@@ -30,15 +30,21 @@ func Analyze(cluster *proxmox.Cluster, constraints MigrationConstraints) (*Analy
 	}
 
 	// Select VMs to migrate based on constraints
-	vmsToMigrate := SelectVMsToMigrate(sourceNode, constraints)
+	var vmsToMigrate []proxmox.VM
+	if constraints.BalanceCluster {
+		// Balance cluster mode needs cluster context for calculating averages
+		vmsToMigrate = selectForBalanceCluster(sourceNode, cluster, targets)
+	} else {
+		vmsToMigrate = SelectVMsToMigrate(sourceNode, constraints)
+	}
 	if len(vmsToMigrate) == 0 {
 		return nil, fmt.Errorf("no VMs selected for migration based on given constraints")
 	}
 
 	var suggestions []MigrationSuggestion
 
-	// Use specialized algorithm for ModeAll to ensure balanced distribution
-	if constraints.MigrateAll {
+	// Use specialized algorithm for ModeAll and ModeBalanceCluster to ensure balanced distribution
+	if constraints.MigrateAll || constraints.BalanceCluster {
 		suggestions = GenerateSuggestionsBalanced(vmsToMigrate, targets, cluster, sourceNode, constraints)
 	} else {
 		suggestions = GenerateSuggestions(vmsToMigrate, targets, sourceNode, constraints)
@@ -72,6 +78,9 @@ func SelectVMsToMigrate(node *proxmox.Node, constraints MigrationConstraints) []
 		return selectByStorage(node, *constraints.StorageAmount)
 	case ModeCreationDate:
 		return selectByCreationDate(node, *constraints.CreationAge)
+	case ModeBalanceCluster:
+		// This requires cluster context, will be handled in Analyze()
+		return []proxmox.VM{}
 	default:
 		return []proxmox.VM{}
 	}
@@ -458,6 +467,167 @@ func selectByCreationDate(node *proxmox.Node, minAgeDays int) []proxmox.VM {
 	return oldVMs
 }
 
+// selectForBalanceCluster selects VMs to migrate from source node to bring it to cluster average
+// with minimum VM moves and preferring VMs smaller than 500GiB
+func selectForBalanceCluster(sourceNode *proxmox.Node, cluster *proxmox.Cluster, targets []proxmox.Node) []proxmox.VM {
+	// Only consider running, migratable VMs since they contribute to CPU/RAM load
+	vms := filterRunningMigratableVMs(sourceNode.VMs)
+	if len(vms) == 0 {
+		return nil
+	}
+
+	// Calculate cluster averages (excluding source node for a fair comparison)
+	clusterCPUSum := 0.0
+	clusterRAMSum := 0.0
+	nodeCount := 0
+	for _, node := range cluster.Nodes {
+		if node.Name != sourceNode.Name && node.Status == "online" {
+			clusterCPUSum += node.CPUUsage * 100 // Convert to percentage
+			clusterRAMSum += node.GetMemPercent()
+			nodeCount++
+		}
+	}
+	// Include source in the average calculation
+	clusterCPUSum += sourceNode.CPUUsage * 100
+	clusterRAMSum += sourceNode.GetMemPercent()
+	nodeCount++
+
+	clusterAvgCPU := clusterCPUSum / float64(nodeCount)
+	clusterAvgRAM := clusterRAMSum / float64(nodeCount)
+
+	log.Printf("selectForBalanceCluster: Cluster avg CPU: %.1f%%, RAM: %.1f%%", clusterAvgCPU, clusterAvgRAM)
+	log.Printf("selectForBalanceCluster: Source node CPU: %.1f%%, RAM: %.1f%%",
+		sourceNode.CPUUsage*100, sourceNode.GetMemPercent())
+
+	// Calculate how much we need to reduce
+	currentCPU := sourceNode.CPUUsage * 100
+	currentRAM := sourceNode.GetMemPercent()
+	targetCPUReduction := currentCPU - clusterAvgCPU
+	targetRAMReduction := currentRAM - clusterAvgRAM
+
+	// If source is already at or below average, no migration needed
+	if targetCPUReduction <= 0 && targetRAMReduction <= 0 {
+		log.Printf("selectForBalanceCluster: Source node already at or below cluster average, no migration needed")
+		return nil
+	}
+
+	log.Printf("selectForBalanceCluster: Need to reduce CPU by %.1f%%, RAM by %.1f%%",
+		math.Max(0, targetCPUReduction), math.Max(0, targetRAMReduction))
+
+	// Calculate each VM's contribution and score
+	const maxPreferredStorageGiB = 500.0
+	type vmScore struct {
+		vm            proxmox.VM
+		cpuContrib    float64 // Host CPU% contribution
+		ramContrib    float64 // RAM GiB
+		storageGiB    float64
+		score         float64 // Higher = better candidate (more impact per storage, smaller preferred)
+		isSmall       bool    // < 500 GiB
+	}
+
+	scored := make([]vmScore, 0, len(vms))
+	for _, vm := range vms {
+		// Calculate host CPU contribution
+		cpuContrib := 0.0
+		if sourceNode.CPUCores > 0 {
+			cpuContrib = vm.CPUUsage * float64(vm.CPUCores) / float64(sourceNode.CPUCores)
+		}
+
+		// RAM contribution in GiB
+		ramContribGiB := float64(vm.MaxMem) / (1024 * 1024 * 1024)
+
+		// Storage in GiB
+		storage := vm.MaxDisk
+		if storage == 0 {
+			storage = vm.UsedDisk
+		}
+		storageGiB := float64(storage) / (1024 * 1024 * 1024)
+		if storageGiB < 1 {
+			storageGiB = 1
+		}
+
+		isSmall := storageGiB <= maxPreferredStorageGiB
+
+		// Score: higher impact per storage = better
+		// Combined impact = weighted CPU + RAM contribution
+		// We want to minimize storage moved while maximizing resource freed
+		combinedImpact := cpuContrib + (ramContribGiB / 10) // Normalize RAM to similar scale
+		efficiencyScore := combinedImpact / storageGiB
+
+		// Bonus for small VMs (we strongly prefer them)
+		sizeBonus := 1.0
+		if isSmall {
+			sizeBonus = 2.0 // Double the score for small VMs
+		}
+
+		scored = append(scored, vmScore{
+			vm:            vm,
+			cpuContrib:    cpuContrib,
+			ramContrib:    ramContribGiB,
+			storageGiB:    storageGiB,
+			score:         efficiencyScore * sizeBonus,
+			isSmall:       isSmall,
+		})
+	}
+
+	// Sort by score (highest first) - best candidates first
+	sort.Slice(scored, func(i, j int) bool {
+		return scored[i].score > scored[j].score
+	})
+
+	// Select VMs until we reach target CPU and RAM reduction
+	var selected []proxmox.VM
+	totalCPUReduction := 0.0
+	totalRAMReduction := 0.0
+	cpuTarget := math.Max(0, targetCPUReduction)
+	ramTarget := math.Max(0, targetRAMReduction)
+
+	// First pass: select from small VMs only
+	for _, s := range scored {
+		if !s.isSmall {
+			continue
+		}
+		// Check if we've reached both targets
+		if totalCPUReduction >= cpuTarget && totalRAMReduction >= ramTarget {
+			break
+		}
+
+		selected = append(selected, s.vm)
+		totalCPUReduction += s.cpuContrib
+		// RAM reduction is based on MaxMem / total node RAM
+		if sourceNode.MaxMem > 0 {
+			totalRAMReduction += (float64(s.vm.MaxMem) / float64(sourceNode.MaxMem)) * 100
+		}
+	}
+
+	// Second pass: if we haven't reached targets, consider large VMs
+	if totalCPUReduction < cpuTarget || totalRAMReduction < ramTarget {
+		for _, s := range scored {
+			if s.isSmall {
+				continue // Already considered
+			}
+			// Check if we've reached both targets
+			if totalCPUReduction >= cpuTarget && totalRAMReduction >= ramTarget {
+				break
+			}
+
+			selected = append(selected, s.vm)
+			totalCPUReduction += s.cpuContrib
+			if sourceNode.MaxMem > 0 {
+				totalRAMReduction += (float64(s.vm.MaxMem) / float64(sourceNode.MaxMem)) * 100
+			}
+
+			log.Printf("selectForBalanceCluster: Including large VM %d (%s) - %.0f GiB",
+				s.vm.VMID, s.vm.Name, s.storageGiB)
+		}
+	}
+
+	log.Printf("selectForBalanceCluster: Selected %d VMs to reduce CPU by %.1f%%, RAM by %.1f%%",
+		len(selected), totalCPUReduction, totalRAMReduction)
+
+	return selected
+}
+
 // GenerateSuggestions creates migration suggestions by finding best targets
 func GenerateSuggestions(vms []proxmox.VM, targets []proxmox.Node, sourceNode *proxmox.Node, constraints MigrationConstraints) []MigrationSuggestion {
 	var suggestions []MigrationSuggestion
@@ -558,6 +728,8 @@ func getSelectionReason(constraints MigrationConstraints) string {
 		return fmt.Sprintf("Selected to free up %d GB storage from source host", *constraints.StorageAmount/(1024*1024*1024))
 	case ModeCreationDate:
 		return fmt.Sprintf("Selected because VM was created more than %d days ago", *constraints.CreationAge)
+	case ModeBalanceCluster:
+		return "Selected to balance cluster (bring host CPU/RAM to cluster average with minimum moves)"
 	default:
 		return "Selected based on migration criteria"
 	}

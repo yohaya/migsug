@@ -11,8 +11,9 @@ type MigrationConstraints struct {
 	RAMAmount     *int64   // migrate VMs using N GB RAM (in bytes)
 	StorageAmount *int64   // migrate VMs using N GB storage (in bytes)
 	SpecificVMs   []int    // migrate these specific VMIDs
-	MigrateAll    bool     // migrate all VMs from host, spread across cluster
-	CreationAge   *int     // migrate VMs older than N days (based on ctime)
+	MigrateAll     bool // migrate all VMs from host, spread across cluster
+	CreationAge    *int // migrate VMs older than N days (based on ctime)
+	BalanceCluster bool // migrate VMs to bring host CPU/RAM to cluster average with minimum moves
 
 	// Additional constraints
 	ExcludeNodes  []string // don't migrate to these nodes
@@ -31,8 +32,9 @@ const (
 	ModeRAM
 	ModeStorage
 	ModeSpecific
-	ModeAll          // Migrate all VMs from host, spread across cluster below average
-	ModeCreationDate // Migrate VMs older than N days based on creation time
+	ModeAll            // Migrate all VMs from host, spread across cluster below average
+	ModeCreationDate   // Migrate VMs older than N days based on creation time
+	ModeBalanceCluster // Balance cluster: migrate VMs until host reaches cluster average with minimum moves
 )
 
 // String returns the string representation of a MigrationMode
@@ -54,6 +56,8 @@ func (m MigrationMode) String() string {
 		return "all"
 	case ModeCreationDate:
 		return "creation_date"
+	case ModeBalanceCluster:
+		return "balance_cluster"
 	default:
 		return "unknown"
 	}
@@ -63,6 +67,9 @@ func (m MigrationMode) String() string {
 func (c *MigrationConstraints) GetMode() MigrationMode {
 	if c.MigrateAll {
 		return ModeAll
+	}
+	if c.BalanceCluster {
+		return ModeBalanceCluster
 	}
 	if len(c.SpecificVMs) > 0 {
 		return ModeSpecific
@@ -102,7 +109,8 @@ func (c *MigrationConstraints) Validate() error {
 		c.StorageAmount != nil ||
 		len(c.SpecificVMs) > 0 ||
 		c.MigrateAll ||
-		c.CreationAge != nil
+		c.CreationAge != nil ||
+		c.BalanceCluster
 
 	if !hasConstraint {
 		return &ValidationError{

@@ -2,7 +2,9 @@ package views
 
 import (
 	"fmt"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/yourusername/migsug/internal/analyzer"
@@ -1410,6 +1412,179 @@ func RenderVMSelectionWithHeight(vms []proxmox.VM, selectedVMs map[int]bool, cur
 	sb.WriteString(helpStyle.Render("↑/↓: Navigate  Space: Toggle  Enter: Confirm  Esc: Back"))
 
 	return sb.String()
+}
+
+// RenderVMDetails renders the VM details overlay showing config file and collected data
+func RenderVMDetails(vm *proxmox.VM, nodeName string, vmid int, width, height, scrollPos int) string {
+	var sb strings.Builder
+
+	// Styles
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5"))
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
+	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	valueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	warnStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
+	goodStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
+
+	// Title
+	sb.WriteString(titleStyle.Render(fmt.Sprintf("VM Details: %d", vmid)) + "\n")
+	sb.WriteString(strings.Repeat("━", width) + "\n\n")
+
+	// Build content lines for scrolling
+	var lines []string
+
+	if vm != nil {
+		// Basic VM info
+		lines = append(lines, headerStyle.Render("VM Information:"))
+
+		// Status with color
+		statusStr := vm.Status
+		if vm.Status == "running" {
+			statusStr = goodStyle.Render("running")
+		} else {
+			statusStr = dimStyle.Render(vm.Status)
+		}
+
+		lines = append(lines, fmt.Sprintf("  %s %s", labelStyle.Render("VMID:"), valueStyle.Render(fmt.Sprintf("%d", vm.VMID))))
+		lines = append(lines, fmt.Sprintf("  %s %s", labelStyle.Render("Name:"), valueStyle.Render(vm.Name)))
+		lines = append(lines, fmt.Sprintf("  %s %s", labelStyle.Render("Node:"), valueStyle.Render(nodeName)))
+		lines = append(lines, fmt.Sprintf("  %s %s", labelStyle.Render("Status:"), statusStr))
+		lines = append(lines, fmt.Sprintf("  %s %s", labelStyle.Render("Type:"), valueStyle.Render(vm.Type)))
+		lines = append(lines, "")
+
+		// Resource info
+		lines = append(lines, headerStyle.Render("Resources:"))
+
+		// RAM in human readable format
+		ramStr := components.FormatRAMShort(vm.MaxMem)
+		if vm.UsedMem > 0 {
+			ramStr = fmt.Sprintf("%s used / %s allocated", components.FormatRAMShort(vm.UsedMem), components.FormatRAMShort(vm.MaxMem))
+		}
+
+		// Storage
+		storageVal := vm.MaxDisk
+		if storageVal == 0 {
+			storageVal = vm.UsedDisk
+		}
+		storageStr := components.FormatStorageG(storageVal)
+
+		lines = append(lines, fmt.Sprintf("  %s %s", labelStyle.Render("vCPUs:"), valueStyle.Render(fmt.Sprintf("%d", vm.CPUCores))))
+		lines = append(lines, fmt.Sprintf("  %s %s", labelStyle.Render("CPU Usage:"), valueStyle.Render(fmt.Sprintf("%.1f%%", vm.CPUUsage))))
+		lines = append(lines, fmt.Sprintf("  %s %s", labelStyle.Render("RAM:"), valueStyle.Render(ramStr)))
+		lines = append(lines, fmt.Sprintf("  %s %s", labelStyle.Render("Storage:"), valueStyle.Render(storageStr)))
+
+		if vm.Uptime > 0 {
+			uptimeStr := formatUptime(vm.Uptime)
+			lines = append(lines, fmt.Sprintf("  %s %s", labelStyle.Render("Uptime:"), valueStyle.Render(uptimeStr)))
+		}
+		lines = append(lines, "")
+
+		// Config metadata
+		lines = append(lines, headerStyle.Render("Config Metadata:"))
+
+		// NoMigrate flag
+		if vm.NoMigrate {
+			lines = append(lines, fmt.Sprintf("  %s %s", labelStyle.Render("NoMigrate:"), warnStyle.Render("true (VM should not be migrated)")))
+		} else {
+			lines = append(lines, fmt.Sprintf("  %s %s", labelStyle.Render("NoMigrate:"), goodStyle.Render("false")))
+		}
+
+		// Creation time
+		if vm.CreationTime > 0 {
+			creationStr := formatCreationTime(vm.CreationTime)
+			lines = append(lines, fmt.Sprintf("  %s %s", labelStyle.Render("Created:"), valueStyle.Render(creationStr)))
+		}
+
+		// Config metadata map
+		if len(vm.ConfigMeta) > 0 {
+			lines = append(lines, fmt.Sprintf("  %s", labelStyle.Render("Custom metadata:")))
+			// Sort keys for consistent display
+			keys := make([]string, 0, len(vm.ConfigMeta))
+			for k := range vm.ConfigMeta {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			for _, k := range keys {
+				lines = append(lines, fmt.Sprintf("    %s = %s", dimStyle.Render(k), valueStyle.Render(vm.ConfigMeta[k])))
+			}
+		}
+		lines = append(lines, "")
+	} else {
+		lines = append(lines, warnStyle.Render("VM not found in cluster data"))
+		lines = append(lines, "")
+	}
+
+	// Raw config file content
+	lines = append(lines, headerStyle.Render("Config File Content:"))
+	configContent := proxmox.GetVMConfigContent(nodeName, vmid)
+	configLines := strings.Split(configContent, "\n")
+	for _, line := range configLines {
+		if line != "" {
+			lines = append(lines, "  "+dimStyle.Render(line))
+		} else {
+			lines = append(lines, "")
+		}
+	}
+
+	// Calculate visible area
+	availableHeight := height - 6 // Title + border + blank + help
+	if availableHeight < 5 {
+		availableHeight = 5
+	}
+
+	// Apply scroll
+	startLine := scrollPos
+	if startLine > len(lines)-availableHeight {
+		startLine = len(lines) - availableHeight
+	}
+	if startLine < 0 {
+		startLine = 0
+	}
+	endLine := startLine + availableHeight
+	if endLine > len(lines) {
+		endLine = len(lines)
+	}
+
+	// Render visible lines
+	for i := startLine; i < endLine; i++ {
+		sb.WriteString(lines[i] + "\n")
+	}
+
+	// Scroll indicator
+	if len(lines) > availableHeight {
+		sb.WriteString("\n")
+		scrollInfo := fmt.Sprintf("Lines %d-%d of %d (↑/↓ to scroll)", startLine+1, endLine, len(lines))
+		sb.WriteString(dimStyle.Render(scrollInfo) + "\n")
+	}
+
+	// Help text
+	sb.WriteString("\n")
+	sb.WriteString(helpStyle.Render("↑/↓/PgUp/PgDn: Scroll │ Enter/Esc: Close"))
+
+	return sb.String()
+}
+
+// formatUptime formats seconds into a human-readable uptime string
+func formatUptime(seconds int64) string {
+	days := seconds / 86400
+	hours := (seconds % 86400) / 3600
+	minutes := (seconds % 3600) / 60
+
+	if days > 0 {
+		return fmt.Sprintf("%dd %dh %dm", days, hours, minutes)
+	}
+	if hours > 0 {
+		return fmt.Sprintf("%dh %dm", hours, minutes)
+	}
+	return fmt.Sprintf("%dm", minutes)
+}
+
+// formatCreationTime formats a unix timestamp into a readable date string
+func formatCreationTime(timestamp int64) string {
+	t := time.Unix(timestamp, 0)
+	return t.Format("2006-01-02 15:04:05")
 }
 
 // RenderMigrationCommands renders the migration commands overlay

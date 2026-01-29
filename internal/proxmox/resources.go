@@ -717,6 +717,23 @@ type VMConfigResult struct {
 
 // ParseVMConfigMeta reads the VM config file and parses comment metadata, creation time, and disk sizes
 // The config file path is: /etc/pve/nodes/{node}/qemu-server/{vmid}.conf
+// GetVMConfigContent reads the raw VM config file content
+// Returns the content as a string, or an error message if file cannot be read
+func GetVMConfigContent(node string, vmid int) string {
+	// Try qemu first
+	configPath := fmt.Sprintf("/etc/pve/nodes/%s/qemu-server/%d.conf", node, vmid)
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		// Try LXC
+		configPath = fmt.Sprintf("/etc/pve/nodes/%s/lxc/%d.conf", node, vmid)
+		content, err = os.ReadFile(configPath)
+		if err != nil {
+			return fmt.Sprintf("Error reading config file: %v", err)
+		}
+	}
+	return string(content)
+}
+
 // Comment format: #key1=value1,key2=value2,nomigrate=true,...
 // Also parses meta: line for ctime (e.g., meta: creation-qemu=9.2.0,ctime=1767793774)
 // Also sums up all disk sizes from scsi*, ide*, virtio*, sata*, efidisk*, tpmstate* entries

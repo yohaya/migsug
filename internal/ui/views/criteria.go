@@ -109,6 +109,7 @@ func RenderCriteriaFull(state CriteriaState, sourceNode string, node *proxmox.No
 		desc string
 	}{
 		{analyzer.ModeAll, "Migrate All", "Migrate all VMs from host and spread them across cluster"},
+		{analyzer.ModeBalanceCluster, "Balance Cluster", "Reduce host load to cluster avg with min moves (prefers <500G VMs)"},
 		{analyzer.ModeVCPU, "vCPU", "Migrate VMs based on the count of vCPUs to migrate"},
 		{analyzer.ModeCPUUsage, "CPU Usage (%)", "Migrate VMs based on the CPU Usage Percentage to migrate from the Host"},
 		{analyzer.ModeRAM, "RAM (GiB)", "Migrate VMs based on the amount of GiB RAM to migrate from the Host"},
@@ -214,8 +215,12 @@ func RenderCriteriaFull(state CriteriaState, sourceNode string, node *proxmox.No
 		// Show hint for Migrate All mode
 		noteStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Italic(true)
 		sb.WriteString(noteStyle.Render("  ℹ Press Enter to migrate all VMs, balanced across cluster (no target exceeds average)") + "\n")
-	} else if state.SelectedMode == analyzer.ModeSpecific && state.CursorPosition == 6 {
-		// Show hint only when Specific VMs mode is highlighted (at position 6)
+	} else if state.SelectedMode == analyzer.ModeBalanceCluster && state.CursorPosition == 1 {
+		// Show hint for Balance Cluster mode
+		noteStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Italic(true)
+		sb.WriteString(noteStyle.Render("  ℹ Press Enter to migrate VMs until host CPU/RAM reaches cluster average (min moves, prefers <500G)") + "\n")
+	} else if state.SelectedMode == analyzer.ModeSpecific && state.CursorPosition == 7 {
+		// Show hint only when Specific VMs mode is highlighted (at position 7)
 		noteStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Italic(true)
 		sb.WriteString(noteStyle.Render("  ℹ Press Enter to select specific VMs on the next screen") + "\n")
 	}

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -96,6 +97,12 @@ type Model struct {
 	// Migration commands overlay state
 	showMigrationCommands      bool
 	migrationCommandsScrollPos int
+
+	// VM details overlay state
+	showVMDetails      bool
+	vmDetailsScrollPos int
+	selectedVMID       int    // VMID of VM to show details for
+	selectedVMNode     string // Node where the VM is located
 
 	// Auto-refresh state
 	refreshCountdown int    // seconds until next refresh
@@ -274,6 +281,11 @@ func (m Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleMigrationCommandsKeys(msg)
 	}
 
+	// Handle VM details view navigation
+	if m.showVMDetails {
+		return m.handleVMDetailsKeys(msg)
+	}
+
 	// View-specific keys
 	switch m.currentView {
 	case ViewDashboard:
@@ -424,14 +436,15 @@ func (m Model) handleCriteriaKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.criteriaState.CursorPosition--
 		}
 	case "down", "j":
-		if m.criteriaState.CursorPosition < 6 { // 7 modes total (0-6)
+		if m.criteriaState.CursorPosition < 7 { // 8 modes total (0-7)
 			m.criteriaState.CursorPosition++
 		}
 	case "enter":
 		// Select mode based on cursor position
-		// Mode order: ModeAll, ModeVCPU, ModeCPUUsage, ModeRAM, ModeStorage, ModeCreationDate, ModeSpecific
+		// Mode order: ModeAll, ModeBalanceCluster, ModeVCPU, ModeCPUUsage, ModeRAM, ModeStorage, ModeCreationDate, ModeSpecific
 		modeMap := []analyzer.MigrationMode{
 			analyzer.ModeAll,
+			analyzer.ModeBalanceCluster,
 			analyzer.ModeVCPU,
 			analyzer.ModeCPUUsage,
 			analyzer.ModeRAM,
@@ -441,8 +454,8 @@ func (m Model) handleCriteriaKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.criteriaState.SelectedMode = modeMap[m.criteriaState.CursorPosition]
 
-		// ModeAll - go directly to analysis (no input needed)
-		if m.criteriaState.SelectedMode == analyzer.ModeAll {
+		// ModeAll and ModeBalanceCluster - go directly to analysis (no input needed)
+		if m.criteriaState.SelectedMode == analyzer.ModeAll || m.criteriaState.SelectedMode == analyzer.ModeBalanceCluster {
 			return m, tea.Batch(tea.ClearScreen, m.startAnalysis())
 		}
 
@@ -817,6 +830,18 @@ func (m Model) handleResultsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.criteriaState.ErrorMessage = ""
 		return m, tea.ClearScreen
 
+	case "enter":
+		// Show VM details for selected VM in suggestions table
+		if m.resultsSection == 0 && m.resultsCursorPos >= 0 && m.resultsCursorPos < len(m.result.Suggestions) {
+			sug := m.result.Suggestions[m.resultsCursorPos]
+			m.selectedVMID = sug.VMID
+			m.selectedVMNode = sug.SourceNode
+			m.showVMDetails = true
+			m.vmDetailsScrollPos = 0
+			return m, tea.ClearScreen
+		}
+		return m, nil
+
 	case "m":
 		// Show migration commands
 		m.showMigrationCommands = true
@@ -1116,6 +1141,47 @@ func (m Model) handleMigrationCommandsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) 
 	return m, nil
 }
 
+func (m Model) handleVMDetailsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Get VM config content to calculate scroll limits
+	configContent := proxmox.GetVMConfigContent(m.selectedVMNode, m.selectedVMID)
+	totalLines := len(strings.Split(configContent, "\n")) + 15 // config + header/footer
+	availableHeight := m.height - 6
+	maxScroll := totalLines - availableHeight
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+
+	switch msg.String() {
+	case "esc", "enter":
+		m.showVMDetails = false
+		m.vmDetailsScrollPos = 0
+		return m, tea.ClearScreen
+	case "up", "k":
+		if m.vmDetailsScrollPos > 0 {
+			m.vmDetailsScrollPos--
+		}
+	case "down", "j":
+		if m.vmDetailsScrollPos < maxScroll {
+			m.vmDetailsScrollPos++
+		}
+	case "pgup":
+		m.vmDetailsScrollPos -= availableHeight
+		if m.vmDetailsScrollPos < 0 {
+			m.vmDetailsScrollPos = 0
+		}
+	case "pgdown":
+		m.vmDetailsScrollPos += availableHeight
+		if m.vmDetailsScrollPos > maxScroll {
+			m.vmDetailsScrollPos = maxScroll
+		}
+	case "home":
+		m.vmDetailsScrollPos = 0
+	case "end":
+		m.vmDetailsScrollPos = maxScroll
+	}
+	return m, nil
+}
+
 // View renders the current view
 func (m Model) View() string {
 	if m.showMigrationLogics {
@@ -1124,6 +1190,23 @@ func (m Model) View() string {
 
 	if m.showMigrationCommands && m.result != nil {
 		return views.RenderMigrationCommands(m.result, m.sourceNode, m.width, m.height, m.migrationCommandsScrollPos)
+	}
+
+	if m.showVMDetails {
+		// Find the VM in the cluster
+		var vm *proxmox.VM
+		for i := range m.cluster.Nodes {
+			if m.cluster.Nodes[i].Name == m.selectedVMNode {
+				for j := range m.cluster.Nodes[i].VMs {
+					if m.cluster.Nodes[i].VMs[j].VMID == m.selectedVMID {
+						vm = &m.cluster.Nodes[i].VMs[j]
+						break
+					}
+				}
+				break
+			}
+		}
+		return views.RenderVMDetails(vm, m.selectedVMNode, m.selectedVMID, m.width, m.height, m.vmDetailsScrollPos)
 	}
 
 	if m.showHelp {
@@ -1224,6 +1307,8 @@ func (m Model) startAnalysis() tea.Cmd {
 			}
 		case analyzer.ModeAll:
 			constraints.MigrateAll = true
+		case analyzer.ModeBalanceCluster:
+			constraints.BalanceCluster = true
 		case analyzer.ModeCreationDate:
 			// Default to 75 days if not specified
 			daysStr := m.criteriaState.CreationAge
