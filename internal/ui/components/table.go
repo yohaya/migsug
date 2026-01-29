@@ -962,7 +962,7 @@ func RenderImpactTable(sourceBefore, sourceAfter analyzer.NodeState, targetsBefo
 	const (
 		colHost    = 28 // Extended to support "kv0002-123-250-123-123 (src)"
 		colVMs     = 5
-		colVCPUs   = 6
+		colVCPUs   = 12 // e.g., "1234 (123%)"
 		colCPU     = 6
 		colRAM     = 20 // e.g., "1639/2015G (81%)"
 		colStorage = 20 // e.g., "31.4T/34.6T (91%)"
@@ -1020,7 +1020,12 @@ func RenderImpactTable(sourceBefore, sourceAfter analyzer.NodeState, targetsBefo
 	renderRow := func(name string, before, after analyzer.NodeState, isSource bool) {
 		// Before values
 		beforeVMs := fmt.Sprintf("%*d", colVMs, before.VMCount)
-		beforeVCPUs := fmt.Sprintf("%*d", colVCPUs, before.VCPUs)
+		// vCPUs with percentage of host threads
+		beforeVCPUPct := 0.0
+		if before.CPUCores > 0 {
+			beforeVCPUPct = float64(before.VCPUs) / float64(before.CPUCores) * 100
+		}
+		beforeVCPUs := fmt.Sprintf("%*s", colVCPUs, fmt.Sprintf("%d (%.0f%%)", before.VCPUs, beforeVCPUPct))
 		beforeCPU := fmt.Sprintf("%*.1f", colCPU-1, before.CPUPercent) + "%"
 		beforeRAMStr := FormatUsedTotalPercent(before.RAMUsed, before.RAMTotal, before.RAMPercent)
 		beforeRAM := fmt.Sprintf("%*s", colRAM, beforeRAMStr)
@@ -1029,7 +1034,12 @@ func RenderImpactTable(sourceBefore, sourceAfter analyzer.NodeState, targetsBefo
 
 		// After values
 		afterVMs := fmt.Sprintf("%*d", colVMs, after.VMCount)
-		afterVCPUs := fmt.Sprintf("%*d", colVCPUs, after.VCPUs)
+		// vCPUs with percentage of host threads
+		afterVCPUPct := 0.0
+		if after.CPUCores > 0 {
+			afterVCPUPct = float64(after.VCPUs) / float64(after.CPUCores) * 100
+		}
+		afterVCPUs := fmt.Sprintf("%*s", colVCPUs, fmt.Sprintf("%d (%.0f%%)", after.VCPUs, afterVCPUPct))
 		afterCPU := fmt.Sprintf("%*.1f", colCPU-1, after.CPUPercent) + "%"
 		afterRAMStr := FormatUsedTotalPercent(after.RAMUsed, after.RAMTotal, after.RAMPercent)
 		afterRAM := fmt.Sprintf("%*s", colRAM, afterRAMStr)
@@ -1126,7 +1136,7 @@ func RenderImpactTableWithCursor(sourceBefore, sourceAfter analyzer.NodeState, t
 	const (
 		colHost    = 28
 		colVMs     = 5
-		colVCPUs   = 6
+		colVCPUs   = 12 // e.g., "1234 (123%)"
 		colCPU     = 6
 		colRAM     = 20 // e.g., "1639/2015G (81%)"
 		colStorage = 20 // e.g., "31.4T/34.6T (91%)"
@@ -1189,7 +1199,12 @@ func RenderImpactTableWithCursor(sourceBefore, sourceAfter analyzer.NodeState, t
 
 		// Build row content
 		beforeVMs := fmt.Sprintf("%*d", colVMs, before.VMCount)
-		beforeVCPUs := fmt.Sprintf("%*d", colVCPUs, before.VCPUs)
+		// vCPUs with percentage of host threads
+		beforeVCPUPct := 0.0
+		if before.CPUCores > 0 {
+			beforeVCPUPct = float64(before.VCPUs) / float64(before.CPUCores) * 100
+		}
+		beforeVCPUs := fmt.Sprintf("%*s", colVCPUs, fmt.Sprintf("%d (%.0f%%)", before.VCPUs, beforeVCPUPct))
 		beforeCPU := fmt.Sprintf("%*.1f", colCPU-1, before.CPUPercent) + "%"
 		beforeRAMStr := FormatUsedTotalPercent(before.RAMUsed, before.RAMTotal, before.RAMPercent)
 		beforeRAM := fmt.Sprintf("%*s", colRAM, beforeRAMStr)
@@ -1197,7 +1212,12 @@ func RenderImpactTableWithCursor(sourceBefore, sourceAfter analyzer.NodeState, t
 		beforeStorage := fmt.Sprintf("%*s", colStorage, beforeStorageStr)
 
 		afterVMs := fmt.Sprintf("%*d", colVMs, after.VMCount)
-		afterVCPUs := fmt.Sprintf("%*d", colVCPUs, after.VCPUs)
+		// vCPUs with percentage of host threads
+		afterVCPUPct := 0.0
+		if after.CPUCores > 0 {
+			afterVCPUPct = float64(after.VCPUs) / float64(after.CPUCores) * 100
+		}
+		afterVCPUs := fmt.Sprintf("%*s", colVCPUs, fmt.Sprintf("%d (%.0f%%)", after.VCPUs, afterVCPUPct))
 		afterCPU := fmt.Sprintf("%*.1f", colCPU-1, after.CPUPercent) + "%"
 		afterRAMStr := FormatUsedTotalPercent(after.RAMUsed, after.RAMTotal, after.RAMPercent)
 		afterRAM := fmt.Sprintf("%*s", colRAM, afterRAMStr)

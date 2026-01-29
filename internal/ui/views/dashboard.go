@@ -298,7 +298,12 @@ func renderEnhancedClusterSummary(cluster *proxmox.Cluster, width int) string {
 	sb.WriteString(labelStyle.Render("CPU: ") + lipgloss.NewStyle().Foreground(lipgloss.Color(cpuColor)).Render(cpuStr))
 	sb.WriteString(strings.Repeat(" ", col2Width-len(col2Content)))
 
-	sb.WriteString(labelStyle.Render("vCPUs: ") + valueStyle.Render(fmt.Sprintf("%d", cluster.TotalVCPUs)))
+	// vCPUs with cluster-wide percentage (vCPUs / total threads)
+	vcpuPct := 0.0
+	if cluster.TotalCPUs > 0 {
+		vcpuPct = float64(cluster.TotalVCPUs) / float64(cluster.TotalCPUs) * 100
+	}
+	sb.WriteString(labelStyle.Render("vCPUs: ") + valueStyle.Render(fmt.Sprintf("%d/%d", cluster.TotalVCPUs, cluster.TotalCPUs)) + " " + valueStyle.Render(fmt.Sprintf("(%.0f%%)", vcpuPct)))
 	sb.WriteString("\n")
 
 	// Row 2: VMs, RAM, Storage
