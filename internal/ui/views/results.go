@@ -842,10 +842,6 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 
 		// Determine if reasoning panel is focused (has scroll indicator)
 		reasoningFocused := focusedSection == 1
-		focusIndicator := ""
-		if reasoningFocused {
-			focusIndicator = lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Render("▶ ")
-		}
 
 		// Clamp scroll position
 		maxReasoningScroll := len(reasoningLines) - availableReasoningLines
@@ -865,19 +861,61 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 			endReasoningPos = len(reasoningLines)
 		}
 
-		for i := reasoningScrollPos; i < endReasoningPos; i++ {
-			prefix := "  "
-			if i == reasoningScrollPos && focusIndicator != "" {
-				prefix = focusIndicator
+		// Calculate scrollbar dimensions for reasoning panel
+		needsReasoningScrollbar := len(reasoningLines) > availableReasoningLines
+		visibleCount := endReasoningPos - reasoningScrollPos
+		var thumbPos, thumbSize int
+		if needsReasoningScrollbar && visibleCount > 0 {
+			// Calculate thumb size (minimum 1)
+			thumbSize = (visibleCount * visibleCount) / len(reasoningLines)
+			if thumbSize < 1 {
+				thumbSize = 1
 			}
-			sb.WriteString(prefix + reasoningLines[i] + "\n")
+			if thumbSize > visibleCount {
+				thumbSize = visibleCount
+			}
+			// Calculate thumb position
+			if maxReasoningScroll > 0 {
+				thumbPos = (reasoningScrollPos * (visibleCount - thumbSize)) / maxReasoningScroll
+			}
+		}
+
+		// Scrollbar styles
+		reasoningScrollTrack := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+		reasoningScrollThumb := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+
+		// Render visible reasoning lines with scrollbar
+		for i := reasoningScrollPos; i < endReasoningPos; i++ {
+			rowIdx := i - reasoningScrollPos
+			line := reasoningLines[i]
+
+			// Pad line to consistent width for alignment
+			lineWidth := 80 // Approximate width for reasoning panel
+			visibleLen := len(line)
+			if visibleLen < lineWidth {
+				line = line + strings.Repeat(" ", lineWidth-visibleLen)
+			}
+
+			// Add scrollbar on the right side
+			if needsReasoningScrollbar {
+				if rowIdx >= thumbPos && rowIdx < thumbPos+thumbSize {
+					sb.WriteString(line + " " + reasoningScrollThumb.Render("█") + "\n")
+				} else {
+					sb.WriteString(line + " " + reasoningScrollTrack.Render("│") + "\n")
+				}
+			} else {
+				sb.WriteString(line + "\n")
+			}
 			fixedLines++
 		}
 
 		// Show reasoning scroll info if there are more lines
-		if len(reasoningLines) > availableReasoningLines {
+		if needsReasoningScrollbar {
 			scrollInfo := fmt.Sprintf("Showing %d-%d of %d lines", reasoningScrollPos+1, endReasoningPos, len(reasoningLines))
-			sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("  "+scrollInfo) + "\n")
+			if reasoningFocused {
+				scrollInfo = "▶ " + scrollInfo + " (Tab to switch)"
+			}
+			sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(scrollInfo) + "\n")
 			fixedLines++
 		}
 	}
@@ -885,7 +923,8 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 	// Help text with Tab instruction
 	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	tabHint := ""
-	if len(reasoningLines) > availableReasoningLines {
+	hasScrollableReasoning := len(reasoningLines) > 0 && len(reasoningLines) > availableReasoningLines
+	if hasScrollableReasoning {
 		tabHint = "Tab: Switch focus │ "
 	}
 	sb.WriteString("\n" + helpStyle.Render("↑/↓/PgUp/PgDn/Home/End: Navigate  "+tabHint+"Esc: Back  q: Quit"))
