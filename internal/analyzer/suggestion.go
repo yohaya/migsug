@@ -57,6 +57,7 @@ type ScoreBreakdown struct {
 	UtilizationScore float64 // Score based on resource utilization (lower util = higher score)
 	BalanceScore     float64 // Score based on resource balance (more balanced = higher score)
 	HeadroomScore    float64 // Score based on headroom below cluster average (MigrateAll only)
+	CPUPriorityScore float64 // Score based on CPU generation (newer CPU = higher score, 0-100 normalized)
 
 	// Weights used
 	UtilizationWeight float64

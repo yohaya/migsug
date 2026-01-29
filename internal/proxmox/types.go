@@ -77,6 +77,11 @@ type VM struct {
 	NoMigrate    bool              // If true, VM should not be migrated (from nomigrate=true in config)
 	ConfigMeta   map[string]string // All key=value pairs from config comment line
 	CreationTime int64             // Unix timestamp of VM creation (from meta: ctime= in config)
+
+	// Migration constraints parsed from config comment line
+	HostCPUModel string   // Required CPU model substring (from hostcpumodel=value) - VM can only run on hosts with this in CPU model
+	WithVM       []string // VM names that must be on the same host (from withvm=name1,name2)
+	WithoutVM    []string // VM names that must NOT be on the same host (from without=name1,name2)
 }
 
 // Cluster represents the entire Proxmox cluster

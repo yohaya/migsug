@@ -942,6 +942,33 @@ func fetchVMConfigMeta(vmList []VM, progress ProgressCallback) {
 			if noMigrate, ok := result.result.Meta["nomigrate"]; ok {
 				vmList[result.vmIdx].NoMigrate = strings.ToLower(noMigrate) == "true"
 			}
+			// Parse migration constraints
+			// hostcpumodel=6150 -> VM can only run on hosts with "6150" in CPU model
+			if hostCPU, ok := result.result.Meta["hostcpumodel"]; ok {
+				vmList[result.vmIdx].HostCPUModel = strings.TrimSpace(hostCPU)
+			}
+			// withvm=il-fs -> VM must be on same host as VM named "il-fs"
+			// Can be comma-separated for multiple VMs: withvm=vm1,vm2
+			if withVM, ok := result.result.Meta["withvm"]; ok {
+				parts := strings.Split(withVM, ",")
+				for _, part := range parts {
+					name := strings.TrimSpace(part)
+					if name != "" {
+						vmList[result.vmIdx].WithVM = append(vmList[result.vmIdx].WithVM, name)
+					}
+				}
+			}
+			// without=il-kam01 -> VM must NOT be on same host as VM named "il-kam01"
+			// Can be comma-separated for multiple VMs: without=vm1,vm2
+			if withoutVM, ok := result.result.Meta["without"]; ok {
+				parts := strings.Split(withoutVM, ",")
+				for _, part := range parts {
+					name := strings.TrimSpace(part)
+					if name != "" {
+						vmList[result.vmIdx].WithoutVM = append(vmList[result.vmIdx].WithoutVM, name)
+					}
+				}
+			}
 		}
 	}
 }

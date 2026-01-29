@@ -1500,6 +1500,17 @@ func RenderVMDetails(vm *proxmox.VM, nodeName string, vmid int, width, height, s
 			lines = append(lines, fmt.Sprintf("  %s %s", labelStyle.Render("NoMigrate:"), goodStyle.Render("false")))
 		}
 
+		// VM Placement Constraints
+		if vm.HostCPUModel != "" {
+			lines = append(lines, fmt.Sprintf("  %s %s", labelStyle.Render("HostCPUModel:"), warnStyle.Render(vm.HostCPUModel+" (can only run on hosts with this in CPU model)")))
+		}
+		if len(vm.WithVM) > 0 {
+			lines = append(lines, fmt.Sprintf("  %s %s", labelStyle.Render("WithVM:"), warnStyle.Render(strings.Join(vm.WithVM, ", ")+" (must be on same host)")))
+		}
+		if len(vm.WithoutVM) > 0 {
+			lines = append(lines, fmt.Sprintf("  %s %s", labelStyle.Render("WithoutVM:"), warnStyle.Render(strings.Join(vm.WithoutVM, ", ")+" (cannot be on same host)")))
+		}
+
 		// Creation time
 		if vm.CreationTime > 0 {
 			creationStr := formatCreationTime(vm.CreationTime)
