@@ -1033,7 +1033,7 @@ func (m Model) handleHostDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case "esc", "q":
+	case "esc":
 		m.currentView = ViewResults
 		m.hostDetailScrollPos = 0
 		m.hostDetailCursorPos = 0
