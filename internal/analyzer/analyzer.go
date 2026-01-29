@@ -850,14 +850,15 @@ func getSelectionReason(constraints MigrationConstraints) string {
 // FindBestTarget finds the best target node for a VM and returns detailed reasoning
 func FindBestTarget(vm proxmox.VM, targetStates map[string]NodeState, vmsPerTarget map[string]int, constraints MigrationConstraints, cluster *proxmox.Cluster, targetNodesMap map[string]*proxmox.Node, plannedMigrations map[string]string) (string, float64, string, *MigrationDetails) {
 	type candidate struct {
-		name         string
-		score        float64
-		reason       string
-		stateBefore  NodeState
-		stateAfter   NodeState
-		breakdown    ScoreBreakdown
-		rejected     bool
-		rejectReason string
+		name           string
+		score          float64
+		reason         string
+		stateBefore    NodeState
+		stateAfter     NodeState
+		breakdown      ScoreBreakdown
+		rejected       bool
+		rejectReason   string
+		rawCPUPriority int // Absolute CPU priority (higher = newer, e.g., 500 for 4th gen Scalable)
 	}
 
 	var allCandidates []candidate
@@ -947,24 +948,28 @@ func FindBestTarget(vm proxmox.VM, targetStates map[string]NodeState, vmsPerTarg
 		utilizationScore := 100 - newState.GetUtilizationScore()
 		balanceScore := calculateBalanceScoreDetailed(newState)
 
-		// Get CPU priority score (normalized 0-100, higher = newer CPU)
+		// Get CPU priority - both raw (for sorting) and normalized (for display)
 		cpuPriorityScore := 0.0
+		rawCPUPriority := 100 // Default priority
 		if targetNode, ok := targetNodesMap[name]; ok {
+			rawCPUPriority = GetCPURawPriority(targetNode.CPUModel)
 			cpuPriorityInfo := GetClusterCPUPriorities(cluster)
 			cpuPriorityScore = GetCPUPriorityScore(targetNode.CPUModel, cpuPriorityInfo)
 		}
+		cand.rawCPUPriority = rawCPUPriority
 
-		// CPU priority is the PRIMARY factor - we strongly prefer newer CPUs
-		// cpuPriorityScore is 0-100, scaled to be the main factor
+		// CPU priority is now the PRIMARY factor - we strongly prefer newer CPUs
+		// Use raw priority (200-600 scale) directly for massive differentiation
+		// E.g., 4th gen Scalable (500) vs 1st gen (200) = 300 point difference
 		// utilization and balance are secondary factors (tiebreakers within same CPU tier)
-		totalScore := cpuPriorityScore*10 + utilizationScore*0.5 + balanceScore*0.3
+		totalScore := float64(rawCPUPriority) + utilizationScore*0.1 + balanceScore*0.1
 
 		cand.breakdown = ScoreBreakdown{
 			UtilizationScore:  utilizationScore,
 			BalanceScore:      balanceScore,
 			CPUPriorityScore:  cpuPriorityScore,
-			UtilizationWeight: 0.6,
-			BalanceWeight:     0.3,
+			UtilizationWeight: 0.1,
+			BalanceWeight:     0.1,
 			TotalScore:        totalScore,
 		}
 		cand.score = cand.breakdown.TotalScore
@@ -1002,11 +1007,13 @@ func FindBestTarget(vm proxmox.VM, targetStates map[string]NodeState, vmsPerTarg
 		return "", 0, "No suitable target found", details
 	}
 
-	// Sort candidates: prefer newer CPUs first (CPU priority score), then by overall score
+	// Sort candidates: prefer newer CPUs first (raw CPU priority), then by overall score
 	sort.Slice(validCandidates, func(i, j int) bool {
-		// First, strongly prefer newer CPUs (higher CPU priority score)
-		cpuPriorityDiff := validCandidates[i].breakdown.CPUPriorityScore - validCandidates[j].breakdown.CPUPriorityScore
-		if cpuPriorityDiff > 5 || cpuPriorityDiff < -5 {
+		// First, strongly prefer newer CPUs (higher raw CPU priority)
+		// Raw priority values: 1st gen ~200, 2nd gen ~300, 3rd gen ~400, 4th gen ~500, 5th gen ~600
+		// Threshold of 50 catches different generations
+		cpuPriorityDiff := validCandidates[i].rawCPUPriority - validCandidates[j].rawCPUPriority
+		if cpuPriorityDiff > 50 || cpuPriorityDiff < -50 {
 			// Significant CPU generation difference - prefer newer
 			return cpuPriorityDiff > 0
 		}
@@ -1425,15 +1432,16 @@ func GenerateSuggestionsBalanced(vms []proxmox.VM, targets []proxmox.Node, clust
 // Unlike regular mode, this ALWAYS returns a valid target (never "NONE").
 func findBestTargetForMigrateAll(vm proxmox.VM, targetStates map[string]NodeState, vmsPerTarget map[string]int, averages ClusterAverages, constraints MigrationConstraints, cluster *proxmox.Cluster, targetNodesMap map[string]*proxmox.Node, plannedMigrations map[string]string) (string, float64, string, *MigrationDetails) {
 	type candidate struct {
-		name         string
-		score        float64
-		reason       string
-		belowAverage bool
-		stateBefore  NodeState
-		stateAfter   NodeState
-		breakdown    ScoreBreakdown
-		rejected     bool
-		rejectReason string
+		name           string
+		score          float64
+		reason         string
+		belowAverage   bool
+		stateBefore    NodeState
+		stateAfter     NodeState
+		breakdown      ScoreBreakdown
+		rejected       bool
+		rejectReason   string
+		rawCPUPriority int // Absolute CPU priority (higher = newer, e.g., 500 for 4th gen Scalable)
 	}
 
 	var allCandidates []candidate
@@ -1531,18 +1539,21 @@ func findBestTargetForMigrateAll(vm proxmox.VM, targetStates map[string]NodeStat
 		headroomScore := cpuHeadroom*0.3 + ramHeadroom*0.4 + vcpuHeadroom*0.1
 		balanceScore := calculateBalanceScoreDetailed(newState)
 
-		// Get CPU priority score (normalized 0-100, higher = newer CPU)
+		// Get CPU priority - both raw (for sorting) and normalized (for display)
 		cpuPriorityScore := 0.0
+		rawCPUPriority := 100 // Default priority
 		if targetNode, ok := targetNodesMap[name]; ok {
+			rawCPUPriority = GetCPURawPriority(targetNode.CPUModel)
 			cpuPriorityInfo := GetClusterCPUPriorities(cluster)
 			cpuPriorityScore = GetCPUPriorityScore(targetNode.CPUModel, cpuPriorityInfo)
 		}
+		cand.rawCPUPriority = rawCPUPriority
 
 		// CPU priority is now the PRIMARY factor - we strongly prefer newer CPUs
-		// The score is structured so CPU priority dominates when hosts have capacity
-		// cpuPriorityScore is 0-100, we scale it to be the main factor
+		// Use raw priority (200-600 scale) directly for massive differentiation
+		// E.g., 4th gen Scalable (500) vs 1st gen (200) = 300 point difference
 		// headroom and balance are secondary factors (tiebreakers within same CPU tier)
-		totalScore := cpuPriorityScore*10 + headroomScore*0.3 + balanceScore*0.2
+		totalScore := float64(rawCPUPriority) + headroomScore*0.1 + balanceScore*0.1
 
 		cand.breakdown = ScoreBreakdown{
 			HeadroomScore:     headroomScore,
@@ -1590,16 +1601,18 @@ func findBestTargetForMigrateAll(vm proxmox.VM, targetStates map[string]NodeStat
 		return "NONE", 0, "No target has capacity for this VM", details
 	}
 
-	// Sort candidates: prefer newer CPUs first (CPU priority score), then balance
+	// Sort candidates: prefer newer CPUs first (raw CPU priority), then balance
 	// We use CPU priority as the primary sort key to ensure newer hardware is filled first
 	sort.Slice(validCandidates, func(i, j int) bool {
-		// First, strongly prefer newer CPUs (higher CPU priority score)
-		cpuPriorityDiff := validCandidates[i].breakdown.CPUPriorityScore - validCandidates[j].breakdown.CPUPriorityScore
-		if cpuPriorityDiff > 5 || cpuPriorityDiff < -5 {
+		// First, strongly prefer newer CPUs (higher raw CPU priority)
+		// Raw priority values: 1st gen ~200, 2nd gen ~300, 3rd gen ~400, 4th gen ~500, 5th gen ~600
+		// Threshold of 50 catches different generations
+		cpuPriorityDiff := validCandidates[i].rawCPUPriority - validCandidates[j].rawCPUPriority
+		if cpuPriorityDiff > 50 || cpuPriorityDiff < -50 {
 			// Significant CPU generation difference - prefer newer
 			return cpuPriorityDiff > 0
 		}
-		// Within same CPU tier (within 5 points), prefer below-average hosts
+		// Within same CPU tier (within 50 priority points), prefer below-average hosts
 		if validCandidates[i].belowAverage != validCandidates[j].belowAverage {
 			return validCandidates[i].belowAverage // below-average first
 		}

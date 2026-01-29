@@ -333,6 +333,13 @@ func GetCPUPriorityScore(cpuModel string, clusterInfo CPUPriorityInfo) float64 {
 	return score
 }
 
+// GetCPURawPriority returns the raw absolute priority value for a CPU model
+// Higher values = newer/better CPU. Use this for direct comparisons.
+// Typical values: E5-v4 ~140, 1st gen Scalable ~200, 4th gen Scalable ~500
+func GetCPURawPriority(cpuModel string) int {
+	return GetCPUPriority(cpuModel)
+}
+
 // GetCPUGenerationDescription returns a human-readable description of CPU generation
 func GetCPUGenerationDescription(info CPUPriority) string {
 	if info.ReleaseYear > 0 {
