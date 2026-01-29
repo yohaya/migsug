@@ -753,7 +753,15 @@ func (m Model) handleResultsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case "enter":
-		if m.resultsSection == 1 && len(m.impactHostNames) > 0 {
+		if m.resultsSection == 0 && m.resultsCursorPos >= 0 && m.resultsCursorPos < len(m.result.Suggestions) {
+			// Show VM details for selected VM in suggestions table
+			sug := m.result.Suggestions[m.resultsCursorPos]
+			m.selectedVMID = sug.VMID
+			m.selectedVMNode = sug.SourceNode
+			m.showVMDetails = true
+			m.vmDetailsScrollPos = 0
+			return m, tea.ClearScreen
+		} else if m.resultsSection == 1 && len(m.impactHostNames) > 0 {
 			// Show host detail view
 			m.selectedHostName = m.impactHostNames[m.impactCursorPos]
 			m.currentView = ViewHostDetail
@@ -829,18 +837,6 @@ func (m Model) handleResultsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.criteriaState.InputFocused = false
 		m.criteriaState.ErrorMessage = ""
 		return m, tea.ClearScreen
-
-	case "enter":
-		// Show VM details for selected VM in suggestions table
-		if m.resultsSection == 0 && m.resultsCursorPos >= 0 && m.resultsCursorPos < len(m.result.Suggestions) {
-			sug := m.result.Suggestions[m.resultsCursorPos]
-			m.selectedVMID = sug.VMID
-			m.selectedVMNode = sug.SourceNode
-			m.showVMDetails = true
-			m.vmDetailsScrollPos = 0
-			return m, tea.ClearScreen
-		}
-		return m, nil
 
 	case "m":
 		// Show migration commands
