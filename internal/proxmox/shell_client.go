@@ -125,6 +125,11 @@ func (c *ShellClient) GetNodeStatus(node string) (*NodeStatus, error) {
 		}
 	}
 
+	// Extract PVE version (format: "pve-manager/8.1.2/...")
+	if pveversion, ok := rawStatus["pveversion"].(string); ok {
+		status.PVEVersion = pveversion
+	}
+
 	return status, nil
 }
 

@@ -509,6 +509,8 @@ func fetchNodeDetails(client ProxmoxClient, nodeMap map[string]*Node, progress P
 				// Populate swap information
 				node.SwapTotal = result.status.Swap.Total
 				node.SwapUsed = result.status.Swap.Used
+				// Populate PVE version
+				node.PVEVersion = result.status.PVEVersion
 			}
 		}
 	}

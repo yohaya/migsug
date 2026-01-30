@@ -124,6 +124,7 @@ type NodeStatus struct {
 	Swap        Swap      `json:"swap"`
 	RootFS      RootFS    `json:"rootfs"`
 	LoadAverage []float64 `json:"loadavg"`
+	PVEVersion  string    `json:"pveversion"` // Proxmox VE version (e.g., "pve-manager/8.1.2/...")
 }
 
 // Swap contains swap information

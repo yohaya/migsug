@@ -143,8 +143,9 @@ func RenderNodeTableWideWithScroll(nodes []proxmox.Node, selectedIdx int, width 
 	colRAM := 22    // "RAM [7] ▼" = 9 chars, but data is "1632/2048G (80%)"
 	colDisk := 20   // "Disk [8] ▼" = 10 chars, but data is "165/205T (80%)"
 	colSwap := 4    // "Swap" (no sort number)
+	colKVM := 7     // "KVM" (no sort number), values like "8.1.2"
 	// CPU Model gets remaining width - no artificial limit
-	colCPUModel := width - colName - colStatus - colVMs - colVCPUs - colCPUPct - colLA - colRAM - colDisk - colSwap - 12
+	colCPUModel := width - colName - colStatus - colVMs - colVCPUs - colCPUPct - colLA - colRAM - colDisk - colSwap - colKVM - 13
 	if colCPUModel < 20 {
 		colCPUModel = 20
 	}
@@ -203,7 +204,7 @@ func RenderNodeTableWideWithScroll(nodes []proxmox.Node, selectedIdx int, width 
 	}
 
 	// Main header with sort numbers [1-8] and sort arrows (aligned to match row format)
-	header1 := fmt.Sprintf("  %-*s %-*s %*s %*s %*s %*s %*s %*s %-*s %s",
+	header1 := fmt.Sprintf("  %-*s %-*s %*s %*s %*s %*s %*s %*s %-*s %-*s %s",
 		colName, "Host [1]"+getSortArrow(0),
 		colStatus, "Status [2]"+getSortArrow(1),
 		colVMs, "VMs [3]"+getSortArrow(2),
@@ -213,6 +214,7 @@ func RenderNodeTableWideWithScroll(nodes []proxmox.Node, selectedIdx int, width 
 		colRAM, "RAM [7]"+getSortArrow(6),
 		colDisk, "Disk [8]"+getSortArrow(7),
 		colSwap, "Swap",
+		colKVM, "KVM",
 		"CPU Model")
 	if needsScrollbar {
 		sb.WriteString(headerStyle.Render(header1) + "  \n")
@@ -279,11 +281,14 @@ func RenderNodeTableWideWithScroll(nodes []proxmox.Node, selectedIdx int, width 
 			swapStr = "Yes"
 		}
 
+		// KVM/PVE version (extract short version from "pve-manager/8.1.2/...")
+		kvmStr := extractPVEVersion(node.PVEVersion)
+
 		// Get status with indicators (e.g., "online (OP)")
 		statusWithIndicators := node.GetStatusWithIndicators()
 
 		// Build the row content (plain text for width calculation)
-		rowContent := fmt.Sprintf("%-*s %-*s %*d %*s %*s %*s %*s %*s %-*s %s",
+		rowContent := fmt.Sprintf("%-*s %-*s %*d %*s %*s %*s %*s %*s %-*s %-*s %s",
 			colName, truncate(node.Name, colName),
 			colStatus, statusWithIndicators,
 			colVMs, len(node.VMs),
@@ -293,6 +298,7 @@ func RenderNodeTableWideWithScroll(nodes []proxmox.Node, selectedIdx int, width 
 			colRAM, ramStr,
 			colDisk, diskStr,
 			colSwap, swapStr,
+			colKVM, kvmStr,
 			cpuInfo) // Don't truncate CPU info
 
 		// Pad row to full width for consistent highlighting
@@ -382,6 +388,9 @@ func RenderNodeTableWideWithScroll(nodes []proxmox.Node, selectedIdx int, width 
 			}
 			swapStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(swapColor))
 			coloredRow.WriteString(swapStyle.Render(fmt.Sprintf("%-*s", colSwap, swapStr)) + " ")
+
+			// KVM version (dimmed)
+			coloredRow.WriteString(dimStyle.Render(fmt.Sprintf("%-*s", colKVM, kvmStr)) + " ")
 
 			// CPU model (dimmed) - don't truncate unless terminal is too narrow
 			coloredRow.WriteString(dimStyle.Render(cpuInfo))
@@ -565,6 +574,20 @@ func shortenCPUModel(model string) string {
 		result = strings.ReplaceAll(result, r.old, r.new)
 	}
 	return strings.TrimSpace(result)
+}
+
+// extractPVEVersion extracts the short version from PVE version string
+// Input format: "pve-manager/8.1.2/1234567890abcdef" -> Output: "8.1.2"
+func extractPVEVersion(pveVersion string) string {
+	if pveVersion == "" {
+		return "-"
+	}
+	// Split by "/" and get the second part (version number)
+	parts := strings.Split(pveVersion, "/")
+	if len(parts) >= 2 {
+		return parts[1]
+	}
+	return pveVersion
 }
 
 // getUsageColor returns color based on usage percentage
