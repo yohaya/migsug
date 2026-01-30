@@ -435,7 +435,7 @@ type VMListItem struct {
 	VCPUs     int
 	RAM       int64
 	Storage   int64
-	Direction string // "←" for out, "→" for in, "" for staying
+	Direction string // "←" for out, "→" for in, "✗" for cannot migrate, "" for staying
 	Target    string // Target/Source node for migration
 
 	// Host info for CPU calculations
@@ -446,6 +446,9 @@ type VMListItem struct {
 
 	// Migration details (only set for migrating VMs)
 	Details *analyzer.MigrationDetails
+
+	// No-migrate reason (set if VM cannot be migrated)
+	NoMigrateReason string
 }
 
 // RenderHostDetailBrowseable renders a browseable list of all VMs on a host
@@ -524,6 +527,12 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 		migratingVMs[sug.VMID] = sug
 	}
 
+	// Create a map of unmigrateable VMs for quick lookup
+	unmigrateableVMs := make(map[int]string)
+	for _, uvm := range result.UnmigrateableVMs {
+		unmigrateableVMs[uvm.VMID] = uvm.Reason
+	}
+
 	// Get source node info for CPU model
 	sourceNodeObj := proxmox.GetNodeByName(cluster, sourceNodeName)
 	sourceModel := ""
@@ -560,6 +569,10 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 					if targetNodeObj := proxmox.GetNodeByName(cluster, sug.TargetNode); targetNodeObj != nil {
 						item.TargetModel = targetNodeObj.CPUModel
 					}
+				} else if reason, ok := unmigrateableVMs[vm.VMID]; ok {
+					// VM cannot be migrated - show reason
+					item.Direction = "✗"
+					item.NoMigrateReason = reason
 				}
 
 				vmList = append(vmList, item)
@@ -731,6 +744,8 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 			dirStr = arrowOutStyle.Render("← ")
 		} else if vm.Direction == "→" {
 			dirStr = arrowInStyle.Render("→ ")
+		} else if vm.Direction == "✗" {
+			dirStr = lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Render("✗ ") // Yellow/warning
 		}
 
 		// Migration target/source info
@@ -830,11 +845,14 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(scrollInfo) + "\n")
 	}
 
-	// Show migration reasoning panel if selected VM is migrating
+	// Show migration reasoning panel if selected VM is migrating or cannot be migrated
 	var reasoningLines []string
 	if cursorPos >= 0 && cursorPos < len(vmList) {
 		selectedVM := vmList[cursorPos]
-		if selectedVM.Details != nil && selectedVM.Direction != "" {
+		if selectedVM.NoMigrateReason != "" {
+			// Show reason why VM cannot be migrated
+			reasoningLines = renderNoMigrateReasonLines(selectedVM)
+		} else if selectedVM.Details != nil && selectedVM.Direction != "" {
 			reasoningLines = renderMigrationReasoningLines(selectedVM, hostName)
 		}
 	}
@@ -1128,6 +1146,70 @@ func renderMigrationReasoningLines(vm VMListItem, currentHost string) []string {
 		for _, c := range details.ConstraintsApplied {
 			lines = append(lines, "  "+valueStyle.Render("• "+c))
 		}
+	}
+
+	return lines
+}
+
+// renderNoMigrateReasonLines returns reasoning lines for a VM that cannot be migrated
+func renderNoMigrateReasonLines(vm VMListItem) []string {
+	var lines []string
+
+	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	valueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
+	warnStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+
+	// VM cannot be migrated header
+	lines = append(lines, warnStyle.Render("⚠ This VM Cannot Be Migrated"))
+	lines = append(lines, "")
+
+	// Main reason
+	lines = append(lines, labelStyle.Render("Reason: ")+warnStyle.Render(vm.NoMigrateReason))
+	lines = append(lines, "")
+
+	// VM info summary
+	lines = append(lines, labelStyle.Render("VM Information:"))
+	lines = append(lines, "  "+labelStyle.Render("VMID:    ")+valueStyle.Render(fmt.Sprintf("%d", vm.VMID)))
+	lines = append(lines, "  "+labelStyle.Render("Name:    ")+valueStyle.Render(vm.Name))
+	lines = append(lines, "  "+labelStyle.Render("Status:  ")+valueStyle.Render(vm.Status))
+	lines = append(lines, "  "+labelStyle.Render("vCPUs:   ")+valueStyle.Render(fmt.Sprintf("%d", vm.VCPUs)))
+	lines = append(lines, "  "+labelStyle.Render("RAM:     ")+valueStyle.Render(components.FormatRAMShort(vm.RAM)))
+	lines = append(lines, "  "+labelStyle.Render("Storage: ")+valueStyle.Render(components.FormatStorageG(vm.Storage)))
+	lines = append(lines, "")
+
+	// Explanation based on reason type
+	if strings.Contains(strings.ToLower(vm.NoMigrateReason), "nomigrate") {
+		lines = append(lines, labelStyle.Render("Explanation:"))
+		lines = append(lines, "  "+dimStyle.Render("This VM has 'nomigrate=true' set in its config comment."))
+		lines = append(lines, "  "+dimStyle.Render("This flag indicates the VM should not be automatically"))
+		lines = append(lines, "  "+dimStyle.Render("migrated from this host."))
+		lines = append(lines, "")
+		lines = append(lines, labelStyle.Render("To allow migration:"))
+		lines = append(lines, "  "+dimStyle.Render("Edit the VM config and remove 'nomigrate=true' from"))
+		lines = append(lines, "  "+dimStyle.Render("the comment line, or set it to 'nomigrate=false'."))
+	} else if strings.Contains(strings.ToLower(vm.NoMigrateReason), "no suitable target") {
+		lines = append(lines, labelStyle.Render("Explanation:"))
+		lines = append(lines, "  "+dimStyle.Render("No target host in the cluster has sufficient resources"))
+		lines = append(lines, "  "+dimStyle.Render("or meets the VM's placement constraints."))
+		lines = append(lines, "")
+		lines = append(lines, labelStyle.Render("Possible causes:"))
+		lines = append(lines, "  "+dimStyle.Render("• All target hosts are at capacity"))
+		lines = append(lines, "  "+dimStyle.Render("• VM has hostcpumodel constraint that no host satisfies"))
+		lines = append(lines, "  "+dimStyle.Render("• VM has withvm constraint that cannot be satisfied"))
+		lines = append(lines, "  "+dimStyle.Render("• VM has withoutvm constraint blocking all targets"))
+	} else if strings.Contains(strings.ToLower(vm.NoMigrateReason), "hostcpumodel") {
+		lines = append(lines, labelStyle.Render("Explanation:"))
+		lines = append(lines, "  "+dimStyle.Render("This VM requires a specific CPU model that no available"))
+		lines = append(lines, "  "+dimStyle.Render("target host has."))
+	} else if strings.Contains(strings.ToLower(vm.NoMigrateReason), "withvm") {
+		lines = append(lines, labelStyle.Render("Explanation:"))
+		lines = append(lines, "  "+dimStyle.Render("This VM must be placed on the same host as another VM,"))
+		lines = append(lines, "  "+dimStyle.Render("but that constraint cannot be satisfied."))
+	} else if strings.Contains(strings.ToLower(vm.NoMigrateReason), "without") {
+		lines = append(lines, labelStyle.Render("Explanation:"))
+		lines = append(lines, "  "+dimStyle.Render("This VM cannot be on the same host as certain other VMs,"))
+		lines = append(lines, "  "+dimStyle.Render("and no valid target is available."))
 	}
 
 	return lines
