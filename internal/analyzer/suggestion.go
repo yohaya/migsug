@@ -87,13 +87,25 @@ type AlternativeTarget struct {
 	StorageAfter    float64
 }
 
+// UnmigrateableVM represents a VM that could not be migrated and the reason why
+type UnmigrateableVM struct {
+	VMID    int
+	VMName  string
+	Status  string // running or stopped
+	VCPUs   int
+	RAM     int64
+	Storage int64
+	Reason  string // Why the VM cannot be migrated
+}
+
 // AnalysisResult contains the complete analysis output
 type AnalysisResult struct {
-	Suggestions   []MigrationSuggestion
-	SourceBefore  NodeState
-	SourceAfter   NodeState
-	TargetsBefore map[string]NodeState
-	TargetsAfter  map[string]NodeState
+	Suggestions       []MigrationSuggestion
+	UnmigrateableVMs  []UnmigrateableVM // VMs that could not be migrated
+	SourceBefore      NodeState
+	SourceAfter       NodeState
+	TargetsBefore     map[string]NodeState
+	TargetsAfter      map[string]NodeState
 
 	// Summary
 	TotalVMs        int

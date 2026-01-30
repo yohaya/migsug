@@ -30,6 +30,30 @@ func Analyze(cluster *proxmox.Cluster, constraints MigrationConstraints) (*Analy
 		return nil, fmt.Errorf("no available target nodes for migration")
 	}
 
+	// Track VMs that cannot be migrated (for MigrateAll mode)
+	var unmigrateableVMs []UnmigrateableVM
+
+	// For MigrateAll mode, track VMs filtered out due to NoMigrate=true
+	if constraints.MigrateAll {
+		for _, vm := range sourceNode.VMs {
+			if vm.NoMigrate {
+				storage := vm.MaxDisk
+				if storage == 0 {
+					storage = vm.UsedDisk
+				}
+				unmigrateableVMs = append(unmigrateableVMs, UnmigrateableVM{
+					VMID:    vm.VMID,
+					VMName:  vm.Name,
+					Status:  vm.Status,
+					VCPUs:   vm.CPUCores,
+					RAM:     vm.MaxMem,
+					Storage: storage,
+					Reason:  "NoMigrate=true in VM config",
+				})
+			}
+		}
+	}
+
 	// Select VMs to migrate based on constraints
 	var vmsToMigrate []proxmox.VM
 	if constraints.BalanceCluster {
@@ -51,8 +75,37 @@ func Analyze(cluster *proxmox.Cluster, constraints MigrationConstraints) (*Analy
 		suggestions = GenerateSuggestions(vmsToMigrate, targets, cluster, sourceNode, constraints)
 	}
 
+	// Track VMs that couldn't find a suitable target (TargetNode="NONE")
+	for _, suggestion := range suggestions {
+		if suggestion.TargetNode == "NONE" {
+			reason := "No suitable target found"
+			if suggestion.Details != nil && len(suggestion.Details.Alternatives) > 0 {
+				// Build reason from rejection reasons
+				reasons := []string{}
+				for _, alt := range suggestion.Details.Alternatives {
+					if alt.RejectionReason != "" {
+						reasons = append(reasons, alt.Name+": "+alt.RejectionReason)
+					}
+				}
+				if len(reasons) > 0 {
+					reason = "No target available - " + strings.Join(reasons, "; ")
+				}
+			}
+			unmigrateableVMs = append(unmigrateableVMs, UnmigrateableVM{
+				VMID:    suggestion.VMID,
+				VMName:  suggestion.VMName,
+				Status:  suggestion.Status,
+				VCPUs:   suggestion.VCPUs,
+				RAM:     suggestion.RAM,
+				Storage: suggestion.Storage,
+				Reason:  reason,
+			})
+		}
+	}
+
 	// Calculate before/after states
 	result := BuildAnalysisResult(sourceNode, targets, suggestions, vmsToMigrate)
+	result.UnmigrateableVMs = unmigrateableVMs
 
 	return result, nil
 }
