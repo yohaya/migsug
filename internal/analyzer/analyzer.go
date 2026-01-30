@@ -41,6 +41,13 @@ func Analyze(cluster *proxmox.Cluster, constraints MigrationConstraints) (*Analy
 				if storage == 0 {
 					storage = vm.UsedDisk
 				}
+				// Build reason with actual parsed metadata for debugging
+				reason := "NoMigrate=true in VM config"
+				if vm.ConfigMeta != nil {
+					if val, ok := vm.ConfigMeta["nomigrate"]; ok {
+						reason = fmt.Sprintf("nomigrate=%s found in config comment (parsed as true)", val)
+					}
+				}
 				unmigrateableVMs = append(unmigrateableVMs, UnmigrateableVM{
 					VMID:    vm.VMID,
 					VMName:  vm.Name,
@@ -48,7 +55,7 @@ func Analyze(cluster *proxmox.Cluster, constraints MigrationConstraints) (*Analy
 					VCPUs:   vm.CPUCores,
 					RAM:     vm.MaxMem,
 					Storage: storage,
-					Reason:  "NoMigrate=true in VM config",
+					Reason:  reason,
 				})
 			}
 		}

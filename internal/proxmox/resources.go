@@ -943,6 +943,11 @@ func fetchVMConfigMeta(vmList []VM, progress ProgressCallback) {
 			// Check for nomigrate flag
 			if noMigrate, ok := result.result.Meta["nomigrate"]; ok {
 				vmList[result.vmIdx].NoMigrate = strings.ToLower(noMigrate) == "true"
+				// Log when NoMigrate is detected for debugging
+				if vmList[result.vmIdx].NoMigrate {
+					log.Printf("VM %d (%s): NoMigrate=true detected (parsed value: '%s')",
+						vmList[result.vmIdx].VMID, vmList[result.vmIdx].Name, noMigrate)
+				}
 			}
 			// Parse migration constraints
 			// hostcpumodel=6150 -> VM can only run on hosts with "6150" in CPU model
