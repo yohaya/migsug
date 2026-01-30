@@ -99,12 +99,6 @@ func RenderResultsWithSource(result *analyzer.AnalysisResult, cluster *proxmox.C
 	))
 	sb.WriteString("\n\n")
 
-	// Show unmigrateable VMs if any
-	if len(result.UnmigrateableVMs) > 0 {
-		sb.WriteString(renderUnmigrateableVMs(result.UnmigrateableVMs))
-		sb.WriteString("\n")
-	}
-
 	// Calculate visible rows based on terminal height and number of target nodes
 	maxVisible := calculateVisibleRowsWithTargets(height, activeTargets)
 
@@ -206,12 +200,6 @@ func RenderResultsInteractive(result *analyzer.AnalysisResult, cluster *proxmox.
 		result.TotalStorage,
 	))
 	sb.WriteString("\n\n")
-
-	// Show unmigrateable VMs if any
-	if len(result.UnmigrateableVMs) > 0 {
-		sb.WriteString(renderUnmigrateableVMs(result.UnmigrateableVMs))
-		sb.WriteString("\n")
-	}
 
 	// Calculate visible rows
 	maxVisible := calculateVisibleRowsWithTargets(height, activeTargets)
@@ -1260,46 +1248,6 @@ func min(a, b int) int {
 		return a
 	}
 	return b
-}
-
-// renderUnmigrateableVMs renders a section showing VMs that could not be migrated
-func renderUnmigrateableVMs(vms []analyzer.UnmigrateableVM) string {
-	var sb strings.Builder
-
-	warnStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3")) // Yellow/warning
-	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("3"))
-	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6")) // Cyan for VM names
-
-	sb.WriteString(headerStyle.Render("⚠ VMs That Cannot Be Migrated:") + "\n")
-
-	for _, vm := range vms {
-		// Format: VMID (Name) - Status - Reason
-		vmInfo := fmt.Sprintf("  %d", vm.VMID)
-		if vm.VMName != "" {
-			vmInfo += " " + nameStyle.Render("("+vm.VMName+")")
-		}
-
-		// Add resource info
-		resources := []string{}
-		if vm.VCPUs > 0 {
-			resources = append(resources, fmt.Sprintf("%d vCPU", vm.VCPUs))
-		}
-		if vm.RAM > 0 {
-			resources = append(resources, proxmox.FormatBytes(vm.RAM))
-		}
-		if vm.Storage > 0 {
-			resources = append(resources, proxmox.FormatBytes(vm.Storage)+" disk")
-		}
-		if len(resources) > 0 {
-			vmInfo += " " + dimStyle.Render("["+strings.Join(resources, ", ")+"]")
-		}
-
-		sb.WriteString(vmInfo + "\n")
-		sb.WriteString("    " + warnStyle.Render("→ "+vm.Reason) + "\n")
-	}
-
-	return sb.String()
 }
 
 // renderResultsClusterSummary creates a compact cluster summary for results view
