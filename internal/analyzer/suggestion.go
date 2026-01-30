@@ -100,12 +100,12 @@ type UnmigrateableVM struct {
 
 // AnalysisResult contains the complete analysis output
 type AnalysisResult struct {
-	Suggestions       []MigrationSuggestion
-	UnmigrateableVMs  []UnmigrateableVM // VMs that could not be migrated
-	SourceBefore      NodeState
-	SourceAfter       NodeState
-	TargetsBefore     map[string]NodeState
-	TargetsAfter      map[string]NodeState
+	Suggestions      []MigrationSuggestion
+	UnmigrateableVMs []UnmigrateableVM // VMs that could not be migrated
+	SourceBefore     NodeState
+	SourceAfter      NodeState
+	TargetsBefore    map[string]NodeState
+	TargetsAfter     map[string]NodeState
 
 	// Summary
 	TotalVMs        int

@@ -620,14 +620,14 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 
 	// Fixed heights for consistent layout
 	const (
-		headerLines        = 2  // Title + border
-		cpuInfoLines       = 1  // CPU info
-		beforeAfterLines   = 3  // Before, After, blank
-		tableHeaderLines   = 2  // Header + separator
-		tableFooterLines   = 2  // Closing line + scroll info
-		reasoningMaxLines  = 15 // Fixed max height for reasoning panel (scrollable)
-		reasoningExtraLines = 2 // Scroll info + blank before reasoning
-		helpLines          = 2  // Blank + help text
+		headerLines         = 2  // Title + border
+		cpuInfoLines        = 1  // CPU info
+		beforeAfterLines    = 3  // Before, After, blank
+		tableHeaderLines    = 2  // Header + separator
+		tableFooterLines    = 2  // Closing line + scroll info
+		reasoningMaxLines   = 15 // Fixed max height for reasoning panel (scrollable)
+		reasoningExtraLines = 2  // Scroll info + blank before reasoning
+		helpLines           = 2  // Blank + help text
 	)
 
 	// Calculate VM table height
