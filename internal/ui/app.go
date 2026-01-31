@@ -69,7 +69,8 @@ type Model struct {
 	criteriaState views.CriteriaState
 
 	// VM selection state (for ModeSpecific)
-	vmCursorIdx int
+	vmCursorIdx           int
+	vmSelectionReturnView ViewType // View to return to when ESC is pressed in VM selection
 
 	// Analysis results
 	result *analyzer.AnalysisResult
@@ -600,7 +601,8 @@ func (m Model) startMigrationFromHostDetail() (tea.Model, tea.Cmd) {
 		}
 		m.vmCursorIdx = 0
 		m.currentView = ViewVMSelection
-		m.isBalanceClusterRun = false // Not a balance cluster run
+		m.vmSelectionReturnView = ViewDashboardHostDetail // Return to host detail on ESC
+		m.isBalanceClusterRun = false                     // Not a balance cluster run
 		return m, tea.ClearScreen
 
 	case analyzer.ModeAll:
@@ -719,6 +721,7 @@ func (m Model) handleCriteriaKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// If specific VMs mode, go to VM selection
 		if m.criteriaState.SelectedMode == analyzer.ModeSpecific {
 			m.currentView = ViewVMSelection
+			m.vmSelectionReturnView = ViewCriteria // Return to criteria on ESC
 			m.vmCursorIdx = 0
 			return m, tea.ClearScreen
 		}
@@ -923,7 +926,7 @@ func (m Model) handleVMSelectionKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, tea.Batch(tea.ClearScreen, m.startAnalysis())
 		}
 	case "esc":
-		m.currentView = ViewCriteria
+		m.currentView = m.vmSelectionReturnView
 		return m, tea.ClearScreen
 	}
 	return m, nil
