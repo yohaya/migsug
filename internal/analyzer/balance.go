@@ -386,6 +386,8 @@ type simulatedNodeState struct {
 	name         string
 	vcpus        int
 	cpuCores     int
+	hostCPUUsage float64 // Current actual host CPU usage percentage (0-100)
+	vmCPUSum     float64 // Sum of VM CPU usages (used to estimate host CPU after migrations)
 	ramUsed      int64
 	ramTotal     int64
 	storageUsed  int64
@@ -398,21 +400,36 @@ func newSimulatedNodeState(node *proxmox.Node) *simulatedNodeState {
 	s := &simulatedNodeState{
 		name:         node.Name,
 		cpuCores:     node.CPUCores,
+		hostCPUUsage: node.CPUUsage, // Actual host CPU usage (0-100 scale, from API it's 0-1)
 		ramTotal:     node.MaxMem,
 		storageTotal: node.MaxDisk,
 		vms:          make(map[int]proxmox.VM),
 	}
 
+	// Calculate sum of VM CPU usages for estimation
 	for _, vm := range node.VMs {
 		s.vms[vm.VMID] = vm
 		s.vcpus += vm.CPUCores
 		s.ramUsed += vm.MaxMem
-		// Use actual thin provisioning size (UsedDisk) when available
 		s.storageUsed += vm.GetEffectiveDisk()
 		s.vmCount++
+		// Sum up VM CPU usage (scaled by vCPUs as a proxy for CPU contribution)
+		s.vmCPUSum += vm.CPUUsage * float64(vm.CPUCores)
 	}
 
 	return s
+}
+
+// getEstimatedHostCPU estimates host CPU usage based on VM CPU contributions
+// This helps predict CPU usage after migrations
+func (s *simulatedNodeState) getEstimatedHostCPU() float64 {
+	if s.cpuCores == 0 || s.vmCPUSum == 0 {
+		return s.hostCPUUsage
+	}
+	// Estimate: total VM CPU contribution / host cores
+	// Each VM's contribution is: vmCPUUsage * vmCores
+	// Normalize to percentage of host cores
+	return s.vmCPUSum / float64(s.cpuCores)
 }
 
 func (s *simulatedNodeState) getVCPUPercent() float64 {
@@ -601,10 +618,24 @@ func canAcceptVM(receiver *simulatedNodeState, vm *proxmox.VM, metrics clusterMe
 	newVCPUPercent := float64(receiver.vcpus+vm.CPUCores) / float64(receiver.cpuCores) * 100
 	newStoragePercent := float64(receiver.storageUsed+vm.GetEffectiveDisk()) / float64(receiver.storageTotal) * 100
 
-	// HARD LIMITS for RAM and Storage (these cannot be oversubscribed)
-	// Note: vCPU has NO hard cap because oversubscription is normal (200-600% is common)
+	// Calculate estimated host CPU usage after adding VM
+	// VM contribution = VM's CPU usage * VM's vCPUs
+	vmCPUContrib := vm.CPUUsage * float64(vm.CPUCores)
+	newEstimatedHostCPU := (receiver.vmCPUSum + vmCPUContrib) / float64(receiver.cpuCores)
+
+	// HARD LIMITS:
+	// - Host CPU Usage: Never exceed 95% (actual physical CPU utilization)
+	// - RAM: Never exceed 90% (cannot be oversubscribed)
+	// - Storage: Never exceed 85% (need headroom for snapshots etc.)
+	// - vCPU: NO hard cap (oversubscription is normal, 200-600% is common)
+	const hardCapHostCPUPercent = 95.0
 	const hardCapRAMPercent = 90.0
 	const hardCapStoragePercent = 85.0
+
+	// Check host CPU usage (actual physical utilization, not vCPU allocation)
+	if newEstimatedHostCPU > hardCapHostCPUPercent {
+		return false
+	}
 
 	if newRAMPercent > hardCapRAMPercent {
 		return false
@@ -625,7 +656,7 @@ func canAcceptVM(receiver *simulatedNodeState, vm *proxmox.VM, metrics clusterMe
 		return false
 	}
 
-	// For vCPU: don't exceed average + margin (no hard cap - oversubscription is normal)
+	// For vCPU allocation: don't exceed average + margin (no hard cap - oversubscription is normal)
 	if currentVCPUPercent >= metrics.avgVCPUPercent-2 && newVCPUPercent > metrics.avgVCPUPercent+softMargin {
 		return false
 	}
@@ -708,6 +739,8 @@ func updateSimulatedStates(states map[string]*simulatedNodeState, migration *Mig
 		if exists {
 			// Use actual thin provisioning size
 			storage := vm.GetEffectiveDisk()
+			// VM's CPU contribution (for host CPU estimation)
+			vmCPUContrib := vm.CPUUsage * float64(vm.CPUCores)
 
 			// Remove from source
 			delete(source.vms, migration.VMID)
@@ -715,6 +748,7 @@ func updateSimulatedStates(states map[string]*simulatedNodeState, migration *Mig
 			source.ramUsed -= vm.MaxMem
 			source.storageUsed -= storage
 			source.vmCount--
+			source.vmCPUSum -= vmCPUContrib
 
 			// Add to target
 			target.vms[migration.VMID] = vm
@@ -722,6 +756,7 @@ func updateSimulatedStates(states map[string]*simulatedNodeState, migration *Mig
 			target.ramUsed += vm.MaxMem
 			target.storageUsed += storage
 			target.vmCount++
+			target.vmCPUSum += vmCPUContrib
 		}
 	}
 }
