@@ -1,6 +1,10 @@
 package analyzer
 
-import "github.com/yourusername/migsug/internal/proxmox"
+import (
+	"fmt"
+
+	"github.com/yourusername/migsug/internal/proxmox"
+)
 
 // MigrationSuggestion represents a single VM migration recommendation
 type MigrationSuggestion struct {
@@ -356,4 +360,70 @@ func (ns NodeState) GetUtilizationScore() float64 {
 		(storageWeight * ns.StoragePercent)
 
 	return score
+}
+
+// Storage headroom constants
+const (
+	// MinStorageHeadroomGiB is the minimum free storage required (500 GiB)
+	MinStorageHeadroomGiB = 500
+	// LargestVMStorageHeadroomPercent is the percentage of the largest VM's storage to keep free (15%)
+	LargestVMStorageHeadroomPercent = 0.15
+)
+
+// StorageHeadroomCheck contains the result of a storage headroom check
+type StorageHeadroomCheck struct {
+	HasSufficientHeadroom bool
+	RequiredFreeStorage   int64  // Bytes required to be free
+	ActualFreeStorage     int64  // Bytes actually free after migration
+	LargestVMStorage      int64  // Storage of largest VM on host after migration
+	Reason                string // Explanation if check fails
+}
+
+// CheckStorageHeadroom verifies if a target node has sufficient storage headroom after receiving a VM
+// The constraint is: host must have at least 500GiB + 15% of largest VM's storage free after migration
+func CheckStorageHeadroom(targetNode *proxmox.Node, incomingVM proxmox.VM, currentStorageUsed, storageTotal int64) StorageHeadroomCheck {
+	result := StorageHeadroomCheck{}
+
+	// Get storage of the incoming VM
+	incomingVMStorage := incomingVM.MaxDisk
+	if incomingVMStorage == 0 {
+		incomingVMStorage = incomingVM.UsedDisk
+	}
+
+	// Find the largest VM's storage on the target (including the incoming VM)
+	largestVMStorage := incomingVMStorage
+	for _, vm := range targetNode.VMs {
+		vmStorage := vm.MaxDisk
+		if vmStorage == 0 {
+			vmStorage = vm.UsedDisk
+		}
+		if vmStorage > largestVMStorage {
+			largestVMStorage = vmStorage
+		}
+	}
+	result.LargestVMStorage = largestVMStorage
+
+	// Calculate storage used after migration
+	storageUsedAfter := currentStorageUsed + incomingVMStorage
+
+	// Calculate required headroom: 500 GiB + 15% of largest VM's storage
+	minHeadroomBytes := int64(MinStorageHeadroomGiB) * 1024 * 1024 * 1024
+	largestVMHeadroom := int64(float64(largestVMStorage) * LargestVMStorageHeadroomPercent)
+	result.RequiredFreeStorage = minHeadroomBytes + largestVMHeadroom
+
+	// Calculate actual free storage after migration
+	result.ActualFreeStorage = storageTotal - storageUsedAfter
+
+	// Check if we have enough headroom
+	if result.ActualFreeStorage >= result.RequiredFreeStorage {
+		result.HasSufficientHeadroom = true
+	} else {
+		result.HasSufficientHeadroom = false
+		requiredGiB := float64(result.RequiredFreeStorage) / (1024 * 1024 * 1024)
+		actualGiB := float64(result.ActualFreeStorage) / (1024 * 1024 * 1024)
+		result.Reason = fmt.Sprintf("Insufficient storage headroom: need %.0f GiB free (500 + 15%% of %.0f GiB largest VM), only %.0f GiB available",
+			requiredGiB, float64(largestVMStorage)/(1024*1024*1024), actualGiB)
+	}
+
+	return result
 }

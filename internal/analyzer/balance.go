@@ -464,6 +464,38 @@ func canAcceptVM(receiver *simulatedNodeState, vm *proxmox.VM, metrics clusterMe
 		return false
 	}
 
+	// Check storage headroom constraint (500 GiB + 15% of largest VM)
+	incomingVMStorage := vm.MaxDisk
+	if incomingVMStorage == 0 {
+		incomingVMStorage = vm.UsedDisk
+	}
+
+	// Find the largest VM on the receiver (including the incoming VM)
+	largestVMStorage := incomingVMStorage
+	for _, existingVM := range receiver.vms {
+		vmStorage := existingVM.MaxDisk
+		if vmStorage == 0 {
+			vmStorage = existingVM.UsedDisk
+		}
+		if vmStorage > largestVMStorage {
+			largestVMStorage = vmStorage
+		}
+	}
+
+	// Calculate storage used after migration
+	storageUsedAfter := receiver.storageUsed + incomingVMStorage
+
+	// Calculate required headroom: 500 GiB + 15% of largest VM's storage
+	minHeadroomBytes := int64(MinStorageHeadroomGiB) * 1024 * 1024 * 1024
+	largestVMHeadroom := int64(float64(largestVMStorage) * LargestVMStorageHeadroomPercent)
+	requiredFreeStorage := minHeadroomBytes + largestVMHeadroom
+
+	// Check if we have enough headroom
+	actualFreeStorage := receiver.storageTotal - storageUsedAfter
+	if actualFreeStorage < requiredFreeStorage {
+		return false
+	}
+
 	return true
 }
 

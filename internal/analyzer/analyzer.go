@@ -927,6 +927,7 @@ func FindBestTarget(vm proxmox.VM, targetStates map[string]NodeState, vmsPerTarg
 	// Track which constraints are being checked
 	constraintsApplied = append(constraintsApplied, "RAM capacity check")
 	constraintsApplied = append(constraintsApplied, "Storage capacity check")
+	constraintsApplied = append(constraintsApplied, "Storage headroom: 500 GiB + 15% of largest VM")
 	constraintsApplied = append(constraintsApplied, "CPU priority: prefer newer CPU generations")
 	if constraints.MinRAMFree != nil {
 		constraintsApplied = append(constraintsApplied, fmt.Sprintf("Min RAM free: %d GB", *constraints.MinRAMFree/(1024*1024*1024)))
@@ -988,6 +989,17 @@ func FindBestTarget(vm proxmox.VM, targetStates map[string]NodeState, vmsPerTarg
 			}
 			allCandidates = append(allCandidates, cand)
 			continue
+		}
+
+		// Check storage headroom constraint (500 GiB + 15% of largest VM)
+		if targetNode, ok := targetNodesMap[name]; ok {
+			headroomCheck := CheckStorageHeadroom(targetNode, vm, state.StorageUsed, state.StorageTotal)
+			if !headroomCheck.HasSufficientHeadroom {
+				cand.rejected = true
+				cand.rejectReason = headroomCheck.Reason
+				allCandidates = append(allCandidates, cand)
+				continue
+			}
 		}
 
 		// Check MaxVMsPerHost constraint
@@ -1509,6 +1521,7 @@ func findBestTargetForMigrateAll(vm proxmox.VM, targetStates map[string]NodeStat
 
 	constraintsApplied = append(constraintsApplied, "RAM capacity check")
 	constraintsApplied = append(constraintsApplied, "Storage capacity check")
+	constraintsApplied = append(constraintsApplied, "Storage headroom: 500 GiB + 15% of largest VM")
 	constraintsApplied = append(constraintsApplied, fmt.Sprintf("Cluster balance target (CPU: %.1f%%, RAM: %.1f%%, vCPU: %.1f%%)", averages.CPUPercent, averages.RAMPercent, averages.VCPUPercent))
 	constraintsApplied = append(constraintsApplied, "CPU priority: prefer newer CPU generations")
 	if constraints.MaxVMsPerHost != nil {
@@ -1564,6 +1577,17 @@ func findBestTargetForMigrateAll(vm proxmox.VM, targetStates map[string]NodeStat
 			cand.rejectReason = "Insufficient storage capacity"
 			allCandidates = append(allCandidates, cand)
 			continue
+		}
+
+		// Check storage headroom constraint (500 GiB + 15% of largest VM)
+		if targetNode, ok := targetNodesMap[name]; ok {
+			headroomCheck := CheckStorageHeadroom(targetNode, vm, state.StorageUsed, state.StorageTotal)
+			if !headroomCheck.HasSufficientHeadroom {
+				cand.rejected = true
+				cand.rejectReason = headroomCheck.Reason
+				allCandidates = append(allCandidates, cand)
+				continue
+			}
 		}
 
 		// Check MaxVMsPerHost constraint if set
