@@ -7,4 +7,5 @@ require (
 	github.com/charmbracelet/bubbles v0.17.1
 	github.com/charmbracelet/lipgloss v0.9.1
 	golang.org/x/term v0.27.0
+	modernc.org/sqlite v1.29.1
 )

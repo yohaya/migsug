@@ -1236,14 +1236,70 @@ func parseDiskSizesFromConfig(config map[string]interface{}) int64 {
 // fetchVMDiskUsageFromStorage fetches actual disk usage from storage content API
 // This queries all storages on all nodes and builds a map of VMID -> UsedDisk
 // The storage content API returns the actual used size for thin-provisioned disks
+// Results are cached in SQLite for 24 hours or until MaxDisk changes
 func fetchVMDiskUsageFromStorage(client ProxmoxClient, vmList []VM, progress ProgressCallback) {
 	if len(vmList) == 0 {
 		return
 	}
 
-	// Get unique nodes from VM list
+	// Initialize cache
+	cache, cacheErr := GetDiskCache()
+	if cacheErr != nil {
+		log.Printf("Warning: disk cache unavailable: %v - will query all storage", cacheErr)
+	}
+
+	// Check cache for valid entries
+	vmDiskUsage := make(map[int]int64)
+	var vmsNeedingFetch []VM
+	cacheHits := 0
+
+	if cache != nil {
+		// Get batch of cached entries
+		cachedData := cache.GetBatch(vmList)
+
+		for i := range vmList {
+			vm := &vmList[i]
+			if cached, found := cachedData[vm.VMID]; found {
+				// Cache hit - use cached value
+				vmDiskUsage[vm.VMID] = cached.UsedDisk
+				cacheHits++
+			} else {
+				// Cache miss - need to fetch
+				vmsNeedingFetch = append(vmsNeedingFetch, *vm)
+			}
+		}
+
+		if storageLogger != nil {
+			storageLogger.Printf("Disk cache: %d hits, %d misses", cacheHits, len(vmsNeedingFetch))
+		}
+
+		// Cleanup old entries periodically
+		go cache.Cleanup()
+	} else {
+		// No cache available, fetch all
+		vmsNeedingFetch = vmList
+	}
+
+	// If all VMs were cached, we're done
+	if len(vmsNeedingFetch) == 0 {
+		if progress != nil {
+			progress("Using cached disk usage", 1, 1)
+		}
+		// Update VM list with cached values
+		for i := range vmList {
+			if usedDisk, found := vmDiskUsage[vmList[i].VMID]; found && usedDisk > 0 {
+				vmList[i].UsedDisk = usedDisk
+			}
+		}
+		if storageLogger != nil {
+			storageLogger.Printf("All %d VMs served from cache", cacheHits)
+		}
+		return
+	}
+
+	// Get unique nodes from VMs needing fetch
 	nodeSet := make(map[string]bool)
-	for _, vm := range vmList {
+	for _, vm := range vmsNeedingFetch {
 		nodeSet[vm.Node] = true
 	}
 
@@ -1256,8 +1312,26 @@ func fetchVMDiskUsageFromStorage(client ProxmoxClient, vmList []VM, progress Pro
 		progress("Fetching storage disk usage", 0, len(nodes))
 	}
 
-	// Build a map of VMID -> total used disk space
-	vmDiskUsage := make(map[int]int64)
+	// Track fresh data for caching
+	type freshData struct {
+		vmid    int
+		node    string
+		maxDisk int64
+		used    int64
+	}
+	var freshResults []freshData
+	var freshMu sync.Mutex
+
+	// Build set of VMIDs we need to fetch
+	needFetchSet := make(map[int]bool)
+	vmNodeMap := make(map[int]string)  // VMID -> Node
+	vmMaxDiskMap := make(map[int]int64) // VMID -> MaxDisk
+	for _, vm := range vmsNeedingFetch {
+		needFetchSet[vm.VMID] = true
+		vmNodeMap[vm.VMID] = vm.Node
+		vmMaxDiskMap[vm.VMID] = vm.MaxDisk
+	}
+
 	var mu sync.Mutex
 
 	// Process nodes in parallel
@@ -1302,8 +1376,13 @@ func fetchVMDiskUsageFromStorage(client ProxmoxClient, vmList []VM, progress Pro
 
 				// Process each volume
 				for _, item := range content {
-					// Only process VM disk images
+					// Only process VM disk images for VMs we need
 					if item.Content != "images" || item.VMID == 0 {
+						continue
+					}
+
+					// Only process if this VM needs fetching
+					if !needFetchSet[item.VMID] {
 						continue
 					}
 
@@ -1327,7 +1406,40 @@ func fetchVMDiskUsageFromStorage(client ProxmoxClient, vmList []VM, progress Pro
 
 	wg.Wait()
 
-	// Update VM list with actual disk usage
+	// Collect fresh data for caching
+	for vmid, used := range vmDiskUsage {
+		// Only cache newly fetched data (not from cache)
+		if needFetchSet[vmid] && used > 0 {
+			freshMu.Lock()
+			freshResults = append(freshResults, freshData{
+				vmid:    vmid,
+				node:    vmNodeMap[vmid],
+				maxDisk: vmMaxDiskMap[vmid],
+				used:    used,
+			})
+			freshMu.Unlock()
+		}
+	}
+
+	// Update cache with fresh data
+	if cache != nil && len(freshResults) > 0 {
+		var cacheEntries []VMDiskCache
+		for _, data := range freshResults {
+			cacheEntries = append(cacheEntries, VMDiskCache{
+				VMID:     data.vmid,
+				Node:     data.node,
+				MaxDisk:  data.maxDisk,
+				UsedDisk: data.used,
+			})
+		}
+		if err := cache.SetBatch(cacheEntries); err != nil {
+			log.Printf("Warning: failed to update cache: %v", err)
+		} else if storageLogger != nil {
+			storageLogger.Printf("Cached disk usage for %d VMs", len(cacheEntries))
+		}
+	}
+
+	// Update VM list with actual disk usage (from cache + fresh)
 	updatedCount := 0
 	for i := range vmList {
 		if usedDisk, found := vmDiskUsage[vmList[i].VMID]; found && usedDisk > 0 {
@@ -1337,6 +1449,7 @@ func fetchVMDiskUsageFromStorage(client ProxmoxClient, vmList []VM, progress Pro
 	}
 
 	if storageLogger != nil {
-		storageLogger.Printf("Updated UsedDisk for %d VMs from storage content API", updatedCount)
+		storageLogger.Printf("Updated UsedDisk for %d VMs (%d from cache, %d fresh)",
+			updatedCount, cacheHits, updatedCount-cacheHits)
 	}
 }
