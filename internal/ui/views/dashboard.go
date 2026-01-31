@@ -378,8 +378,8 @@ func RenderDashboardHostDetailFull(node *proxmox.Node, cluster *proxmox.Cluster,
 	sb.WriteString(titleStyle.Render(title) + "\n")
 	sb.WriteString(borderStyle.Render(strings.Repeat(boxDoubleLine, width)) + "\n")
 
-	// Host detail header
-	sb.WriteString(headerStyle.Render(fmt.Sprintf("Host: %s", node.Name)) + " ")
+	// Host detail header - regular grey color
+	sb.WriteString(dimStyle.Render(fmt.Sprintf("Host: %s", node.Name)) + " ")
 	cpuPct := node.GetCPUPercent()
 	ramPct := node.GetMemPercent()
 	sb.WriteString(dimStyle.Render(fmt.Sprintf("│ VMs: %d │ vCPUs: %d │ CPU: %.1f%% │ RAM: %.1f%% │ Storage: %s",
@@ -405,8 +405,8 @@ func RenderDashboardHostDetailFull(node *proxmox.Node, cluster *proxmox.Cluster,
 	}
 
 	// Calculate split heights - VM list gets at least 50% of available space
-	// Reserve: title(2) + host header(1) + VM header+sep(2) + VM closing(1) + modes header+sep(2) + modes(len) + modes closing(1) + help(1) + buffer(2)
-	fixedOverhead := 2 + 1 + 2 + 1 + 2 + len(modes) + 1 + 1 + 2
+	// Reserve: title(2) + host header(1) + empty line(1) + VM header+sep(2) + VM closing(1) + modes header+sep(2) + modes(len) + modes closing(1) + empty line(1) + help(1) + buffer(2)
+	fixedOverhead := 2 + 1 + 1 + 2 + 1 + 2 + len(modes) + 1 + 1 + 1 + 2
 	availableHeight := height - fixedOverhead
 
 	// VM list gets at least 50% of the available space
@@ -420,13 +420,8 @@ func RenderDashboardHostDetailFull(node *proxmox.Node, cluster *proxmox.Cluster,
 	}
 
 	// === VM LIST SECTION ===
-	vmHeaderStyle := headerStyle
-	if focusSection == 0 {
-		vmHeaderStyle = focusedHeaderStyle
-	} else {
-		vmHeaderStyle = unfocusedHeaderStyle
-	}
-	sb.WriteString(vmHeaderStyle.Render("─── VM List ───") + "\n")
+	// Empty line between host header and VM list
+	sb.WriteString("\n")
 
 	// Build VM list (sorted by name)
 	type vmItem struct {
@@ -578,30 +573,14 @@ func RenderDashboardHostDetailFull(node *proxmox.Node, cluster *proxmox.Cluster,
 			}
 			sb.WriteString("▶ " + selectedStyle.Render(row))
 		} else {
-			sb.WriteString("  ")
-			if vm.Status == "running" {
-				sb.WriteString(valueStyle.Render(row))
-			} else {
-				sb.WriteString(dimStyle.Render(row))
-			}
+			// All VMs in regular grey
+			sb.WriteString("  " + dimStyle.Render(row))
 		}
 
 		if needsVMScrollbar {
 			sb.WriteString(" " + scrollChar)
 		}
 		sb.WriteString("\n")
-	}
-
-	// Pad remaining rows with scrollbar track
-	for i := endIdx - startIdx; i < maxVisibleVMs && needsVMScrollbar; i++ {
-		rowIdx := i
-		scrollChar := ""
-		if rowIdx >= vmThumbPos && rowIdx < vmThumbPos+vmThumbSize {
-			scrollChar = scrollThumbStyle.Render("█")
-		} else {
-			scrollChar = scrollTrackStyle.Render("│")
-		}
-		sb.WriteString(strings.Repeat(" ", vmTableWidth+2) + " " + scrollChar + "\n")
 	}
 
 	// VM table closing line
@@ -622,13 +601,7 @@ func RenderDashboardHostDetailFull(node *proxmox.Node, cluster *proxmox.Cluster,
 	}
 
 	// === MIGRATION MODES SECTION ===
-	modesHeaderStyle := headerStyle
-	if focusSection == 1 {
-		modesHeaderStyle = focusedHeaderStyle
-	} else {
-		modesHeaderStyle = unfocusedHeaderStyle
-	}
-	sb.WriteString(modesHeaderStyle.Render("─── Select Migration Mode ───") + "\n")
+	sb.WriteString(dimStyle.Render("─── Select Migration Mode: ───") + "\n")
 
 	// Mode table column widths
 	const (
@@ -668,6 +641,9 @@ func RenderDashboardHostDetailFull(node *proxmox.Node, cluster *proxmox.Cluster,
 
 	// Mode table closing line
 	sb.WriteString("  " + strings.Repeat("─", modeTableWidth) + "\n")
+
+	// Empty line before help
+	sb.WriteString("\n")
 
 	// Help text
 	sb.WriteString(helpStyle.Render("Tab: Switch section │ ↑/↓: Navigate │ Enter: Select │ Esc: Back"))

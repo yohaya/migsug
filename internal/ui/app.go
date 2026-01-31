@@ -119,7 +119,9 @@ type Model struct {
 	refreshTotal     int    // total items to refresh
 
 	// Cluster balance analysis state
-	balanceStartTime time.Time // When balance analysis started (for timer display)
+	balanceStartTime    time.Time // When balance analysis started (for timer display)
+	balanceReturnView   ViewType  // View to return to after Balance Cluster analysis (ESC)
+	isBalanceClusterRun bool      // True if current results are from Balance Cluster mode
 }
 
 // NewModel creates a new application model
@@ -390,6 +392,8 @@ func (m Model) handleDashboardKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.loading = true
 		m.loadingMsg = "Analyzing cluster balance"
 		m.balanceStartTime = time.Now()
+		m.balanceReturnView = ViewDashboard // Return to main dashboard on ESC
+		m.isBalanceClusterRun = true
 		return m, m.startClusterBalanceAnalysis()
 	}
 	return m, nil
@@ -585,6 +589,7 @@ func (m Model) startMigrationFromHostDetail() (tea.Model, tea.Cmd) {
 			InputFocused:   true, // Start with input focused
 		}
 		m.currentView = ViewCriteria
+		m.isBalanceClusterRun = false // Not a balance cluster run
 		return m, tea.ClearScreen
 
 	case analyzer.ModeSpecific:
@@ -595,6 +600,7 @@ func (m Model) startMigrationFromHostDetail() (tea.Model, tea.Cmd) {
 		}
 		m.vmCursorIdx = 0
 		m.currentView = ViewVMSelection
+		m.isBalanceClusterRun = false // Not a balance cluster run
 		return m, tea.ClearScreen
 
 	case analyzer.ModeAll:
@@ -605,6 +611,7 @@ func (m Model) startMigrationFromHostDetail() (tea.Model, tea.Cmd) {
 		}
 		m.loading = true
 		m.loadingMsg = "Analyzing migrations"
+		m.isBalanceClusterRun = false // Not a balance cluster run
 		return m, m.startAnalysis()
 
 	case analyzer.ModeBalanceCluster:
@@ -612,6 +619,8 @@ func (m Model) startMigrationFromHostDetail() (tea.Model, tea.Cmd) {
 		m.loading = true
 		m.loadingMsg = "Analyzing cluster balance"
 		m.balanceStartTime = time.Now()
+		m.balanceReturnView = ViewDashboardHostDetail // Return to host detail on ESC
+		m.isBalanceClusterRun = true
 		return m, m.startClusterBalanceAnalysis()
 	}
 
@@ -1084,6 +1093,7 @@ func (m Model) handleResultsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.criteriaState.StorageAmount = ""
 		m.criteriaState.InputFocused = false
 		m.criteriaState.ErrorMessage = ""
+		m.isBalanceClusterRun = false // Reset balance cluster flag
 		return m, tea.ClearScreen
 
 	case "m":
@@ -1093,8 +1103,7 @@ func (m Model) handleResultsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.ClearScreen
 
 	case "esc":
-		// Go back to criteria screen (not dashboard)
-		m.currentView = ViewCriteria
+		// Reset results view state
 		m.resultsScrollPos = 0
 		m.resultsCursorPos = 0
 		m.resultsSection = 0
@@ -1107,6 +1116,16 @@ func (m Model) handleResultsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.criteriaState.StorageAmount = ""
 		m.criteriaState.InputFocused = false
 		m.criteriaState.ErrorMessage = ""
+
+		// If this was a Balance Cluster run, return to the saved return view
+		if m.isBalanceClusterRun {
+			m.isBalanceClusterRun = false
+			m.currentView = m.balanceReturnView
+			return m, tea.ClearScreen
+		}
+
+		// Otherwise go back to criteria screen
+		m.currentView = ViewCriteria
 		return m, tea.ClearScreen
 	}
 	return m, nil
