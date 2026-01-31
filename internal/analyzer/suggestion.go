@@ -20,7 +20,9 @@ type MigrationSuggestion struct {
 	VCPUs    int
 	CPUUsage float64
 	RAM      int64
-	Storage  int64
+	Storage  int64 // Effective disk (UsedDisk if available, else MaxDisk)
+	UsedDisk int64 // Actual disk usage (thin provisioning)
+	MaxDisk  int64 // Allocated/provisioned disk size
 
 	// Host info for CPU% calculations
 	SourceCores int // Source host's CPU cores/threads

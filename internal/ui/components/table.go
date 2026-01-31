@@ -808,19 +808,20 @@ func RenderSuggestionTableWithCursor(suggestions []analyzer.MigrationSuggestion,
 
 	// Column widths
 	const (
-		colVMID    = 6
-		colName    = 26 // Server name
-		colTo      = 20
-		colState   = 5 // "On" or "Off"
-		colCPU     = 6 // CPU% = VMCPU% * vCPU (total thread consumption)
-		colHCPU    = 6 // HCPU% (host CPU% - normalized)
-		colVMCPU   = 7 // VMCPU% (% of allocated vCPUs)
-		colVCPU    = 5
-		colRAM     = 10
-		colStorage = 10
+		colVMID     = 6
+		colName     = 24 // Server name
+		colTo       = 18
+		colState    = 5  // "On" or "Off"
+		colCPU      = 6  // CPU% = VMCPU% * vCPU (total thread consumption)
+		colHCPU     = 6  // HCPU% (host CPU% - normalized)
+		colVMCPU    = 7  // VMCPU% (% of allocated vCPUs)
+		colVCPU     = 5
+		colRAM      = 8
+		colUsedDisk = 9  // Used/actual disk
+		colMaxDisk  = 9  // Max/allocated disk
 	)
 
-	totalWidth := colVMID + colName + colTo + colState + colCPU + colHCPU + colVMCPU + colVCPU + colRAM + colStorage + 9
+	totalWidth := colVMID + colName + colTo + colState + colCPU + colHCPU + colVMCPU + colVCPU + colRAM + colUsedDisk + colMaxDisk + 10
 
 	// Highlight style for selected row
 	selectedStyle := lipgloss.NewStyle().
@@ -851,7 +852,7 @@ func RenderSuggestionTableWithCursor(suggestions []analyzer.MigrationSuggestion,
 	}
 
 	// Header (with 2-char prefix for alignment, +2 for scrollbar)
-	header := fmt.Sprintf("  %*s %-*s %-*s %-*s %*s %*s %*s %*s %*s %*s",
+	header := fmt.Sprintf("  %*s %-*s %-*s %-*s %*s %*s %*s %*s %*s %*s %*s",
 		colVMID, "VMID",
 		colName, "Name",
 		colTo, "To",
@@ -861,7 +862,8 @@ func RenderSuggestionTableWithCursor(suggestions []analyzer.MigrationSuggestion,
 		colCPU, "CPU%",
 		colVCPU, "vCPU",
 		colRAM, "RAM",
-		colStorage, "Storage")
+		colUsedDisk, "Used",
+		colMaxDisk, "Max")
 	if needsScrollbar {
 		sb.WriteString(headerStyle.Render(header) + "  \n")
 		sb.WriteString("  " + strings.Repeat("─", totalWidth) + "  \n")
@@ -903,7 +905,7 @@ func RenderSuggestionTableWithCursor(suggestions []analyzer.MigrationSuggestion,
 		}
 		hCpuStr := fmt.Sprintf("%.1f", hCpuPercent)
 
-		row := fmt.Sprintf("%*d %-*s %-*s %-*s %*s %*s %*s %*d %*s %*s",
+		row := fmt.Sprintf("%*d %-*s %-*s %-*s %*s %*s %*s %*d %*s %*s %*s",
 			colVMID, sug.VMID,
 			colName, truncate(sug.VMName, colName),
 			colTo, truncate(sug.TargetNode, colTo),
@@ -913,7 +915,8 @@ func RenderSuggestionTableWithCursor(suggestions []analyzer.MigrationSuggestion,
 			colCPU, cpuStr,
 			colVCPU, sug.VCPUs,
 			colRAM, FormatRAMShort(sug.RAM),
-			colStorage, FormatStorageG(sug.Storage),
+			colUsedDisk, FormatStorageG(sug.UsedDisk),
+			colMaxDisk, FormatStorageG(sug.MaxDisk),
 		)
 
 		// Scrollbar character for this row

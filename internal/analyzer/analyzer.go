@@ -838,9 +838,6 @@ func GenerateSuggestions(vms []proxmox.VM, targets []proxmox.Node, cluster *prox
 			plannedMigrations[vm.Name] = targetNode
 		}
 
-		// Use actual thin provisioning size (UsedDisk) when available
-		storageValue := vm.GetEffectiveDisk()
-
 		suggestion := MigrationSuggestion{
 			VMID:        vm.VMID,
 			VMName:      vm.Name,
@@ -851,8 +848,10 @@ func GenerateSuggestions(vms []proxmox.VM, targets []proxmox.Node, cluster *prox
 			Status:      vm.Status,
 			VCPUs:       vm.CPUCores,
 			CPUUsage:    vm.CPUUsage,
-			RAM:         vm.MaxMem, // Use allocated RAM
-			Storage:     storageValue,
+			RAM:         vm.MaxMem,
+			Storage:     vm.GetEffectiveDisk(),
+			UsedDisk:    vm.UsedDisk,
+			MaxDisk:     vm.MaxDisk,
 			SourceCores: sourceCores,
 			TargetCores: targetCoresMap[targetNode],
 			Details:     details,
@@ -1437,7 +1436,7 @@ func GenerateSuggestionsBalanced(vms []proxmox.VM, targets []proxmox.Node, clust
 			plannedMigrations[vm.Name] = targetName
 		}
 
-		// Build suggestion - use actual thin provisioning size
+		// Build suggestion
 		suggestion := MigrationSuggestion{
 			VMID:        vm.VMID,
 			VMName:      vm.Name,
@@ -1450,6 +1449,8 @@ func GenerateSuggestionsBalanced(vms []proxmox.VM, targets []proxmox.Node, clust
 			CPUUsage:    vm.CPUUsage,
 			RAM:         vm.MaxMem,
 			Storage:     vm.GetEffectiveDisk(),
+			UsedDisk:    vm.UsedDisk,
+			MaxDisk:     vm.MaxDisk,
 			SourceCores: sourceCores,
 			TargetCores: targetCoresMap[targetName],
 			Details:     details,

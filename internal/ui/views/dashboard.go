@@ -389,28 +389,34 @@ func RenderDashboardHostDetailFull(node *proxmox.Node, cluster *proxmox.Cluster,
 		ramPct,
 		components.FormatStorageG(node.MaxDisk))) + "\n")
 
-	// Mode options - define early for height calculation
+	// Mode options - "Balance Cluster" is last
 	modes := []struct {
 		name string
 		desc string
 	}{
 		{"Migrate All", "Migrate all VMs from host, spread across cluster"},
-		{"Balance Cluster", "Balance all hosts in cluster to same % usage"},
 		{"vCPU", "Migrate VMs by total vCPU count"},
 		{"CPU Usage (%)", "Migrate VMs by host CPU usage percentage"},
 		{"RAM (GiB)", "Migrate VMs by RAM amount in GiB"},
 		{"Storage (GiB)", "Migrate VMs by storage amount in GiB"},
 		{"Create Date", "Migrate VMs created more than N days ago"},
 		{"Specific VMs", "Manually select specific VMs to migrate"},
+		{"Balance Cluster", "Balance all hosts in cluster to same % usage"},
 	}
 
 	// Calculate split heights - VM list gets at least 50% of available space
-	// Reserve: title(2) + host header(1) + VM header(2) + modes header(1) + modes(len) + mode separator(1) + help(1) + buffer(2)
-	fixedOverhead := 2 + 1 + 2 + 1 + len(modes) + 1 + 1 + 2
-	availableForVMs := height - fixedOverhead
-	vmListHeight := availableForVMs
-	if vmListHeight < 10 {
-		vmListHeight = 10
+	// Reserve: title(2) + host header(1) + VM header+sep(2) + VM closing(1) + modes header+sep(2) + modes(len) + modes closing(1) + help(1) + buffer(2)
+	fixedOverhead := 2 + 1 + 2 + 1 + 2 + len(modes) + 1 + 1 + 2
+	availableHeight := height - fixedOverhead
+
+	// VM list gets at least 50% of the available space
+	minVMListHeight := (height - 10) / 2 // At least 50% of usable height
+	if minVMListHeight < 10 {
+		minVMListHeight = 10
+	}
+	vmListHeight := availableHeight
+	if vmListHeight < minVMListHeight {
+		vmListHeight = minVMListHeight
 	}
 
 	// === VM LIST SECTION ===
@@ -424,17 +430,17 @@ func RenderDashboardHostDetailFull(node *proxmox.Node, cluster *proxmox.Cluster,
 
 	// Build VM list (sorted by name)
 	type vmItem struct {
-		VMID     int
-		Name     string
-		Status   string
-		CPUUsage float64
-		VCPUs    int
-		RAM      int64
-		Storage  int64
+		VMID       int
+		Name       string
+		Status     string
+		CPUUsage   float64
+		VCPUs      int
+		RAM        int64
+		UsedDisk   int64
+		MaxDisk    int64
 	}
 	var vmList []vmItem
 	for _, vm := range node.VMs {
-		// Use actual thin provisioning size
 		vmList = append(vmList, vmItem{
 			VMID:     vm.VMID,
 			Name:     vm.Name,
@@ -442,7 +448,8 @@ func RenderDashboardHostDetailFull(node *proxmox.Node, cluster *proxmox.Cluster,
 			CPUUsage: vm.CPUUsage,
 			VCPUs:    vm.CPUCores,
 			RAM:      vm.MaxMem,
-			Storage:  vm.GetEffectiveDisk(),
+			UsedDisk: vm.UsedDisk,
+			MaxDisk:  vm.MaxDisk,
 		})
 	}
 
@@ -450,48 +457,80 @@ func RenderDashboardHostDetailFull(node *proxmox.Node, cluster *proxmox.Cluster,
 		return vmList[i].Name < vmList[j].Name
 	})
 
-	// VM table column widths
+	// VM table column widths (matching migration summary style)
 	const (
-		colVMID    = 6
-		colName    = 26
-		colState   = 5
-		colHCPU    = 6
-		colVCPU    = 5
-		colRAM     = 7
-		colStorage = 9
+		colVMID       = 6
+		colName       = 24
+		colState      = 5
+		colHCPU       = 6
+		colVCPU       = 5
+		colRAM        = 8
+		colUsedDisk   = 9
+		colMaxDisk    = 9
 	)
+	vmTableWidth := colVMID + colName + colState + colHCPU + colVCPU + colRAM + colUsedDisk + colMaxDisk + 7
+
+	// Calculate visible VM rows
+	maxVisibleVMs := vmListHeight
+	if maxVisibleVMs < 5 {
+		maxVisibleVMs = 5
+	}
+
+	totalVMs := len(vmList)
+	needsVMScrollbar := totalVMs > maxVisibleVMs
+
+	// Scrollbar calculations for VM list
+	vmThumbPos := 0
+	vmThumbSize := maxVisibleVMs
+	if needsVMScrollbar && totalVMs > 0 {
+		vmThumbSize = maxVisibleVMs * maxVisibleVMs / totalVMs
+		if vmThumbSize < 1 {
+			vmThumbSize = 1
+		}
+		if vmThumbSize > maxVisibleVMs {
+			vmThumbSize = maxVisibleVMs
+		}
+		scrollRange := maxVisibleVMs - vmThumbSize
+		if scrollRange > 0 && totalVMs > maxVisibleVMs {
+			vmThumbPos = scrollPos * scrollRange / (totalVMs - maxVisibleVMs)
+		}
+	}
+
+	// Scrollbar styles
+	scrollTrackStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	scrollThumbStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 
 	// VM table header
-	header := fmt.Sprintf("  %-*s %-*s %-*s %*s %*s %*s %*s",
+	vmHeader := fmt.Sprintf("  %*s %-*s %-*s %*s %*s %*s %*s %*s",
 		colVMID, "VMID",
 		colName, "Name",
 		colState, "State",
 		colHCPU, "HCPU%",
 		colVCPU, "vCPU",
 		colRAM, "RAM",
-		colStorage, "Storage")
-	sb.WriteString(headerStyle.Render(header) + "\n")
-
-	// Calculate visible VM rows
-	maxVisibleVMs := vmListHeight - 1 // Minus header line
-	if maxVisibleVMs < 5 {
-		maxVisibleVMs = 5
+		colUsedDisk, "Used",
+		colMaxDisk, "Max")
+	if needsVMScrollbar {
+		sb.WriteString(headerStyle.Render(vmHeader) + "  \n")
+		sb.WriteString("  " + strings.Repeat("─", vmTableWidth) + "  \n")
+	} else {
+		sb.WriteString(headerStyle.Render(vmHeader) + "\n")
+		sb.WriteString("  " + strings.Repeat("─", vmTableWidth) + "\n")
 	}
 
-	totalVMs := len(vmList)
 	startIdx := scrollPos
 	endIdx := startIdx + maxVisibleVMs
 	if endIdx > totalVMs {
 		endIdx = totalVMs
 	}
 
-	// Render visible VMs
+	// Render visible VMs with scrollbar
 	for i := startIdx; i < endIdx; i++ {
 		vm := vmList[i]
 
-		stateStr := vm.Status
-		if len(stateStr) > colState {
-			stateStr = stateStr[:colState]
+		stateStr := "Off"
+		if vm.Status == "running" {
+			stateStr = "On"
 		}
 
 		// Calculate HCPU% = CPUUsage * vCPUs / hostCores
@@ -499,50 +538,87 @@ func RenderDashboardHostDetailFull(node *proxmox.Node, cluster *proxmox.Cluster,
 		if node.CPUCores > 0 {
 			hcpuPct = vm.CPUUsage * float64(vm.VCPUs) / float64(node.CPUCores)
 		}
-		cpuStr := fmt.Sprintf("%5.1f", hcpuPct)
+		cpuStr := fmt.Sprintf("%.1f", hcpuPct)
 		vcpuStr := fmt.Sprintf("%d", vm.VCPUs)
 		ramStr := components.FormatRAMShort(vm.RAM)
-		storageStr := components.FormatStorageG(vm.Storage)
+		usedDiskStr := components.FormatStorageG(vm.UsedDisk)
+		maxDiskStr := components.FormatStorageG(vm.MaxDisk)
 
 		name := vm.Name
 		if len(name) > colName {
 			name = name[:colName-3] + "..."
 		}
 
-		row := fmt.Sprintf("%-*d %-*s %-*s %*s %*s %*s %*s",
+		row := fmt.Sprintf("%*d %-*s %-*s %*s %*s %*s %*s %*s",
 			colVMID, vm.VMID,
 			colName, name,
 			colState, stateStr,
 			colHCPU, cpuStr,
 			colVCPU, vcpuStr,
 			colRAM, ramStr,
-			colStorage, storageStr)
+			colUsedDisk, usedDiskStr,
+			colMaxDisk, maxDiskStr)
+
+		// Scrollbar character
+		scrollChar := ""
+		if needsVMScrollbar {
+			rowIdx := i - scrollPos
+			if rowIdx >= vmThumbPos && rowIdx < vmThumbPos+vmThumbSize {
+				scrollChar = scrollThumbStyle.Render("█")
+			} else {
+				scrollChar = scrollTrackStyle.Render("│")
+			}
+		}
 
 		// Only show cursor if VM list is focused
 		if i == cursorPos && focusSection == 0 {
-			sb.WriteString("→ ")
-			sb.WriteString(selectedStyle.Render(row) + "\n")
+			// Pad row for consistent highlighting
+			if len(row) < vmTableWidth {
+				row += strings.Repeat(" ", vmTableWidth-len(row))
+			}
+			sb.WriteString("▶ " + selectedStyle.Render(row))
 		} else {
 			sb.WriteString("  ")
 			if vm.Status == "running" {
-				sb.WriteString(valueStyle.Render(row) + "\n")
+				sb.WriteString(valueStyle.Render(row))
 			} else {
-				sb.WriteString(dimStyle.Render(row) + "\n")
+				sb.WriteString(dimStyle.Render(row))
 			}
 		}
-	}
 
-	// Pad VM list if needed to maintain consistent height
-	for i := endIdx - startIdx; i < maxVisibleVMs; i++ {
+		if needsVMScrollbar {
+			sb.WriteString(" " + scrollChar)
+		}
 		sb.WriteString("\n")
 	}
 
-	// VM scroll info
-	if totalVMs > maxVisibleVMs {
-		scrollInfo := fmt.Sprintf("Showing %d-%d of %d VMs", startIdx+1, endIdx, totalVMs)
-		sb.WriteString(dimStyle.Render(scrollInfo) + "\n")
+	// Pad remaining rows with scrollbar track
+	for i := endIdx - startIdx; i < maxVisibleVMs && needsVMScrollbar; i++ {
+		rowIdx := i
+		scrollChar := ""
+		if rowIdx >= vmThumbPos && rowIdx < vmThumbPos+vmThumbSize {
+			scrollChar = scrollThumbStyle.Render("█")
+		} else {
+			scrollChar = scrollTrackStyle.Render("│")
+		}
+		sb.WriteString(strings.Repeat(" ", vmTableWidth+2) + " " + scrollChar + "\n")
+	}
+
+	// VM table closing line
+	if needsVMScrollbar {
+		sb.WriteString("  " + strings.Repeat("─", vmTableWidth) + "  \n")
 	} else {
-		sb.WriteString("\n")
+		sb.WriteString("  " + strings.Repeat("─", vmTableWidth) + "\n")
+	}
+
+	// VM scroll info (right-aligned)
+	if totalVMs > maxVisibleVMs {
+		scrollInfo := fmt.Sprintf("Showing %d-%d of %d", startIdx+1, endIdx, totalVMs)
+		padding := vmTableWidth + 2 - len(scrollInfo)
+		if padding > 0 {
+			scrollInfo = strings.Repeat(" ", padding) + scrollInfo
+		}
+		sb.WriteString(dimStyle.Render(scrollInfo) + "\n")
 	}
 
 	// === MIGRATION MODES SECTION ===
@@ -559,10 +635,13 @@ func RenderDashboardHostDetailFull(node *proxmox.Node, cluster *proxmox.Cluster,
 		colModeName = 20
 		colModeDesc = 50
 	)
+	modeTableWidth := colModeName + colModeDesc + 4
+
+	// Mode table header separator
+	sb.WriteString("  " + strings.Repeat("─", modeTableWidth) + "\n")
 
 	// Render modes as a table - one row per mode
 	for i, mode := range modes {
-		selector := "  "
 		name := mode.name
 		desc := mode.desc
 
@@ -577,14 +656,18 @@ func RenderDashboardHostDetailFull(node *proxmox.Node, cluster *proxmox.Cluster,
 		row := fmt.Sprintf("%-*s  %s", colModeName, name, desc)
 
 		if i == modeIdx && focusSection == 1 {
-			selector = "▶ "
-			sb.WriteString(selector + selectedStyle.Render(row) + "\n")
+			// Pad row for consistent highlighting
+			if len(row) < modeTableWidth {
+				row += strings.Repeat(" ", modeTableWidth-len(row))
+			}
+			sb.WriteString("▶ " + selectedStyle.Render(row) + "\n")
 		} else {
-			sb.WriteString(selector + dimStyle.Render(row) + "\n")
+			sb.WriteString("  " + dimStyle.Render(row) + "\n")
 		}
 	}
 
-	sb.WriteString("\n")
+	// Mode table closing line
+	sb.WriteString("  " + strings.Repeat("─", modeTableWidth) + "\n")
 
 	// Help text
 	sb.WriteString(helpStyle.Render("Tab: Switch section │ ↑/↓: Navigate │ Enter: Select │ Esc: Back"))

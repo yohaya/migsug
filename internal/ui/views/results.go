@@ -422,7 +422,9 @@ type VMListItem struct {
 	CPUUsage  float64 // CPU usage percentage
 	VCPUs     int
 	RAM       int64
-	Storage   int64
+	Storage   int64 // Effective disk (UsedDisk if available, else MaxDisk)
+	UsedDisk  int64 // Actual disk usage (thin provisioning)
+	MaxDisk   int64 // Allocated/provisioned disk size
 	Direction string // "←" for out, "→" for in, "✗" for cannot migrate, "" for staying
 	Target    string // Target/Source node for migration
 
@@ -532,7 +534,6 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 		// Source node: show all VMs from the node
 		if sourceNodeObj != nil {
 			for _, vm := range sourceNodeObj.VMs {
-				// Use actual thin provisioning size
 				item := VMListItem{
 					VMID:     vm.VMID,
 					Name:     vm.Name,
@@ -541,6 +542,8 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 					VCPUs:    vm.CPUCores,
 					RAM:      vm.MaxMem,
 					Storage:  vm.GetEffectiveDisk(),
+					UsedDisk: vm.UsedDisk,
+					MaxDisk:  vm.MaxDisk,
 				}
 
 				// Check if this VM is being migrated
@@ -569,7 +572,6 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 		targetNode := proxmox.GetNodeByName(cluster, hostName)
 		if targetNode != nil {
 			for _, vm := range targetNode.VMs {
-				// Use actual thin provisioning size
 				item := VMListItem{
 					VMID:     vm.VMID,
 					Name:     vm.Name,
@@ -578,6 +580,8 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 					VCPUs:    vm.CPUCores,
 					RAM:      vm.MaxMem,
 					Storage:  vm.GetEffectiveDisk(),
+					UsedDisk: vm.UsedDisk,
+					MaxDisk:  vm.MaxDisk,
 				}
 				vmList = append(vmList, item)
 			}
@@ -594,6 +598,8 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 					VCPUs:       sug.VCPUs,
 					RAM:         sug.RAM,
 					Storage:     sug.Storage,
+					UsedDisk:    sug.UsedDisk,
+					MaxDisk:     sug.MaxDisk,
 					Direction:   "→",
 					Target:      sug.SourceNode,
 					Details:     sug.Details,
@@ -637,19 +643,20 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 
 	// Column widths - increased for full hostnames
 	const (
-		colDir     = 2
-		colVMID    = 6
-		colName    = 28
-		colState   = 5
-		colHCPU    = 6
-		colVMCPU   = 7
-		colCPU     = 6
-		colVCPU    = 5
-		colRAM     = 8
-		colStorage = 8
-		colTarget  = 24
+		colDir      = 2
+		colVMID     = 6
+		colName     = 24
+		colState    = 5
+		colHCPU     = 6
+		colVMCPU    = 7
+		colCPU      = 6
+		colVCPU     = 5
+		colRAM      = 8
+		colUsedDisk = 9
+		colMaxDisk  = 9
+		colTarget   = 20
 	)
-	totalWidth := colDir + colVMID + colName + colState + colHCPU + colVMCPU + colCPU + colVCPU + colRAM + colStorage + colTarget + 10
+	totalWidth := colDir + colVMID + colName + colState + colHCPU + colVMCPU + colCPU + colVCPU + colRAM + colUsedDisk + colMaxDisk + colTarget + 11
 
 	// Scrollbar styles
 	scrollTrackStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
@@ -685,7 +692,7 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 	}
 
 	// Header - aligned with data columns (no extra space between dir and VMID)
-	header := fmt.Sprintf("  %*s%*s %-*s %-*s %*s %*s %*s %*s %*s %*s %-*s",
+	header := fmt.Sprintf("  %*s%*s %-*s %-*s %*s %*s %*s %*s %*s %*s %*s %-*s",
 		colDir, "",
 		colVMID, "VMID",
 		colName, "Name",
@@ -695,7 +702,8 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 		colCPU, "CPU%",
 		colVCPU, "vCPU",
 		colRAM, "RAM",
-		colStorage, "Storage",
+		colUsedDisk, "Used",
+		colMaxDisk, "Max",
 		colTarget, "Migration")
 	// Pad header to totalWidth for alignment
 	headerPadded := header
@@ -769,7 +777,7 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 		}
 
 		// Build row content with truncated names
-		rowContent := fmt.Sprintf("%*d %-*s %-*s %*s %*s %*s %*d %*s %*s %-*s",
+		rowContent := fmt.Sprintf("%*d %-*s %-*s %*s %*s %*s %*d %*s %*s %*s %-*s",
 			colVMID, vm.VMID,
 			colName, displayName,
 			colState, stateStr,
@@ -778,7 +786,8 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 			colCPU, cpuStr,
 			colVCPU, vm.VCPUs,
 			colRAM, components.FormatRAMShort(vm.RAM),
-			colStorage, components.FormatStorageG(vm.Storage),
+			colUsedDisk, components.FormatStorageG(vm.UsedDisk),
+			colMaxDisk, components.FormatStorageG(vm.MaxDisk),
 			colTarget, displayMigration)
 
 		// Truncate if too long, pad if too short for consistent width

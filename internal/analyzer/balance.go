@@ -405,8 +405,6 @@ func findBestMigration(donors, receivers []nodeBalance, states map[string]*simul
 				score := calculateMigrationScore(donorState, receiverState, &vm, metrics)
 				if score > bestScore {
 					bestScore = score
-					// Use actual thin provisioning size
-					storage := vm.GetEffectiveDisk()
 					bestMigration = &MigrationSuggestion{
 						VMID:        vm.VMID,
 						VMName:      vm.Name,
@@ -418,7 +416,9 @@ func findBestMigration(donors, receivers []nodeBalance, states map[string]*simul
 						VCPUs:       vm.CPUCores,
 						CPUUsage:    vm.CPUUsage,
 						RAM:         vm.MaxMem,
-						Storage:     storage,
+						Storage:     vm.GetEffectiveDisk(),
+						UsedDisk:    vm.UsedDisk,
+						MaxDisk:     vm.MaxDisk,
 						SourceCores: donorState.cpuCores,
 						TargetCores: receiverState.cpuCores,
 						Details: &MigrationDetails{

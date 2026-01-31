@@ -552,16 +552,17 @@ func (m Model) getDashboardHostDetailVMAtCursor() (int, string) {
 }
 
 // getMigrationModeFromIndex returns the migration mode for a given index
+// Order matches the UI: Migrate All, vCPU, CPU Usage, RAM, Storage, Create Date, Specific VMs, Balance Cluster (last)
 func getMigrationModeFromIndex(idx int) analyzer.MigrationMode {
 	modes := []analyzer.MigrationMode{
 		analyzer.ModeAll,
-		analyzer.ModeBalanceCluster,
 		analyzer.ModeVCPU,
 		analyzer.ModeCPUUsage,
 		analyzer.ModeRAM,
 		analyzer.ModeStorage,
 		analyzer.ModeCreationDate,
 		analyzer.ModeSpecific,
+		analyzer.ModeBalanceCluster, // Last option
 	}
 	if idx >= 0 && idx < len(modes) {
 		return modes[idx]
