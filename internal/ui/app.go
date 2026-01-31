@@ -1578,6 +1578,12 @@ func (m Model) View() string {
 	}
 
 	if m.loading {
+		// Show elapsed time for Balance Cluster analysis
+		if m.isBalanceClusterRun && !m.balanceStartTime.IsZero() {
+			elapsed := time.Since(m.balanceStartTime)
+			seconds := int(elapsed.Seconds())
+			return fmt.Sprintf("\n  %s... (%d seconds)\n\n  ████████████████████░░░░░░░░░░\n\n", m.loadingMsg, seconds)
+		}
 		return fmt.Sprintf("\n  %s...\n\n", m.loadingMsg)
 	}
 

@@ -1222,8 +1222,9 @@ func calculateVisibleRows(height int) int {
 }
 
 // calculateVisibleRowsWithTargets calculates visible rows accounting for target nodes
+// Ensures VM list gets at least 50% of available screen space
 func calculateVisibleRowsWithTargets(height, numTargets int) int {
-	// Fixed overhead calculation:
+	// Header overhead (always shown):
 	// - Title + border + blank: 3 lines
 	// - Cluster summary + blank: 3 lines
 	// - Source node summary + blank: 4 lines
@@ -1231,21 +1232,22 @@ func calculateVisibleRowsWithTargets(height, numTargets int) int {
 	// - Suggestions table header + separator: 2 lines
 	// - Suggestions table closing dashes: 1 line
 	// - Scroll info (below table): 1 line
-	// - Migration Impact header + blank: 2 lines
-	// - Impact table (header1 + header2 + sep + source + closing): 5 lines
-	// - Each target node: 1 line each
-	// - Help text + buffer: 3 lines (extra 1 for safety)
+	// - Help text + buffer: 2 lines
+	headerOverhead := 3 + 3 + 4 + 3 + 2 + 1 + 1 + 2 // = 19 lines
 
-	fixedOverhead := 3 + 3 + 4 + 3 + 2 + 1 + 1 + 2 + 5 + 3 // = 27 lines
-	targetLines := numTargets * 1                          // Each target takes 1 line in combined table
-
-	reserved := fixedOverhead + targetLines
-	available := height - reserved
-
-	if available < 3 {
-		return 3
+	// Content area (after header)
+	contentHeight := height - headerOverhead
+	if contentHeight < 10 {
+		contentHeight = 10
 	}
-	return available
+
+	// VM list should get at least 50% of content area
+	minVMListHeight := contentHeight / 2
+	if minVMListHeight < 5 {
+		minVMListHeight = 5
+	}
+
+	return minVMListHeight
 }
 
 func min(a, b int) int {
