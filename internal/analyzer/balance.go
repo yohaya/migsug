@@ -81,8 +81,8 @@ func AnalyzeClusterWideBalance(cluster *proxmox.Cluster, progress BalanceProgres
 
 	// Set source as the first donor (for UI compatibility)
 	if len(donors) > 0 {
-		result.SourceBefore = nodeStates[donors[0].Name].before
-		result.SourceAfter = nodeStates[donors[0].Name].after
+		result.SourceBefore = nodeStates[donors[0].node.Name].before
+		result.SourceAfter = nodeStates[donors[0].node.Name].after
 	}
 
 	// Populate target states
