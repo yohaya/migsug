@@ -9,7 +9,7 @@ import (
 
 var (
 	barStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
-	emptyBarStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	emptyBarStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 	criticalStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 	warningStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 )

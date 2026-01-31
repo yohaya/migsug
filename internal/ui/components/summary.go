@@ -19,7 +19,7 @@ var (
 			Foreground(lipgloss.Color("6"))
 
 	labelStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("8"))
+			Foreground(lipgloss.Color("#C0C0C0"))
 
 	valueStyle = lipgloss.NewStyle().
 			Bold(true).
@@ -67,7 +67,7 @@ func RenderClusterSummaryWide(cluster *proxmox.Cluster, width int) string {
 		col4Width = 20
 	}
 
-	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 	valueStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
 
 	// Build single-line summary

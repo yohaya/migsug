@@ -44,7 +44,7 @@ func RenderDashboardWithHeight(cluster *proxmox.Cluster, selectedIdx int, width,
 
 	// Title with version
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5"))
-	versionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	versionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 
 	title := "KVM Migration Suggester"
 	if version != "" && version != "dev" {
@@ -106,7 +106,7 @@ func RenderDashboardWithHeight(cluster *proxmox.Cluster, selectedIdx int, width,
 		if padding < 0 {
 			padding = 0
 		}
-		sb.WriteString(strings.Repeat(" ", padding) + lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(scrollInfo) + "\n")
+		sb.WriteString(strings.Repeat(" ", padding) + lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0")).Render(scrollInfo) + "\n")
 	}
 
 	// Refresh status line
@@ -126,15 +126,15 @@ func RenderDashboardWithHeight(cluster *proxmox.Cluster, selectedIdx int, width,
 		}
 	} else if countdown > 0 {
 		sb.WriteString(refreshStyle.Render(fmt.Sprintf("⟳ Auto-refresh in %ds", countdown)) + "  ")
-		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("(Press 'r' to refresh now)") + "\n")
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0")).Render("(Press 'r' to refresh now)") + "\n")
 	}
 
 	// Status flags legend
-	flagStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	flagStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 	sb.WriteString(flagStyle.Render("Status flags: O=OSD, P=Provisioning Enabled, C=Create Date 90+ days") + "\n")
 
 	// Help text
-	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 	sb.WriteString(helpStyle.Render("↑/↓/PgUp/PgDn/Home/End: Navigate │ 1-8: Sort columns │ Enter: Select │ B: Balance Cluster │ r: Refresh │ q: Quit"))
 
 	return sb.String()
@@ -174,7 +174,7 @@ func RenderDashboardWithSort(cluster *proxmox.Cluster, selectedIdx int, width in
 
 	// Title with version
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5"))
-	versionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	versionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 
 	title := "KVM Migration Suggester"
 	if version != "" && version != "dev" {
@@ -218,15 +218,15 @@ func RenderDashboardWithSort(cluster *proxmox.Cluster, selectedIdx int, width in
 		}
 	} else if countdown > 0 {
 		sb.WriteString(refreshStyle.Render(fmt.Sprintf("⟳ Auto-refresh in %ds", countdown)) + "  ")
-		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("(Press 'r' to refresh now)") + "\n")
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0")).Render("(Press 'r' to refresh now)") + "\n")
 	}
 
 	// Status flags legend
-	flagStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	flagStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 	sb.WriteString(flagStyle.Render("Status flags: O=OSD, P=Provisioning Enabled, C=Create Date 90+ days") + "\n")
 
 	// Help text
-	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 	sb.WriteString(helpStyle.Render("↑/↓/PgUp/PgDn/Home/End: Navigate │ 1-8: Sort columns │ Enter: Select │ B: Balance Cluster │ r: Refresh │ q: Quit"))
 
 	return sb.String()
@@ -238,9 +238,9 @@ func renderEnhancedClusterSummary(cluster *proxmox.Cluster, width int) string {
 
 	labelStyle := lipgloss.NewStyle() // Regular text color
 	valueStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
-	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 	runningStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
-	stoppedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	stoppedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 
 	// Count online nodes
 	onlineNodes := 0
@@ -490,7 +490,7 @@ func RenderDashboardHostDetailFull(node *proxmox.Node, cluster *proxmox.Cluster,
 	}
 
 	// Scrollbar styles
-	scrollTrackStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	scrollTrackStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 	scrollThumbStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 
 	// VM table header

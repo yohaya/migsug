@@ -371,8 +371,8 @@ func RenderMigrationLogic(width, height, scrollPos int) string {
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5"))
 	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 	contentStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
-	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	scrollTrackStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
+	scrollTrackStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 	scrollThumbStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 
 	// Get all lines

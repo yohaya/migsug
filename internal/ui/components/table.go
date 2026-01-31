@@ -12,9 +12,9 @@ import (
 
 var (
 	headerStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
-	selectedStyle = lipgloss.NewStyle().Background(lipgloss.Color("240")).Foreground(lipgloss.Color("15"))
+	selectedStyle = lipgloss.NewStyle().Background(lipgloss.Color("#C0C0C0")).Foreground(lipgloss.Color("15"))
 	normalStyle   = lipgloss.NewStyle()
-	offlineStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	offlineStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 )
 
 // RenderNodeTable creates a table of nodes with resource usage
@@ -151,7 +151,7 @@ func RenderNodeTableWideWithScroll(nodes []proxmox.Node, selectedIdx int, width 
 	}
 
 	// Styles
-	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 
 	// Sort arrows
@@ -173,7 +173,7 @@ func RenderNodeTableWideWithScroll(nodes []proxmox.Node, selectedIdx int, width 
 	}
 
 	// Scrollbar styles
-	scrollTrackStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	scrollTrackStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 	scrollThumbStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 	needsScrollbar := totalItems > maxVisible
 
@@ -644,7 +644,7 @@ func renderProgressBar(percent float64, width int) string {
 	emptyPart := strings.Repeat("-", barWidth-filled)
 
 	barStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(barColor))
-	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 
 	return "[" + barStyle.Render(filledPart) + dimStyle.Render(emptyPart) + "]"
 }
@@ -673,7 +673,7 @@ func RenderVMTableWithScroll(vms []proxmox.VM, selectedIndices map[int]bool, cur
 	totalWidth := colCheck + colVMID + colName + colStatus + colVCPU + colCPU + colRAM + colStorage + 6
 
 	// Scrollbar styles
-	scrollTrackStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	scrollTrackStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 	scrollThumbStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 
 	totalItems := len(vms)
@@ -830,7 +830,7 @@ func RenderSuggestionTableWithCursor(suggestions []analyzer.MigrationSuggestion,
 		Bold(true)
 
 	// Scrollbar styles
-	scrollTrackStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	scrollTrackStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 	scrollThumbStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 
 	totalItems := len(suggestions)

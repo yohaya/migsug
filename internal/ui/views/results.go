@@ -54,7 +54,7 @@ func RenderResultsWithSource(result *analyzer.AnalysisResult, cluster *proxmox.C
 	}
 
 	// Title with version (same as dashboard)
-	versionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	versionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 
 	title := "KVM Migration Suggester"
@@ -118,7 +118,7 @@ func RenderResultsWithSource(result *analyzer.AnalysisResult, cluster *proxmox.C
 		if padding > 0 {
 			scrollInfo = strings.Repeat(" ", padding) + scrollInfo
 		}
-		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(scrollInfo) + "\n")
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0")).Render(scrollInfo) + "\n")
 	}
 	sb.WriteString("\n")
 
@@ -133,7 +133,7 @@ func RenderResultsWithSource(result *analyzer.AnalysisResult, cluster *proxmox.C
 	))
 
 	// Help text
-	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 	sb.WriteString("\n" + helpStyle.Render("↑/↓/PgUp/PgDn/Home/End: Navigate  r: New Analysis  Esc: Back  q: Quit"))
 
 	return sb.String()
@@ -157,7 +157,7 @@ func RenderResultsInteractive(result *analyzer.AnalysisResult, cluster *proxmox.
 	}
 
 	// Title with version
-	versionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	versionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 
 	title := "KVM Migration Suggester"
@@ -223,7 +223,7 @@ func RenderResultsInteractive(result *analyzer.AnalysisResult, cluster *proxmox.
 		if padding > 0 {
 			scrollInfo = strings.Repeat(" ", padding) + scrollInfo
 		}
-		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(scrollInfo) + "\n")
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0")).Render(scrollInfo) + "\n")
 	}
 
 	// Impact table with section indicator (always show ▶)
@@ -250,7 +250,7 @@ func RenderResultsInteractive(result *analyzer.AnalysisResult, cluster *proxmox.
 	}
 
 	// Help text with TAB instruction
-	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 	sb.WriteString("\n" + helpStyle.Render("Tab: Switch section  ↑/↓: Navigate  Enter: Details  m: Commands  r: New Analysis  Esc: Back  q: Quit"))
 
 	return sb.String()
@@ -355,11 +355,11 @@ func RenderHostDetailInteractive(result *analyzer.AnalysisResult, hostName, sour
 		// Show scroll info if needed
 		if len(beforeVMs) > maxVisible && focusedSection == 0 {
 			scrollInfo := fmt.Sprintf("Showing %d-%d of %d", startIdx+1, endIdx, len(beforeVMs))
-			sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("  "+scrollInfo) + "\n")
+			sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0")).Render("  "+scrollInfo) + "\n")
 		}
 	} else {
 		sb.WriteString(fmt.Sprintf("%s (0):\n", beforeTitle))
-		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("  (no VMs on this host before migration)") + "\n")
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0")).Render("  (no VMs on this host before migration)") + "\n")
 	}
 	sb.WriteString("\n")
 
@@ -371,7 +371,7 @@ func RenderHostDetailInteractive(result *analyzer.AnalysisResult, hostName, sour
 
 	if isSource {
 		sb.WriteString(fmt.Sprintf("%s (0):\n", afterTitle))
-		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("  (all VMs migrated away)") + "\n")
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0")).Render("  (all VMs migrated away)") + "\n")
 	} else {
 		sb.WriteString(fmt.Sprintf("%s (%d):\n", afterTitle, len(afterVMs)))
 		sb.WriteString(headerStyle.Render(fmt.Sprintf("  %6s  %-24s  %-20s  %6s  %8s  %8s",
@@ -402,13 +402,13 @@ func RenderHostDetailInteractive(result *analyzer.AnalysisResult, hostName, sour
 		// Show scroll info if needed
 		if len(afterVMs) > maxVisible && focusedSection == 1 {
 			scrollInfo := fmt.Sprintf("Showing %d-%d of %d", startIdx+1, endIdx, len(afterVMs))
-			sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("  "+scrollInfo) + "\n")
+			sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0")).Render("  "+scrollInfo) + "\n")
 		}
 	}
 	sb.WriteString("\n")
 
 	// Help text
-	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 	sb.WriteString(helpStyle.Render("Tab: Switch section  ↑/↓/PgUp/PgDn: Scroll  Esc: Back"))
 
 	return sb.String()
@@ -659,7 +659,7 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 	totalWidth := colDir + colVMID + colName + colState + colHCPU + colVMCPU + colCPU + colVCPU + colRAM + colUsedDisk + colMaxDisk + colTarget + 11
 
 	// Scrollbar styles
-	scrollTrackStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	scrollTrackStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 	scrollThumbStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 
 	totalItems := len(vmList)
@@ -835,7 +835,7 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 		if padding > 0 {
 			scrollInfo = strings.Repeat(" ", padding) + scrollInfo
 		}
-		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(scrollInfo) + "\n")
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0")).Render(scrollInfo) + "\n")
 	}
 
 	// Show migration reasoning panel if selected VM is migrating or cannot be migrated
@@ -909,7 +909,7 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 		}
 
 		// Scrollbar styles
-		reasoningScrollTrack := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+		reasoningScrollTrack := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 		reasoningScrollThumb := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 
 		// Render visible reasoning lines with scrollbar
@@ -961,7 +961,7 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 			if padding > 0 {
 				scrollInfo = strings.Repeat(" ", padding) + scrollInfo
 			}
-			sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(scrollInfo) + "\n")
+			sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0")).Render(scrollInfo) + "\n")
 		} else {
 			sb.WriteString("\n")
 		}
@@ -973,7 +973,7 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 	}
 
 	// Help text with Tab instruction
-	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 	tabHint := ""
 	if len(reasoningLines) > reasoningMaxLines {
 		tabHint = "Tab: Switch focus │ "
@@ -998,11 +998,11 @@ func renderMigrationReasoningLines(vm VMListItem, currentHost string) []string {
 	var lines []string
 	details := vm.Details
 
-	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 	valueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7")) // Light grey, similar to regular text
 	goodStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
 	warnStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
-	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 
 	// VM Selection Reason
 	lines = append(lines, labelStyle.Render("Why selected: ")+valueStyle.Render(details.SelectionReason))
@@ -1148,10 +1148,10 @@ func renderMigrationReasoningLines(vm VMListItem, currentHost string) []string {
 func renderNoMigrateReasonLines(vm VMListItem) []string {
 	var lines []string
 
-	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 	valueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
 	warnStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
-	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 
 	// VM cannot be migrated header
 	lines = append(lines, warnStyle.Render("⚠ This VM Cannot Be Migrated"))
@@ -1261,9 +1261,9 @@ func renderResultsClusterSummary(cluster *proxmox.Cluster, width int) string {
 
 	labelStyle := lipgloss.NewStyle() // Regular text color
 	valueStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
-	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 	runningStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
-	stoppedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	stoppedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 
 	// Count online nodes
 	onlineNodes := 0
@@ -1356,7 +1356,7 @@ func renderSourceNodeSummary(node *proxmox.Node, width int) string {
 
 	labelStyle := lipgloss.NewStyle() // Regular text color
 	valueStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
-	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 
 	// Node name with CPU info
 	nodeInfoStr := node.Name
@@ -1472,7 +1472,7 @@ func RenderVMSelectionWithHeight(vms []proxmox.VM, selectedVMs map[int]bool, cur
 	sb.WriteString(resultsTitleStyle.Render("Select VMs to Migrate") + "\n\n")
 
 	// Instructions
-	instructionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	instructionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 	sb.WriteString(instructionStyle.Render(
 		fmt.Sprintf("Selected: %d VMs - Use Space to toggle, Enter to confirm", len(selectedVMs))) + "\n\n")
 
@@ -1499,12 +1499,12 @@ func RenderVMSelectionWithHeight(vms []proxmox.VM, selectedVMs map[int]bool, cur
 		}
 		scrollInfo := fmt.Sprintf("(showing %d-%d of %d VMs)",
 			scrollPos+1, endPos, len(vms))
-		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(scrollInfo) + "\n")
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0")).Render(scrollInfo) + "\n")
 	}
 	sb.WriteString("\n")
 
 	// Help text
-	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 	sb.WriteString(helpStyle.Render("↑/↓: Navigate  Space: Toggle  Enter: Confirm  Esc: Back"))
 
 	return sb.String()
@@ -1517,10 +1517,10 @@ func RenderVMDetails(vm *proxmox.VM, nodeName string, vmid int, width, height, s
 	// Styles
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5"))
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
-	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 	valueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
-	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
+	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 	warnStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 	goodStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
 
@@ -1698,8 +1698,8 @@ func RenderMigrationCommands(result *analyzer.AnalysisResult, sourceNode string,
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5"))
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
 	cmdStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
-	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
+	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 	noteStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Italic(true)
 
 	// Title

@@ -52,7 +52,7 @@ func RenderCriteriaFull(state CriteriaState, sourceNode string, node *proxmox.No
 
 	// Title with version (same as dashboard)
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5"))
-	versionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	versionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 
 	title := "KVM Migration Suggester"
@@ -72,7 +72,7 @@ func RenderCriteriaFull(state CriteriaState, sourceNode string, node *proxmox.No
 
 	// Selected source node instruction with CPU info
 	valueStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
-	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 
 	nodeInfoStr := sourceNode
 	if node != nil && node.CPUModel != "" {
@@ -188,7 +188,7 @@ func RenderCriteriaFull(state CriteriaState, sourceNode string, node *proxmox.No
 
 		labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
 		inputStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
-		suffixStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+		suffixStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 		hintStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Italic(true)
 		errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Bold(true)
 
@@ -228,7 +228,7 @@ func RenderCriteriaFull(state CriteriaState, sourceNode string, node *proxmox.No
 	sb.WriteString("\n")
 
 	// Help text
-	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 	if state.InputFocused {
 		sb.WriteString(helpStyle.Render("Type value │ Enter: Confirm │ Esc: Cancel input"))
 	} else {
@@ -244,9 +244,9 @@ func renderClusterSummary(cluster *proxmox.Cluster, width int) string {
 
 	labelStyle := lipgloss.NewStyle() // Regular text color
 	valueStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
-	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 	runningStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
-	stoppedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	stoppedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 
 	// Count online nodes
 	onlineNodes := 0
@@ -473,7 +473,7 @@ func renderUnicodeInputBox(value string, suffix string, focused bool, width int)
 
 	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(borderColor))
 	textStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15")).Bold(true)
-	suffixStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	suffixStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 
 	// Unicode box
 	topBorder := "┌" + strings.Repeat("─", boxWidth-2) + "┐"
