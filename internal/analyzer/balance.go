@@ -601,39 +601,36 @@ func canAcceptVM(receiver *simulatedNodeState, vm *proxmox.VM, metrics clusterMe
 	newVCPUPercent := float64(receiver.vcpus+vm.CPUCores) / float64(receiver.cpuCores) * 100
 	newStoragePercent := float64(receiver.storageUsed+vm.GetEffectiveDisk()) / float64(receiver.storageTotal) * 100
 
-	// HARD LIMITS: Never exceed 90% for RAM/vCPU, 85% for storage (regardless of average)
-	// These limits ensure hosts always have headroom for operations
+	// HARD LIMITS for RAM and Storage (these cannot be oversubscribed)
+	// Note: vCPU has NO hard cap because oversubscription is normal (200-600% is common)
 	const hardCapRAMPercent = 90.0
-	const hardCapVCPUPercent = 90.0
 	const hardCapStoragePercent = 85.0
 
 	if newRAMPercent > hardCapRAMPercent {
-		return false
-	}
-	if newVCPUPercent > hardCapVCPUPercent {
 		return false
 	}
 	if newStoragePercent > hardCapStoragePercent {
 		return false
 	}
 
-	// SOFT LIMITS: Prefer not to overshoot the cluster average too much
-	// But allow it if the receiver is currently below average (to enable balancing)
-	// Only reject if:
-	// 1. Receiver is already at or above average, AND
-	// 2. Adding this VM would push it significantly above average (>10%)
-	const softMargin = 10.0
+	// SOFT LIMITS: Don't overshoot the cluster average by more than 5%
+	// This ensures balanced distribution across all available hosts
+	const softMargin = 5.0
 	currentRAMPercent := receiver.getRAMPercent()
 	currentVCPUPercent := receiver.getVCPUPercent()
 	currentStoragePercent := float64(receiver.storageUsed) / float64(receiver.storageTotal) * 100
 
-	// Only apply soft limits if receiver is already near or above average
+	// For RAM: don't exceed average + margin (with hard cap as backup)
 	if currentRAMPercent >= metrics.avgRAMPercent-2 && newRAMPercent > metrics.avgRAMPercent+softMargin {
 		return false
 	}
+
+	// For vCPU: don't exceed average + margin (no hard cap - oversubscription is normal)
 	if currentVCPUPercent >= metrics.avgVCPUPercent-2 && newVCPUPercent > metrics.avgVCPUPercent+softMargin {
 		return false
 	}
+
+	// For Storage: don't exceed average + margin (with hard cap as backup)
 	if currentStoragePercent >= metrics.avgStoragePercent-2 && newStoragePercent > metrics.avgStoragePercent+softMargin {
 		return false
 	}
