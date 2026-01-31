@@ -1348,6 +1348,13 @@ func fetchVMDiskUsageFromStorage(client ProxmoxClient, vmList []VM, progress Pro
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
+			// Extract node prefix for matching local storages
+			// Node name format: kv0078-63-250-62-88 -> prefix is "kv0078"
+			nodePrefix := node
+			if idx := strings.Index(node, "-"); idx > 0 {
+				nodePrefix = node[:idx]
+			}
+
 			// Get list of storages for this node
 			storages, err := client.GetNodeStorages(node)
 			if err != nil {
@@ -1359,9 +1366,19 @@ func fetchVMDiskUsageFromStorage(client ProxmoxClient, vmList []VM, progress Pro
 
 			// Process each storage that can hold VM images
 			for _, storage := range storages {
+				// Only query LOCAL storages (storage name starts with node prefix)
+				// This avoids querying shared/remote storages on wrong nodes
+				if !strings.HasPrefix(storage.Storage, nodePrefix) {
+					continue
+				}
+
 				// Only query storages that can hold VM images
 				if !strings.Contains(storage.Content, "images") {
 					continue
+				}
+
+				if storageLogger != nil {
+					storageLogger.Printf("Querying local storage %s on node %s", storage.Storage, node)
 				}
 
 				// Get storage content
