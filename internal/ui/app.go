@@ -1070,18 +1070,35 @@ func (m Model) getHostDetailVMAtCursor() (int, string) {
 	}
 
 	if isSource {
-		// Source node: VMs from the source node
+		// Source node: VMs from the source node, sorted by name to match view
 		sourceNodeObj := proxmox.GetNodeByName(m.cluster, m.sourceNode)
-		if sourceNodeObj != nil && m.hostDetailCursorPos >= 0 && m.hostDetailCursorPos < len(sourceNodeObj.VMs) {
-			vm := sourceNodeObj.VMs[m.hostDetailCursorPos]
-			return vm.VMID, m.sourceNode
+		if sourceNodeObj != nil {
+			// Build sorted list matching view order (sorted by name)
+			type vmEntry struct {
+				VMID int
+				Name string
+			}
+			var vmList []vmEntry
+			for _, vm := range sourceNodeObj.VMs {
+				vmList = append(vmList, vmEntry{VMID: vm.VMID, Name: vm.Name})
+			}
+			// Sort by name to match view order
+			sort.Slice(vmList, func(i, j int) bool {
+				return vmList[i].Name < vmList[j].Name
+			})
+
+			if m.hostDetailCursorPos >= 0 && m.hostDetailCursorPos < len(vmList) {
+				return vmList[m.hostDetailCursorPos].VMID, m.sourceNode
+			}
 		}
 	} else {
 		// Target node: build combined list (existing + incoming)
-		var vmList []struct {
+		type vmEntry struct {
 			VMID     int
+			Name     string
 			NodeName string
 		}
+		var vmList []vmEntry
 
 		// Existing VMs on target
 		targetNode := proxmox.GetNodeByName(m.cluster, m.selectedHostName)
@@ -1089,10 +1106,11 @@ func (m Model) getHostDetailVMAtCursor() (int, string) {
 			for _, vm := range targetNode.VMs {
 				// Skip VMs being migrated out
 				if _, migrating := migratingVMs[vm.VMID]; !migrating {
-					vmList = append(vmList, struct {
-						VMID     int
-						NodeName string
-					}{vm.VMID, m.selectedHostName})
+					vmList = append(vmList, vmEntry{
+						VMID:     vm.VMID,
+						Name:     vm.Name,
+						NodeName: m.selectedHostName,
+					})
 				}
 			}
 		}
@@ -1100,12 +1118,18 @@ func (m Model) getHostDetailVMAtCursor() (int, string) {
 		// Add VMs being migrated in
 		for _, sug := range m.result.Suggestions {
 			if sug.TargetNode == m.selectedHostName {
-				vmList = append(vmList, struct {
-					VMID     int
-					NodeName string
-				}{sug.VMID, sug.SourceNode})
+				vmList = append(vmList, vmEntry{
+					VMID:     sug.VMID,
+					Name:     sug.VMName,
+					NodeName: sug.SourceNode,
+				})
 			}
 		}
+
+		// Sort by name to match view order
+		sort.Slice(vmList, func(i, j int) bool {
+			return vmList[i].Name < vmList[j].Name
+		})
 
 		if m.hostDetailCursorPos >= 0 && m.hostDetailCursorPos < len(vmList) {
 			return vmList[m.hostDetailCursorPos].VMID, vmList[m.hostDetailCursorPos].NodeName
