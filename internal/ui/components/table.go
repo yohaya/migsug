@@ -135,8 +135,8 @@ func RenderNodeTableWideWithScroll(nodes []proxmox.Node, selectedIdx int, width 
 	// Column widths - fit to terminal width
 	// Note: Headers include sort numbers like "[1]" and sort arrow "▼", so widths must accommodate
 	colName := maxNameLen + 2
-	colStatus := 14 // "Status [2] ▼" = 12 chars, data "online (abcd)" = 14 chars
-	colVMs := 6     // "VMs [3] ▼" header, data up to 4 digits (9999)
+	colStatus := 14 // "Status [2] ▼" = 13 chars, data "online (abcd)" = 14 chars
+	colVMs := 10    // "VMs [3] ▼" = 9 chars, need space for header + data up to 4 digits
 	colVCPUs := 12  // "vCPUs [4] ▼" = 11 chars, data "9999 (999%)" = 12 chars
 	colCPUPct := 11 // "CPU% [5] ▼" = 10 chars
 	colLA := 14     // "LA [6] ▼" = 8 chars, but data can be "62.56 (35.5%)"

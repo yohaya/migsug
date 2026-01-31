@@ -72,9 +72,10 @@ func RenderDashboardWithHeight(cluster *proxmox.Cluster, selectedIdx int, width,
 	// - Scroll info (if scrolling): 1 line
 	// - Separator: 1 line
 	// - Refresh status: 1 line
+	// - Status flags legend: 1 line
 	// - Help text: 1 line
-	// Total: 14 lines
-	fixedOverhead := 14
+	// Total: 15 lines
+	fixedOverhead := 15
 	maxVisibleNodes := height - fixedOverhead
 	if maxVisibleNodes < 3 {
 		maxVisibleNodes = 3
