@@ -422,14 +422,14 @@ func RenderDashboardHostDetailFull(node *proxmox.Node, cluster *proxmox.Cluster,
 
 	// Build VM list (sorted by name)
 	type vmItem struct {
-		VMID       int
-		Name       string
-		Status     string
-		CPUUsage   float64
-		VCPUs      int
-		RAM        int64
-		UsedDisk   int64
-		MaxDisk    int64
+		VMID     int
+		Name     string
+		Status   string
+		CPUUsage float64
+		VCPUs    int
+		RAM      int64
+		UsedDisk int64
+		MaxDisk  int64
 	}
 	var vmList []vmItem
 	for _, vm := range node.VMs {
@@ -451,14 +451,14 @@ func RenderDashboardHostDetailFull(node *proxmox.Node, cluster *proxmox.Cluster,
 
 	// VM table column widths (matching migration summary style)
 	const (
-		colVMID       = 6
-		colName       = 24
-		colState      = 5
-		colHCPU       = 6
-		colVCPU       = 5
-		colRAM        = 8
-		colUsedDisk   = 9
-		colMaxDisk    = 9
+		colVMID     = 6
+		colName     = 24
+		colState    = 5
+		colHCPU     = 6
+		colVCPU     = 5
+		colRAM      = 8
+		colUsedDisk = 9
+		colMaxDisk  = 9
 	)
 	vmTableWidth := colVMID + colName + colState + colHCPU + colVCPU + colRAM + colUsedDisk + colMaxDisk + 7
 

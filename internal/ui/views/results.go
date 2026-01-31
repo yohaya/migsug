@@ -422,9 +422,9 @@ type VMListItem struct {
 	CPUUsage  float64 // CPU usage percentage
 	VCPUs     int
 	RAM       int64
-	Storage   int64 // Effective disk (UsedDisk if available, else MaxDisk)
-	UsedDisk  int64 // Actual disk usage (thin provisioning)
-	MaxDisk   int64 // Allocated/provisioned disk size
+	Storage   int64  // Effective disk (UsedDisk if available, else MaxDisk)
+	UsedDisk  int64  // Actual disk usage (thin provisioning)
+	MaxDisk   int64  // Allocated/provisioned disk size
 	Direction string // "←" for out, "→" for in, "✗" for cannot migrate, "" for staying
 	Target    string // Target/Source node for migration
 
