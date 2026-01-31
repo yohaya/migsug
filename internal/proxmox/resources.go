@@ -1271,6 +1271,10 @@ func fetchVMDiskUsageFromStorage(client ProxmoxClient, vmList []VM, progress Pro
 
 		if storageLogger != nil {
 			storageLogger.Printf("Disk cache: %d hits, %d misses", cacheHits, len(vmsNeedingFetch))
+			// Log each VM that had a cache miss
+			for _, vm := range vmsNeedingFetch {
+				storageLogger.Printf("  Cache MISS: VMID=%d Name=%s Node=%s MaxDisk=%d", vm.VMID, vm.Name, vm.Node, vm.MaxDisk)
+			}
 		}
 
 		// Cleanup old entries periodically
