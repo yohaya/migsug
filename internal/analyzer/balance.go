@@ -72,6 +72,68 @@ func AnalyzeClusterWideBalance(cluster *proxmox.Cluster, progress BalanceProgres
 		return nil, fmt.Errorf("no beneficial migrations found")
 	}
 
+	// Report progress for vCPU optimization
+	if progress != nil {
+		progress("Optimizing vCPU distribution", len(onlineNodes), len(onlineNodes))
+	}
+
+	// Build simulated states from the results for vCPU swap optimization
+	// This represents the cluster state AFTER the initial balancing pass
+	swapStates := make(map[string]*simulatedNodeState)
+	for _, node := range onlineNodes {
+		state := newSimulatedNodeState(&node)
+		swapStates[node.Name] = state
+	}
+
+	// Apply the initial migrations to the simulated states
+	migratedVMs := make(map[int]bool)
+	for _, sug := range suggestions {
+		migratedVMs[sug.VMID] = true
+		// Remove VM from source
+		if srcState := swapStates[sug.SourceNode]; srcState != nil {
+			if vm, ok := srcState.vms[sug.VMID]; ok {
+				srcState.vcpus -= vm.CPUCores
+				srcState.ramUsed -= vm.MaxMem
+				srcState.storageUsed -= vm.GetEffectiveDisk()
+				srcState.vmCount--
+				delete(srcState.vms, sug.VMID)
+			}
+		}
+		// Add VM to target
+		if tgtState := swapStates[sug.TargetNode]; tgtState != nil {
+			vm := proxmox.VM{
+				VMID:     sug.VMID,
+				Name:     sug.VMName,
+				CPUCores: sug.VCPUs,
+				MaxMem:   sug.RAM,
+				UsedDisk: sug.UsedDisk,
+				MaxDisk:  sug.MaxDisk,
+				Status:   sug.Status,
+			}
+			tgtState.vms[sug.VMID] = vm
+			tgtState.vcpus += vm.CPUCores
+			tgtState.ramUsed += vm.MaxMem
+			tgtState.storageUsed += vm.GetEffectiveDisk()
+			tgtState.vmCount++
+		}
+	}
+
+	// Find vCPU swap opportunities (VMs with similar RAM but different vCPUs)
+	// Allow up to 20 swaps (40 migrations) for large clusters
+	maxSwaps := len(onlineNodes) / 3
+	if maxSwaps < 5 {
+		maxSwaps = 5
+	}
+	if maxSwaps > 20 {
+		maxSwaps = 20
+	}
+
+	swapSuggestions := findVCPUSwapOpportunities(swapStates, metrics, maxSwaps)
+	if len(swapSuggestions) > 0 {
+		log.Printf("ClusterBalance: Found %d vCPU swap migrations", len(swapSuggestions))
+		suggestions = append(suggestions, swapSuggestions...)
+	}
+
 	// Build result
 	result := &AnalysisResult{
 		Suggestions:   suggestions,
@@ -85,10 +147,15 @@ func AnalyzeClusterWideBalance(cluster *proxmox.Cluster, progress BalanceProgres
 		result.SourceAfter = nodeStates[donors[0].node.Name].after
 	}
 
-	// Populate target states
+	// Populate target states (use updated states after swaps)
 	for name, states := range nodeStates {
 		result.TargetsBefore[name] = states.before
-		result.TargetsAfter[name] = states.after
+		// Update after state if we have swap data
+		if swapState := swapStates[name]; swapState != nil {
+			result.TargetsAfter[name] = swapState.toNodeState()
+		} else {
+			result.TargetsAfter[name] = states.after
+		}
 	}
 
 	// Calculate totals
@@ -612,4 +679,172 @@ func calculateImprovementInfo(nodeStates map[string]nodeStatesPair, metrics clus
 	improvement := ((beforeStdDev - afterStdDev) / beforeStdDev) * 100
 
 	return fmt.Sprintf("Balance improved by %.1f%% (std dev: %.1f%% → %.1f%%)", improvement, beforeStdDev, afterStdDev)
+}
+
+// vmSwapCandidate represents a VM that could be swapped for vCPU balancing
+type vmSwapCandidate struct {
+	vm       proxmox.VM
+	nodeName string
+	vcpus    int
+	ram      int64
+}
+
+// findVCPUSwapOpportunities finds VMs that can be swapped to balance vCPUs
+// without significantly affecting RAM balance. Returns pairs of migrations.
+func findVCPUSwapOpportunities(states map[string]*simulatedNodeState, metrics clusterMetrics, maxSwaps int) []MigrationSuggestion {
+	var suggestions []MigrationSuggestion
+
+	// Find nodes above and below average vCPU
+	var highVCPUNodes, lowVCPUNodes []*simulatedNodeState
+	for _, state := range states {
+		deviation := state.getVCPUPercent() - metrics.avgVCPUPercent
+		if deviation > 5 { // 5% above average
+			highVCPUNodes = append(highVCPUNodes, state)
+		} else if deviation < -5 { // 5% below average
+			lowVCPUNodes = append(lowVCPUNodes, state)
+		}
+	}
+
+	if len(highVCPUNodes) == 0 || len(lowVCPUNodes) == 0 {
+		return suggestions
+	}
+
+	// Sort nodes by deviation
+	sort.Slice(highVCPUNodes, func(i, j int) bool {
+		return highVCPUNodes[i].getVCPUPercent() > highVCPUNodes[j].getVCPUPercent()
+	})
+	sort.Slice(lowVCPUNodes, func(i, j int) bool {
+		return lowVCPUNodes[i].getVCPUPercent() < lowVCPUNodes[j].getVCPUPercent()
+	})
+
+	swapCount := 0
+	usedVMs := make(map[int]bool)
+
+	// For each high-vCPU node, try to find swap opportunities
+	for _, highNode := range highVCPUNodes {
+		if swapCount >= maxSwaps {
+			break
+		}
+
+		// Get high-vCPU VMs from this node
+		var highVCPUVMs []vmSwapCandidate
+		for _, vm := range highNode.vms {
+			if vm.NoMigrate || vm.Status != "running" || usedVMs[vm.VMID] {
+				continue
+			}
+			if vm.CPUCores >= 2 { // Only consider VMs with 2+ vCPUs
+				highVCPUVMs = append(highVCPUVMs, vmSwapCandidate{
+					vm:       vm,
+					nodeName: highNode.name,
+					vcpus:    vm.CPUCores,
+					ram:      vm.MaxMem,
+				})
+			}
+		}
+
+		// Sort by vCPU count descending
+		sort.Slice(highVCPUVMs, func(i, j int) bool {
+			return highVCPUVMs[i].vcpus > highVCPUVMs[j].vcpus
+		})
+
+		// For each high-vCPU VM, find a matching low-vCPU VM to swap
+		for _, highVM := range highVCPUVMs {
+			if swapCount >= maxSwaps {
+				break
+			}
+
+			// RAM tolerance: within 20% or 2GB, whichever is greater
+			ramTolerance := int64(float64(highVM.ram) * 0.2)
+			if ramTolerance < 2*1024*1024*1024 {
+				ramTolerance = 2 * 1024 * 1024 * 1024
+			}
+
+			// Search low-vCPU nodes for a swap candidate
+			for _, lowNode := range lowVCPUNodes {
+				if swapCount >= maxSwaps {
+					break
+				}
+
+				for _, vm := range lowNode.vms {
+					if vm.NoMigrate || vm.Status != "running" || usedVMs[vm.VMID] {
+						continue
+					}
+
+					// Check if RAM is similar
+					ramDiff := vm.MaxMem - highVM.ram
+					if ramDiff < 0 {
+						ramDiff = -ramDiff
+					}
+					if ramDiff > ramTolerance {
+						continue
+					}
+
+					// Check if vCPU swap would help balance
+					vcpuDiff := highVM.vcpus - vm.CPUCores
+					if vcpuDiff <= 0 {
+						continue // Low-vCPU VM should have fewer vCPUs
+					}
+
+					// This is a valid swap! Create two migration suggestions
+					log.Printf("vCPU Swap: VM %d (%s, %d vCPU, %d GB RAM) on %s <-> VM %d (%s, %d vCPU, %d GB RAM) on %s",
+						highVM.vm.VMID, highVM.vm.Name, highVM.vcpus, highVM.ram/(1024*1024*1024), highNode.name,
+						vm.VMID, vm.Name, vm.CPUCores, vm.MaxMem/(1024*1024*1024), lowNode.name)
+
+					// Swap high-vCPU VM to low-vCPU node
+					suggestions = append(suggestions, MigrationSuggestion{
+						VMID:        highVM.vm.VMID,
+						VMName:      highVM.vm.Name,
+						SourceNode:  highNode.name,
+						TargetNode:  lowNode.name,
+						Reason:      fmt.Sprintf("vCPU balance swap (-%d vCPU)", vcpuDiff),
+						Score:       float64(vcpuDiff) * 10,
+						Status:      highVM.vm.Status,
+						VCPUs:       highVM.vcpus,
+						CPUUsage:    highVM.vm.CPUUsage,
+						RAM:         highVM.ram,
+						Storage:     highVM.vm.GetEffectiveDisk(),
+						UsedDisk:    highVM.vm.UsedDisk,
+						MaxDisk:     highVM.vm.MaxDisk,
+						SourceCores: highNode.cpuCores,
+						TargetCores: lowNode.cpuCores,
+						Details: &MigrationDetails{
+							SelectionMode:   "vcpu_swap",
+							SelectionReason: "vCPU balancing via swap",
+						},
+					})
+
+					// Swap low-vCPU VM to high-vCPU node
+					suggestions = append(suggestions, MigrationSuggestion{
+						VMID:        vm.VMID,
+						VMName:      vm.Name,
+						SourceNode:  lowNode.name,
+						TargetNode:  highNode.name,
+						Reason:      fmt.Sprintf("vCPU balance swap (+%d vCPU)", vcpuDiff),
+						Score:       float64(vcpuDiff) * 10,
+						Status:      vm.Status,
+						VCPUs:       vm.CPUCores,
+						CPUUsage:    vm.CPUUsage,
+						RAM:         vm.MaxMem,
+						Storage:     vm.GetEffectiveDisk(),
+						UsedDisk:    vm.UsedDisk,
+						MaxDisk:     vm.MaxDisk,
+						SourceCores: lowNode.cpuCores,
+						TargetCores: highNode.cpuCores,
+						Details: &MigrationDetails{
+							SelectionMode:   "vcpu_swap",
+							SelectionReason: "vCPU balancing via swap",
+						},
+					})
+
+					// Mark VMs as used
+					usedVMs[highVM.vm.VMID] = true
+					usedVMs[vm.VMID] = true
+					swapCount++
+					break // Found a swap for this high-vCPU VM
+				}
+			}
+		}
+	}
+
+	return suggestions
 }
