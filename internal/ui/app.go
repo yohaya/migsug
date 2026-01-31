@@ -396,8 +396,8 @@ func (m Model) handleDashboardKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.loading = true
 		m.loadingMsg = "Analyzing cluster balance"
 		m.balanceStartTime = time.Now()
-		m.balanceReturnView = ViewDashboard  // Return to main dashboard on ESC (legacy)
-		m.resultsReturnView = ViewDashboard  // Return to main dashboard on ESC
+		m.balanceReturnView = ViewDashboard // Return to main dashboard on ESC (legacy)
+		m.resultsReturnView = ViewDashboard // Return to main dashboard on ESC
 		m.isBalanceClusterRun = true
 		return m, m.startClusterBalanceAnalysis()
 	}
@@ -617,8 +617,8 @@ func (m Model) startMigrationFromHostDetail() (tea.Model, tea.Cmd) {
 		}
 		m.loading = true
 		m.loadingMsg = "Analyzing migrations"
-		m.isBalanceClusterRun = false                      // Not a balance cluster run
-		m.resultsReturnView = ViewDashboardHostDetail      // Return to host detail on ESC
+		m.isBalanceClusterRun = false                 // Not a balance cluster run
+		m.resultsReturnView = ViewDashboardHostDetail // Return to host detail on ESC
 		return m, m.startAnalysis()
 
 	case analyzer.ModeBalanceCluster:
@@ -626,8 +626,8 @@ func (m Model) startMigrationFromHostDetail() (tea.Model, tea.Cmd) {
 		m.loading = true
 		m.loadingMsg = "Analyzing cluster balance"
 		m.balanceStartTime = time.Now()
-		m.balanceReturnView = ViewDashboardHostDetail   // Return to host detail on ESC (legacy)
-		m.resultsReturnView = ViewDashboardHostDetail   // Return to host detail on ESC
+		m.balanceReturnView = ViewDashboardHostDetail // Return to host detail on ESC (legacy)
+		m.resultsReturnView = ViewDashboardHostDetail // Return to host detail on ESC
 		m.isBalanceClusterRun = true
 		return m, m.startClusterBalanceAnalysis()
 	}
