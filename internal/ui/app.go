@@ -413,6 +413,11 @@ func (m Model) handleDashboardHostDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd
 		return m, tea.ClearScreen
 	}
 
+	// Handle inline input mode when focused
+	if m.criteriaState.InputFocused {
+		return m.handleHostDetailInput(msg)
+	}
+
 	vmCount := len(sourceNodeObj.VMs)
 	pageSize := 10
 	numModes := 8 // Number of migration modes
@@ -533,6 +538,51 @@ func (m Model) handleDashboardHostDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd
 	return m, nil
 }
 
+// handleHostDetailInput handles keyboard input when in inline input mode on the host detail view
+func (m Model) handleHostDetailInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "enter":
+		// Clear previous error
+		m.criteriaState.ErrorMessage = ""
+
+		// Validate input before proceeding
+		validationErr := m.validateCriteriaInput()
+		if validationErr != "" {
+			m.criteriaState.ErrorMessage = validationErr
+			return m, nil
+		}
+
+		// Start analysis
+		m.criteriaState.InputFocused = false
+		m.loading = true
+		m.loadingMsg = "Analyzing migrations"
+		m.resultsReturnView = ViewDashboardHostDetail // Return to host detail on ESC from results
+		return m, m.startAnalysis()
+
+	case "esc":
+		// Cancel input mode and clear input
+		m.criteriaState.InputFocused = false
+		m.criteriaState.ErrorMessage = ""
+		// Clear input field for current mode
+		m.clearCurrentInput()
+		return m, nil
+
+	case "backspace", "ctrl+h", "delete":
+		m.deleteLastChar()
+		m.criteriaState.ErrorMessage = "" // Clear error on edit
+		return m, nil
+
+	default:
+		// Only allow digits and decimal point for numeric input
+		char := msg.String()
+		if len(char) == 1 && (char >= "0" && char <= "9" || char == ".") {
+			m.appendToInput(char)
+			m.criteriaState.ErrorMessage = "" // Clear error on edit
+		}
+		return m, nil
+	}
+}
+
 // getDashboardHostDetailVMAtCursor returns the VMID and node name for the VM at the current cursor position
 func (m Model) getDashboardHostDetailVMAtCursor() (int, string) {
 	sourceNodeObj := proxmox.GetNodeByName(m.cluster, m.sourceNode)
@@ -583,19 +633,19 @@ func getMigrationModeFromIndex(idx int) analyzer.MigrationMode {
 func (m Model) startMigrationFromHostDetail() (tea.Model, tea.Cmd) {
 	selectedMode := getMigrationModeFromIndex(m.dashboardHostDetailModeIdx)
 
-	// For modes that need input, go to criteria view
+	// For modes that need input, enable inline input mode in the current view
 	switch selectedMode {
 	case analyzer.ModeVCPU, analyzer.ModeCPUUsage, analyzer.ModeRAM, analyzer.ModeStorage, analyzer.ModeCreationDate:
-		// These modes need user input, go to criteria view
+		// These modes need user input - enable inline input mode
 		m.criteriaState = views.CriteriaState{
 			SelectedMode:   selectedMode,
 			SelectedVMs:    make(map[int]bool),
 			CursorPosition: m.dashboardHostDetailModeIdx,
 			InputFocused:   true, // Start with input focused
 		}
-		m.currentView = ViewCriteria
 		m.isBalanceClusterRun = false // Not a balance cluster run
-		return m, tea.ClearScreen
+		// Stay in the same view but with input focused
+		return m, nil
 
 	case analyzer.ModeSpecific:
 		// Go to VM selection view
@@ -1604,7 +1654,21 @@ func (m Model) View() string {
 		if sourceNode == nil {
 			return "Error: Source node not found"
 		}
-		return views.RenderDashboardHostDetailFull(sourceNode, m.cluster, m.version, m.width, m.height, m.dashboardHostDetailScrollPos, m.dashboardHostDetailCursorPos, m.dashboardHostDetailFocusSection, m.dashboardHostDetailModeIdx)
+		// Get input value based on mode index (1=vCPU, 2=CPU%, 3=RAM, 4=Storage, 5=CreateDate)
+		var inputValue string
+		switch m.dashboardHostDetailModeIdx {
+		case 1:
+			inputValue = m.criteriaState.VCPUCount
+		case 2:
+			inputValue = m.criteriaState.CPUUsage
+		case 3:
+			inputValue = m.criteriaState.RAMAmount
+		case 4:
+			inputValue = m.criteriaState.StorageAmount
+		case 5:
+			inputValue = m.criteriaState.CreationAge
+		}
+		return views.RenderDashboardHostDetailWithInput(sourceNode, m.cluster, m.version, m.width, m.height, m.dashboardHostDetailScrollPos, m.dashboardHostDetailCursorPos, m.dashboardHostDetailFocusSection, m.dashboardHostDetailModeIdx, inputValue, m.criteriaState.InputFocused, m.criteriaState.ErrorMessage)
 	case ViewCriteria:
 		sourceNode := proxmox.GetNodeByName(m.cluster, m.sourceNode)
 		return views.RenderCriteriaFull(m.criteriaState, m.sourceNode, sourceNode, m.cluster, m.version, m.width)

@@ -351,6 +351,11 @@ func RenderDashboardHostDetail(node *proxmox.Node, cluster *proxmox.Cluster, ver
 
 // RenderDashboardHostDetailFull renders the host detail view with focus section and mode selection
 func RenderDashboardHostDetailFull(node *proxmox.Node, cluster *proxmox.Cluster, version string, width, height, scrollPos, cursorPos, focusSection, modeIdx int) string {
+	return RenderDashboardHostDetailWithInput(node, cluster, version, width, height, scrollPos, cursorPos, focusSection, modeIdx, "", false, "")
+}
+
+// RenderDashboardHostDetailWithInput renders the host detail view with inline input support
+func RenderDashboardHostDetailWithInput(node *proxmox.Node, cluster *proxmox.Cluster, version string, width, height, scrollPos, cursorPos, focusSection, modeIdx int, inputValue string, inputFocused bool, inputError string) string {
 	var sb strings.Builder
 
 	// Ensure minimum width
@@ -358,29 +363,36 @@ func RenderDashboardHostDetailFull(node *proxmox.Node, cluster *proxmox.Cluster,
 		width = 100
 	}
 
-	// Styles - using #C0C0C0 grey for most text
+	// Styles - matching main dashboard style
 	silverGrey := lipgloss.Color("#C0C0C0")
-	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(silverGrey)
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5")) // Magenta like main dashboard
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(silverGrey)
 	dimStyle := lipgloss.NewStyle().Foreground(silverGrey)
-	borderStyle := lipgloss.NewStyle().Foreground(silverGrey)
+	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6")) // Cyan like main dashboard
 	helpStyle := lipgloss.NewStyle().Foreground(silverGrey)
 	selectedStyle := lipgloss.NewStyle().Background(lipgloss.Color("236")).Foreground(lipgloss.Color("15")).Bold(true)
 
-	// Title with version
+	// Title with version - matching main dashboard style
 	versionStyle := lipgloss.NewStyle().Foreground(silverGrey)
 	title := "KVM Migration Suggester"
-	if version != "" {
+	if version != "" && version != "dev" {
 		title += " " + versionStyle.Render("v"+version)
 	}
 	sb.WriteString(titleStyle.Render(title) + "\n")
-	sb.WriteString(borderStyle.Render(strings.Repeat(boxDoubleLine, width)) + "\n")
+	sb.WriteString(borderStyle.Render(strings.Repeat(boxHorizontal, width)) + "\n\n")
 
-	// Host detail header - regular grey color
-	sb.WriteString(dimStyle.Render(fmt.Sprintf("Host: %s", node.Name)) + " ")
+	// Cluster summary (matching main dashboard)
+	sb.WriteString(renderEnhancedClusterSummary(cluster, width))
+	sb.WriteString("\n")
+
+	// Selected source node header - with cyan accent
+	nodeNameStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
+	sb.WriteString(dimStyle.Render("Selected source node: ") + nodeNameStyle.Render(node.Name) + "\n")
+
+	// Host stats line
 	cpuPct := node.GetCPUPercent()
 	ramPct := node.GetMemPercent()
-	sb.WriteString(dimStyle.Render(fmt.Sprintf("│ VMs: %d │ vCPUs: %d │ CPU: %.1f%% │ RAM: %.1f%% │ Storage: %s",
+	sb.WriteString(dimStyle.Render(fmt.Sprintf("  VMs: %d │ vCPUs: %d │ CPU: %.1f%% │ RAM: %.1f%% │ Storage: %s",
 		len(node.VMs),
 		node.GetRunningVCPUs(),
 		cpuPct,
@@ -402,19 +414,20 @@ func RenderDashboardHostDetailFull(node *proxmox.Node, cluster *proxmox.Cluster,
 		{"Balance Cluster", "Balance all hosts in cluster to same % usage"},
 	}
 
-	// Calculate split heights - VM list gets at least 50% of available space
-	// Reserve: title(2) + host header(1) + empty line(1) + VM header+sep(2) + VM closing(1) + modes header+sep(2) + modes(len) + modes closing(1) + empty line(1) + help(1) + buffer(2)
-	fixedOverhead := 2 + 1 + 1 + 2 + 1 + 2 + len(modes) + 1 + 1 + 1 + 2
+	// Calculate split heights - VM list height adjusted for all elements
+	// Reserve: title(2) + border(1) + cluster summary(2) + source node(2) + blank(1)
+	//          + VM header+sep(2) + VM closing(1) + modes header+sep(2) + modes(len) + modes closing(1)
+	//          + input area(3) + help(1) + buffer(2)
+	fixedOverhead := 2 + 1 + 2 + 2 + 1 + 2 + 1 + 2 + len(modes) + 1 + 3 + 1 + 2
 	availableHeight := height - fixedOverhead
 
-	// VM list gets at least 50% of the available space
-	minVMListHeight := (height - 10) / 2 // At least 50% of usable height
-	if minVMListHeight < 10 {
-		minVMListHeight = 10
-	}
+	// VM list height - reduced to make room for input area
 	vmListHeight := availableHeight
-	if vmListHeight < minVMListHeight {
-		vmListHeight = minVMListHeight
+	if vmListHeight < 5 {
+		vmListHeight = 5
+	}
+	if vmListHeight > 15 {
+		vmListHeight = 15 // Cap to leave room for modes and input
 	}
 
 	// === VM LIST SECTION ===
@@ -640,11 +653,59 @@ func RenderDashboardHostDetailFull(node *proxmox.Node, cluster *proxmox.Cluster,
 	// Mode table closing line
 	sb.WriteString("  " + strings.Repeat("─", modeTableWidth) + "\n")
 
-	// Empty line before help
-	sb.WriteString("\n")
+	// Input field section (for modes that require input: vCPU, CPU Usage, RAM, Storage, Create Date)
+	// Mode indices: 0=Migrate All, 1=vCPU, 2=CPU Usage, 3=RAM, 4=Storage, 5=Create Date, 6=Specific VMs, 7=Balance Cluster
+	inputLabels := map[int]string{
+		1: "Enter vCPU count to migrate:",
+		2: "Enter CPU usage % to migrate:",
+		3: "Enter RAM (GiB) to migrate:",
+		4: "Enter Storage (GiB) to migrate:",
+		5: "Enter days old (VMs created more than N days ago):",
+	}
+
+	inputStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Bold(true)
+	inputValueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15")).Bold(true)
+	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+	cursorStyle := lipgloss.NewStyle().Background(lipgloss.Color("6")).Foreground(lipgloss.Color("0"))
+
+	if label, needsInput := inputLabels[modeIdx]; needsInput && focusSection == 1 {
+		sb.WriteString("\n")
+		sb.WriteString("  " + inputStyle.Render(label) + " ")
+		if inputFocused {
+			// Show input value with cursor
+			if inputValue == "" {
+				sb.WriteString(cursorStyle.Render(" "))
+			} else {
+				sb.WriteString(inputValueStyle.Render(inputValue) + cursorStyle.Render(" "))
+			}
+		} else {
+			if inputValue != "" {
+				sb.WriteString(inputValueStyle.Render(inputValue))
+			} else {
+				sb.WriteString(dimStyle.Render("(press Enter to input)"))
+			}
+		}
+		sb.WriteString("\n")
+
+		// Show error message if any
+		if inputError != "" {
+			sb.WriteString("  " + errorStyle.Render("⚠ "+inputError) + "\n")
+		} else {
+			sb.WriteString("\n")
+		}
+	} else {
+		// Reserve space for input area even when not showing
+		sb.WriteString("\n\n\n")
+	}
 
 	// Help text
-	sb.WriteString(helpStyle.Render("Tab: Switch section │ ↑/↓: Navigate │ Enter: Select │ Esc: Back"))
+	var helpText string
+	if inputFocused {
+		helpText = "Enter: Confirm │ Esc: Cancel │ Backspace: Delete"
+	} else {
+		helpText = "Tab: Switch section │ ↑/↓: Navigate │ Enter: Select │ Esc: Back"
+	}
+	sb.WriteString(helpStyle.Render(helpText))
 
 	return sb.String()
 }
