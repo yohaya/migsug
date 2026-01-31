@@ -18,6 +18,12 @@ type ProxmoxClient interface {
 	// GetNodes retrieves a list of all nodes in the cluster
 	GetNodes() ([]string, error)
 
+	// GetNodeStorages retrieves list of storages available on a node
+	GetNodeStorages(node string) ([]StorageInfo, error)
+
+	// GetStorageContent retrieves content (volumes) of a storage with actual disk usage
+	GetStorageContent(node, storage string) ([]StorageContentItem, error)
+
 	// Ping tests the connection to Proxmox
 	Ping() error
 

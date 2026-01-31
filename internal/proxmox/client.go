@@ -323,3 +323,57 @@ func (c *Client) Ping() error {
 	defer resp.Body.Close()
 	return nil
 }
+
+// GetNodeStorages retrieves list of storages available on a node
+func (c *Client) GetNodeStorages(node string) ([]StorageInfo, error) {
+	path := fmt.Sprintf("/api2/json/nodes/%s/storage", node)
+	resp, err := c.doRequest("GET", path)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var result APIResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	data, err := json.Marshal(result.Data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal data: %w", err)
+	}
+
+	var storages []StorageInfo
+	if err := json.Unmarshal(data, &storages); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal storages: %w", err)
+	}
+
+	return storages, nil
+}
+
+// GetStorageContent retrieves content (volumes) of a storage with actual disk usage
+func (c *Client) GetStorageContent(node, storage string) ([]StorageContentItem, error) {
+	path := fmt.Sprintf("/api2/json/nodes/%s/storage/%s/content", node, storage)
+	resp, err := c.doRequest("GET", path)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var result APIResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	data, err := json.Marshal(result.Data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal data: %w", err)
+	}
+
+	var content []StorageContentItem
+	if err := json.Unmarshal(data, &content); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal storage content: %w", err)
+	}
+
+	return content, nil
+}

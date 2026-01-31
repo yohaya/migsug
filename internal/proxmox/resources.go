@@ -173,6 +173,9 @@ func CollectClusterDataWithProgress(client ProxmoxClient, progress ProgressCallb
 	// Fetch config metadata for all VMs (for nomigrate flag, etc.)
 	fetchVMConfigMeta(vmList, progress)
 
+	// Fetch actual disk usage from storage content API (thin provisioning actual size)
+	fetchVMDiskUsageFromStorage(client, vmList, progress)
+
 	// Fetch config metadata for all nodes (for allowProvisioning flag, OSD detection, etc.)
 	fetchNodeConfigMeta(nodeMap, progress)
 
@@ -1228,4 +1231,112 @@ func parseDiskSizesFromConfig(config map[string]interface{}) int64 {
 	}
 
 	return totalSize
+}
+
+// fetchVMDiskUsageFromStorage fetches actual disk usage from storage content API
+// This queries all storages on all nodes and builds a map of VMID -> UsedDisk
+// The storage content API returns the actual used size for thin-provisioned disks
+func fetchVMDiskUsageFromStorage(client ProxmoxClient, vmList []VM, progress ProgressCallback) {
+	if len(vmList) == 0 {
+		return
+	}
+
+	// Get unique nodes from VM list
+	nodeSet := make(map[string]bool)
+	for _, vm := range vmList {
+		nodeSet[vm.Node] = true
+	}
+
+	nodes := make([]string, 0, len(nodeSet))
+	for node := range nodeSet {
+		nodes = append(nodes, node)
+	}
+
+	if progress != nil {
+		progress("Fetching storage disk usage", 0, len(nodes))
+	}
+
+	// Build a map of VMID -> total used disk space
+	vmDiskUsage := make(map[int]int64)
+	var mu sync.Mutex
+
+	// Process nodes in parallel
+	var wg sync.WaitGroup
+	var completed int32 = 0
+
+	// Limit concurrency
+	sem := make(chan struct{}, maxConcurrentFetches)
+
+	for _, nodeName := range nodes {
+		wg.Add(1)
+		go func(node string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			// Get list of storages for this node
+			storages, err := client.GetNodeStorages(node)
+			if err != nil {
+				if storageLogger != nil {
+					storageLogger.Printf("Failed to get storages for node %s: %v", node, err)
+				}
+				return
+			}
+
+			// Process each storage that can hold VM images
+			for _, storage := range storages {
+				// Only query storages that can hold VM images
+				if !strings.Contains(storage.Content, "images") {
+					continue
+				}
+
+				// Get storage content
+				content, err := client.GetStorageContent(node, storage.Storage)
+				if err != nil {
+					if storageLogger != nil {
+						storageLogger.Printf("Failed to get content for storage %s on node %s: %v",
+							storage.Storage, node, err)
+					}
+					continue
+				}
+
+				// Process each volume
+				for _, item := range content {
+					// Only process VM disk images
+					if item.Content != "images" || item.VMID == 0 {
+						continue
+					}
+
+					mu.Lock()
+					vmDiskUsage[item.VMID] += item.Used
+					mu.Unlock()
+
+					if storageLogger != nil {
+						storageLogger.Printf("Storage content: VMID=%d Storage=%s Used=%d Size=%d",
+							item.VMID, storage.Storage, item.Used, item.Size)
+					}
+				}
+			}
+
+			current := int(atomic.AddInt32(&completed, 1))
+			if progress != nil {
+				progress("Fetching storage disk usage", current, len(nodes))
+			}
+		}(nodeName)
+	}
+
+	wg.Wait()
+
+	// Update VM list with actual disk usage
+	updatedCount := 0
+	for i := range vmList {
+		if usedDisk, found := vmDiskUsage[vmList[i].VMID]; found && usedDisk > 0 {
+			vmList[i].UsedDisk = usedDisk
+			updatedCount++
+		}
+	}
+
+	if storageLogger != nil {
+		storageLogger.Printf("Updated UsedDisk for %d VMs from storage content API", updatedCount)
+	}
 }

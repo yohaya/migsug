@@ -190,6 +190,17 @@ type StorageInfo struct {
 	Shared  int    `json:"shared"`
 }
 
+// StorageContentItem represents a volume in storage content
+// Used to get actual disk usage for thin-provisioned VMs
+type StorageContentItem struct {
+	Content string `json:"content"` // "images", "iso", etc.
+	Format  string `json:"format"`  // "qcow2", "raw", etc.
+	Size    int64  `json:"size"`    // Allocated/provisioned size in bytes
+	Used    int64  `json:"used"`    // Actual used size in bytes (thin provisioning)
+	VMID    int    `json:"vmid"`    // VM ID (0 for non-VM content like ISOs)
+	VolID   string `json:"volid"`   // Volume ID (e.g., "storage:vmid/vm-vmid-disk-0.qcow2")
+}
+
 // GetCPUPercent returns CPU usage as a percentage
 func (n *Node) GetCPUPercent() float64 {
 	return n.CPUUsage * 100

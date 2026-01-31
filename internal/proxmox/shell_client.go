@@ -214,6 +214,38 @@ func (c *ShellClient) Authenticate() error {
 	return nil
 }
 
+// GetNodeStorages retrieves list of storages available on a node
+func (c *ShellClient) GetNodeStorages(node string) ([]StorageInfo, error) {
+	path := fmt.Sprintf("/nodes/%s/storage", node)
+	output, err := c.pvesh("get", path)
+	if err != nil {
+		return nil, err
+	}
+
+	var storages []StorageInfo
+	if err := json.Unmarshal(output, &storages); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal storages: %w", err)
+	}
+
+	return storages, nil
+}
+
+// GetStorageContent retrieves content (volumes) of a storage with actual disk usage
+func (c *ShellClient) GetStorageContent(node, storage string) ([]StorageContentItem, error) {
+	path := fmt.Sprintf("/nodes/%s/storage/%s/content", node, storage)
+	output, err := c.pvesh("get", path)
+	if err != nil {
+		return nil, err
+	}
+
+	var content []StorageContentItem
+	if err := json.Unmarshal(output, &content); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal storage content: %w", err)
+	}
+
+	return content, nil
+}
+
 // GetHostname returns the current Proxmox host's hostname
 func GetHostname() (string, error) {
 	cmd := exec.Command("hostname")
