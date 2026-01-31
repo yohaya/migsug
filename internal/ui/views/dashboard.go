@@ -395,7 +395,6 @@ func RenderDashboardHostDetailFull(node *proxmox.Node, cluster *proxmox.Cluster,
 	if vmListHeight < 5 {
 		vmListHeight = 5
 	}
-	modesHeight := (height - 10) - vmListHeight // Rest for modes
 
 	// === VM LIST SECTION ===
 	vmHeaderStyle := headerStyle
