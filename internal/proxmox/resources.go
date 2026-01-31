@@ -1324,7 +1324,7 @@ func fetchVMDiskUsageFromStorage(client ProxmoxClient, vmList []VM, progress Pro
 
 	// Build set of VMIDs we need to fetch
 	needFetchSet := make(map[int]bool)
-	vmNodeMap := make(map[int]string)  // VMID -> Node
+	vmNodeMap := make(map[int]string)   // VMID -> Node
 	vmMaxDiskMap := make(map[int]int64) // VMID -> MaxDisk
 	for _, vm := range vmsNeedingFetch {
 		needFetchSet[vm.VMID] = true
