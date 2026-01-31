@@ -379,12 +379,12 @@ func RenderDashboardHostDetail(node *proxmox.Node, cluster *proxmox.Cluster, ver
 	cpuPct := node.GetCPUPercent()
 	ramPct := node.GetMemPercent()
 	sb.WriteString(labelStyle.Render("CPU: ") + valueStyle.Render(node.CPUModel) + "\n")
-	sb.WriteString(labelStyle.Render(fmt.Sprintf("VMs: %d, vCPUs: %d, CPU: %.1f%%, RAM: %s (%s used), Storage: %s",
+	sb.WriteString(labelStyle.Render(fmt.Sprintf("VMs: %d, vCPUs: %d, CPU: %.1f%%, RAM: %s (%.1f%%), Storage: %s",
 		len(node.VMs),
 		node.GetRunningVCPUs(),
 		cpuPct,
 		components.FormatRAMShort(node.MaxMem),
-		components.FormatRAMShort(node.UsedMem),
+		ramPct,
 		components.FormatStorageG(node.MaxDisk))) + "\n\n")
 
 	// Build VM list (sorted by name like in results view)
