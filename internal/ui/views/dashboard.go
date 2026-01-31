@@ -358,16 +358,17 @@ func RenderDashboardHostDetailFull(node *proxmox.Node, cluster *proxmox.Cluster,
 		width = 100
 	}
 
-	// Styles
-	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5"))
-	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
-	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
-	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	// Styles - using #C0C0C0 grey for most text
+	silverGrey := lipgloss.Color("#C0C0C0")
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(silverGrey)
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(silverGrey)
+	dimStyle := lipgloss.NewStyle().Foreground(silverGrey)
+	borderStyle := lipgloss.NewStyle().Foreground(silverGrey)
+	helpStyle := lipgloss.NewStyle().Foreground(silverGrey)
 	selectedStyle := lipgloss.NewStyle().Background(lipgloss.Color("236")).Foreground(lipgloss.Color("15")).Bold(true)
 
 	// Title with version
-	versionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	versionStyle := lipgloss.NewStyle().Foreground(silverGrey)
 	title := "KVM Migration Suggester"
 	if version != "" {
 		title += " " + versionStyle.Render("v"+version)
