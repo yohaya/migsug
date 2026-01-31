@@ -434,10 +434,7 @@ func RenderDashboardHostDetailFull(node *proxmox.Node, cluster *proxmox.Cluster,
 	}
 	var vmList []vmItem
 	for _, vm := range node.VMs {
-		storage := vm.MaxDisk
-		if storage == 0 {
-			storage = vm.UsedDisk
-		}
+		// Use actual thin provisioning size
 		vmList = append(vmList, vmItem{
 			VMID:     vm.VMID,
 			Name:     vm.Name,
@@ -445,7 +442,7 @@ func RenderDashboardHostDetailFull(node *proxmox.Node, cluster *proxmox.Cluster,
 			CPUUsage: vm.CPUUsage,
 			VCPUs:    vm.CPUCores,
 			RAM:      vm.MaxMem,
-			Storage:  storage,
+			Storage:  vm.GetEffectiveDisk(),
 		})
 	}
 

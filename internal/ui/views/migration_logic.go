@@ -47,8 +47,8 @@ RAM USAGE:
 • This means: a stopped 16GB VM uses 0GB but needs 16GB free to migrate
 
 STORAGE:
-• Uses allocated disk size (MaxDisk) when available
-• Falls back to actual used disk (UsedDisk) if MaxDisk is 0
+• Uses actual disk usage (UsedDisk/thin provisioning) when available
+• Falls back to allocated disk (MaxDisk) if UsedDisk is 0
 • Storage is always counted regardless of VM power state
 
 LOAD AVERAGE:

@@ -177,11 +177,8 @@ func NewNodeStateFromVMs(node *proxmox.Node) NodeState {
 			totalRAM += vm.MaxMem                                     // Only count RAM for running VMs
 		}
 		// Storage is always counted (disk space is used regardless of power state)
-		storage := vm.MaxDisk
-		if storage == 0 {
-			storage = vm.UsedDisk
-		}
-		totalStorage += storage
+		// Use actual thin provisioning size (UsedDisk) when available
+		totalStorage += vm.GetEffectiveDisk()
 	}
 
 	// Calculate percentages based on node capacity
@@ -230,11 +227,8 @@ func (ns NodeState) CalculateAfterMigration(addVMs []proxmox.VM, removeVMs []pro
 			newState.RAMUsed -= vm.MaxMem // Only count RAM for running VMs
 		}
 		// Storage is always counted (disk space is used regardless of power state)
-		storage := vm.MaxDisk
-		if storage == 0 {
-			storage = vm.UsedDisk
-		}
-		newState.StorageUsed -= storage
+		// Use actual thin provisioning size (UsedDisk) when available
+		newState.StorageUsed -= vm.GetEffectiveDisk()
 	}
 
 	// Add VMs
@@ -248,11 +242,8 @@ func (ns NodeState) CalculateAfterMigration(addVMs []proxmox.VM, removeVMs []pro
 			newState.RAMUsed += vm.MaxMem // Only count RAM for running VMs
 		}
 		// Storage is always counted (disk space is used regardless of power state)
-		storage := vm.MaxDisk
-		if storage == 0 {
-			storage = vm.UsedDisk
-		}
-		newState.StorageUsed += storage
+		// Use actual thin provisioning size (UsedDisk) when available
+		newState.StorageUsed += vm.GetEffectiveDisk()
 	}
 
 	// Ensure values don't go negative
@@ -315,12 +306,8 @@ func (ns NodeState) HasCapacity(vm proxmox.VM, constraints MigrationConstraints)
 		return false
 	}
 
-	// Check storage capacity
-	storage := vm.MaxDisk
-	if storage == 0 {
-		storage = vm.UsedDisk
-	}
-	newStorageUsed := ns.StorageUsed + storage
+	// Check storage capacity - use actual thin provisioning size
+	newStorageUsed := ns.StorageUsed + vm.GetEffectiveDisk()
 	if newStorageUsed > ns.StorageTotal {
 		return false
 	}
@@ -384,19 +371,13 @@ type StorageHeadroomCheck struct {
 func CheckStorageHeadroom(targetNode *proxmox.Node, incomingVM proxmox.VM, currentStorageUsed, storageTotal int64) StorageHeadroomCheck {
 	result := StorageHeadroomCheck{}
 
-	// Get storage of the incoming VM
-	incomingVMStorage := incomingVM.MaxDisk
-	if incomingVMStorage == 0 {
-		incomingVMStorage = incomingVM.UsedDisk
-	}
+	// Get storage of the incoming VM - use actual thin provisioning size
+	incomingVMStorage := incomingVM.GetEffectiveDisk()
 
 	// Find the largest VM's storage on the target (including the incoming VM)
 	largestVMStorage := incomingVMStorage
 	for _, vm := range targetNode.VMs {
-		vmStorage := vm.MaxDisk
-		if vmStorage == 0 {
-			vmStorage = vm.UsedDisk
-		}
+		vmStorage := vm.GetEffectiveDisk()
 		if vmStorage > largestVMStorage {
 			largestVMStorage = vmStorage
 		}

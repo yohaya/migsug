@@ -136,11 +136,8 @@ func calculateClusterMetrics(nodes []proxmox.Node) clusterMetrics {
 		for _, vm := range node.VMs {
 			m.totalVCPUs += vm.CPUCores
 			m.totalRAM += vm.MaxMem
-			storage := vm.MaxDisk
-			if storage == 0 {
-				storage = vm.UsedDisk
-			}
-			m.totalStorage += storage
+			// Use actual thin provisioning size (UsedDisk) when available
+			m.totalStorage += vm.GetEffectiveDisk()
 		}
 	}
 
@@ -330,11 +327,8 @@ func newSimulatedNodeState(node *proxmox.Node) *simulatedNodeState {
 		s.vms[vm.VMID] = vm
 		s.vcpus += vm.CPUCores
 		s.ramUsed += vm.MaxMem
-		storage := vm.MaxDisk
-		if storage == 0 {
-			storage = vm.UsedDisk
-		}
-		s.storageUsed += storage
+		// Use actual thin provisioning size (UsedDisk) when available
+		s.storageUsed += vm.GetEffectiveDisk()
 		s.vmCount++
 	}
 
@@ -411,10 +405,8 @@ func findBestMigration(donors, receivers []nodeBalance, states map[string]*simul
 				score := calculateMigrationScore(donorState, receiverState, &vm, metrics)
 				if score > bestScore {
 					bestScore = score
-					storage := vm.MaxDisk
-					if storage == 0 {
-						storage = vm.UsedDisk
-					}
+					// Use actual thin provisioning size
+					storage := vm.GetEffectiveDisk()
 					bestMigration = &MigrationSuggestion{
 						VMID:        vm.VMID,
 						VMName:      vm.Name,
@@ -464,11 +456,8 @@ func canAcceptVM(receiver *simulatedNodeState, vm *proxmox.VM, metrics clusterMe
 		return false
 	}
 
-	// Check storage constraints
-	incomingVMStorage := vm.MaxDisk
-	if incomingVMStorage == 0 {
-		incomingVMStorage = vm.UsedDisk
-	}
+	// Check storage constraints - use actual thin provisioning size
+	incomingVMStorage := vm.GetEffectiveDisk()
 
 	// Calculate storage used after migration
 	storageUsedAfter := receiver.storageUsed + incomingVMStorage
@@ -482,10 +471,7 @@ func canAcceptVM(receiver *simulatedNodeState, vm *proxmox.VM, metrics clusterMe
 	// Find the largest VM on the receiver (including the incoming VM)
 	largestVMStorage := incomingVMStorage
 	for _, existingVM := range receiver.vms {
-		vmStorage := existingVM.MaxDisk
-		if vmStorage == 0 {
-			vmStorage = existingVM.UsedDisk
-		}
+		vmStorage := existingVM.GetEffectiveDisk()
 		if vmStorage > largestVMStorage {
 			largestVMStorage = vmStorage
 		}
@@ -523,11 +509,8 @@ func calculateMigrationScore(donor, receiver *simulatedNodeState, vm *proxmox.VM
 	improvement := currentTotalDev - newTotalDev
 
 	// Bonus for smaller VMs (prefer moving smaller VMs)
-	storage := vm.MaxDisk
-	if storage == 0 {
-		storage = vm.UsedDisk
-	}
-	storageGiB := float64(storage) / (1024 * 1024 * 1024)
+	// Use actual thin provisioning size
+	storageGiB := float64(vm.GetEffectiveDisk()) / (1024 * 1024 * 1024)
 	if storageGiB < 1 {
 		storageGiB = 1
 	}
@@ -544,14 +527,13 @@ func updateSimulatedStates(states map[string]*simulatedNodeState, migration *Mig
 	if source != nil && target != nil {
 		vm, exists := source.vms[migration.VMID]
 		if exists {
+			// Use actual thin provisioning size
+			storage := vm.GetEffectiveDisk()
+
 			// Remove from source
 			delete(source.vms, migration.VMID)
 			source.vcpus -= vm.CPUCores
 			source.ramUsed -= vm.MaxMem
-			storage := vm.MaxDisk
-			if storage == 0 {
-				storage = vm.UsedDisk
-			}
 			source.storageUsed -= storage
 			source.vmCount--
 
@@ -590,11 +572,8 @@ func buildNodeState(node *proxmox.Node) NodeState {
 	for _, vm := range node.VMs {
 		vcpus += vm.CPUCores
 		ramUsed += vm.MaxMem
-		storage := vm.MaxDisk
-		if storage == 0 {
-			storage = vm.UsedDisk
-		}
-		storageUsed += storage
+		// Use actual thin provisioning size (UsedDisk) when available
+		storageUsed += vm.GetEffectiveDisk()
 	}
 
 	return NodeState{

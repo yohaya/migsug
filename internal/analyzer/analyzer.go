@@ -37,10 +37,8 @@ func Analyze(cluster *proxmox.Cluster, constraints MigrationConstraints) (*Analy
 	if constraints.MigrateAll {
 		for _, vm := range sourceNode.VMs {
 			if vm.NoMigrate {
-				storage := vm.MaxDisk
-				if storage == 0 {
-					storage = vm.UsedDisk
-				}
+				// Use actual thin provisioning size
+				storage := vm.GetEffectiveDisk()
 				// Build reason with actual parsed metadata for debugging
 				reason := "NoMigrate=true in VM config"
 				if vm.ConfigMeta != nil {
@@ -382,12 +380,8 @@ func selectByCPUUsageEfficient(node *proxmox.Node, targetUsage float64) []proxmo
 			hostCPU = vm.CPUUsage * float64(vm.CPUCores) / float64(node.CPUCores)
 		}
 
-		// Get disk size in GiB (prefer MaxDisk, fallback to UsedDisk)
-		disk := vm.MaxDisk
-		if disk == 0 {
-			disk = vm.UsedDisk
-		}
-		diskGiB := float64(disk) / (1024 * 1024 * 1024)
+		// Get disk size in GiB - use actual thin provisioning size
+		diskGiB := float64(vm.GetEffectiveDisk()) / (1024 * 1024 * 1024)
 		if diskGiB < 1 {
 			diskGiB = 1 // Minimum 1 GiB to avoid division issues
 		}
@@ -450,11 +444,8 @@ func SelectByCPUUsageDetailed(node *proxmox.Node, targetUsage float64) ([]proxmo
 			hostCPU = vm.CPUUsage * float64(vm.CPUCores) / float64(node.CPUCores)
 		}
 
-		disk := vm.MaxDisk
-		if disk == 0 {
-			disk = vm.UsedDisk
-		}
-		diskGiB := float64(disk) / (1024 * 1024 * 1024)
+		// Use actual thin provisioning size
+		diskGiB := float64(vm.GetEffectiveDisk()) / (1024 * 1024 * 1024)
 		if diskGiB < 1 {
 			diskGiB = 1
 		}
@@ -700,12 +691,8 @@ func selectForBalanceCluster(sourceNode *proxmox.Node, cluster *proxmox.Cluster,
 		// RAM contribution in GiB
 		ramContribGiB := float64(vm.MaxMem) / (1024 * 1024 * 1024)
 
-		// Storage in GiB
-		storage := vm.MaxDisk
-		if storage == 0 {
-			storage = vm.UsedDisk
-		}
-		storageGiB := float64(storage) / (1024 * 1024 * 1024)
+		// Storage in GiB - use actual thin provisioning size
+		storageGiB := float64(vm.GetEffectiveDisk()) / (1024 * 1024 * 1024)
 		if storageGiB < 1 {
 			storageGiB = 1
 		}
@@ -851,11 +838,8 @@ func GenerateSuggestions(vms []proxmox.VM, targets []proxmox.Node, cluster *prox
 			plannedMigrations[vm.Name] = targetNode
 		}
 
-		// Use MaxDisk (allocated storage) since UsedDisk is often 0 from the API
-		storageValue := vm.MaxDisk
-		if storageValue == 0 {
-			storageValue = vm.UsedDisk
-		}
+		// Use actual thin provisioning size (UsedDisk) when available
+		storageValue := vm.GetEffectiveDisk()
 
 		suggestion := MigrationSuggestion{
 			VMID:        vm.VMID,
@@ -974,11 +958,8 @@ func FindBestTarget(vm proxmox.VM, targetStates map[string]NodeState, vmsPerTarg
 			if newRAMUsed > state.RAMTotal {
 				cand.rejectReason = "Insufficient RAM capacity"
 			} else {
-				storage := vm.MaxDisk
-				if storage == 0 {
-					storage = vm.UsedDisk
-				}
-				newStorageUsed := state.StorageUsed + storage
+				// Use actual thin provisioning size
+				newStorageUsed := state.StorageUsed + vm.GetEffectiveDisk()
 				if newStorageUsed > state.StorageTotal {
 					cand.rejectReason = "Insufficient storage capacity"
 				} else if constraints.MinRAMFree != nil {
@@ -1208,16 +1189,13 @@ func BuildAnalysisResult(sourceNode *proxmox.Node, targets []proxmox.Node, sugge
 	result.SourceBefore = NewNodeState(sourceNode)
 
 	// For storage, use VM-aggregated values instead of node.UsedDisk
-	// This ensures before/after calculations are consistent (both use VM allocated sizes)
+	// This ensures before/after calculations are consistent (both use VM actual sizes)
 	// The node's UsedDisk includes non-VM data (templates, ISOs, backups) which makes
-	// the subtraction of VM allocated sizes incorrect
+	// the subtraction of VM sizes incorrect
 	var totalVMStorage int64
 	for _, vm := range sourceNode.VMs {
-		storage := vm.MaxDisk
-		if storage == 0 {
-			storage = vm.UsedDisk
-		}
-		totalVMStorage += storage
+		// Use actual thin provisioning size
+		totalVMStorage += vm.GetEffectiveDisk()
 	}
 	result.SourceBefore.StorageUsed = totalVMStorage
 	if result.SourceBefore.StorageTotal > 0 {
@@ -1231,11 +1209,8 @@ func BuildAnalysisResult(sourceNode *proxmox.Node, targets []proxmox.Node, sugge
 	removedVCPUs := 0
 	for _, vm := range vmsToMigrate {
 		// Storage is always counted regardless of power state
-		storage := vm.MaxDisk
-		if storage == 0 {
-			storage = vm.UsedDisk
-		}
-		vmStorageContribution += storage
+		// Use actual thin provisioning size
+		vmStorageContribution += vm.GetEffectiveDisk()
 
 		if vm.Status == "running" {
 			// HCPU% = vm.CPUUsage * vm.CPUCores / hostCores
@@ -1298,11 +1273,8 @@ func BuildAnalysisResult(sourceNode *proxmox.Node, targets []proxmox.Node, sugge
 		addedVCPUs := 0
 		for _, vm := range addVMs {
 			// Storage is always counted regardless of power state
-			storage := vm.MaxDisk
-			if storage == 0 {
-				storage = vm.UsedDisk
-			}
-			addedStorage += storage
+			// Use actual thin provisioning size
+			addedStorage += vm.GetEffectiveDisk()
 
 			if vm.Status == "running" {
 				// HCPU% contribution on target = vm.CPUUsage * vm.CPUCores / targetCores
@@ -1329,16 +1301,12 @@ func BuildAnalysisResult(sourceNode *proxmox.Node, targets []proxmox.Node, sugge
 		result.TargetsAfter[target.Name] = afterState
 	}
 
-	// Calculate summary - use Max values (allocated) since Used values are often 0
+	// Calculate summary - use actual thin provisioning size for storage
 	result.TotalVMs = len(suggestions)
 	for _, vm := range vmsToMigrate {
 		result.TotalVCPUs += vm.CPUCores
 		result.TotalRAM += vm.MaxMem // Allocated RAM
-		storageVal := vm.MaxDisk
-		if storageVal == 0 {
-			storageVal = vm.UsedDisk
-		}
-		result.TotalStorage += storageVal
+		result.TotalStorage += vm.GetEffectiveDisk()
 	}
 
 	// Generate improvement info
@@ -1389,11 +1357,8 @@ func CalculateTargetAverages(cluster *proxmox.Cluster, sourceNode string, vmsToM
 	for _, vm := range vmsToMigrate {
 		totalCPUUsage += vm.CPUUsage / 100 * float64(vm.CPUCores)
 		usedRAM += vm.UsedMem
-		storage := vm.MaxDisk
-		if storage == 0 {
-			storage = vm.UsedDisk
-		}
-		usedStorage += storage
+		// Use actual thin provisioning size
+		usedStorage += vm.GetEffectiveDisk()
 		// Add vCPUs from migrating VMs
 		totalVCPUs += vm.CPUCores
 	}
@@ -1472,12 +1437,7 @@ func GenerateSuggestionsBalanced(vms []proxmox.VM, targets []proxmox.Node, clust
 			plannedMigrations[vm.Name] = targetName
 		}
 
-		// Build suggestion
-		storageValue := vm.MaxDisk
-		if storageValue == 0 {
-			storageValue = vm.UsedDisk
-		}
-
+		// Build suggestion - use actual thin provisioning size
 		suggestion := MigrationSuggestion{
 			VMID:        vm.VMID,
 			VMName:      vm.Name,
@@ -1489,7 +1449,7 @@ func GenerateSuggestionsBalanced(vms []proxmox.VM, targets []proxmox.Node, clust
 			VCPUs:       vm.CPUCores,
 			CPUUsage:    vm.CPUUsage,
 			RAM:         vm.MaxMem,
-			Storage:     storageValue,
+			Storage:     vm.GetEffectiveDisk(),
 			SourceCores: sourceCores,
 			TargetCores: targetCoresMap[targetName],
 			Details:     details,
@@ -1567,11 +1527,8 @@ func findBestTargetForMigrateAll(vm proxmox.VM, targetStates map[string]NodeStat
 			continue
 		}
 
-		storage := vm.MaxDisk
-		if storage == 0 {
-			storage = vm.UsedDisk
-		}
-		newStorageUsed := state.StorageUsed + storage
+		// Use actual thin provisioning size
+		newStorageUsed := state.StorageUsed + vm.GetEffectiveDisk()
 		if newStorageUsed > state.StorageTotal {
 			cand.rejected = true
 			cand.rejectReason = "Insufficient storage capacity"

@@ -532,6 +532,7 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 		// Source node: show all VMs from the node
 		if sourceNodeObj != nil {
 			for _, vm := range sourceNodeObj.VMs {
+				// Use actual thin provisioning size
 				item := VMListItem{
 					VMID:     vm.VMID,
 					Name:     vm.Name,
@@ -539,10 +540,7 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 					CPUUsage: vm.CPUUsage,
 					VCPUs:    vm.CPUCores,
 					RAM:      vm.MaxMem,
-					Storage:  vm.MaxDisk,
-				}
-				if vm.MaxDisk == 0 {
-					item.Storage = vm.UsedDisk
+					Storage:  vm.GetEffectiveDisk(),
 				}
 
 				// Check if this VM is being migrated
@@ -571,6 +569,7 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 		targetNode := proxmox.GetNodeByName(cluster, hostName)
 		if targetNode != nil {
 			for _, vm := range targetNode.VMs {
+				// Use actual thin provisioning size
 				item := VMListItem{
 					VMID:     vm.VMID,
 					Name:     vm.Name,
@@ -578,10 +577,7 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 					CPUUsage: vm.CPUUsage,
 					VCPUs:    vm.CPUCores,
 					RAM:      vm.MaxMem,
-					Storage:  vm.MaxDisk,
-				}
-				if vm.MaxDisk == 0 {
-					item.Storage = vm.UsedDisk
+					Storage:  vm.GetEffectiveDisk(),
 				}
 				vmList = append(vmList, item)
 			}
@@ -1554,12 +1550,8 @@ func RenderVMDetails(vm *proxmox.VM, nodeName string, vmid int, width, height, s
 			ramStr = fmt.Sprintf("%s used / %s allocated", components.FormatRAMShort(vm.UsedMem), components.FormatRAMShort(vm.MaxMem))
 		}
 
-		// Storage
-		storageVal := vm.MaxDisk
-		if storageVal == 0 {
-			storageVal = vm.UsedDisk
-		}
-		storageStr := components.FormatStorageG(storageVal)
+		// Storage - use actual thin provisioning size
+		storageStr := components.FormatStorageG(vm.GetEffectiveDisk())
 
 		lines = append(lines, fmt.Sprintf("  %s %s", labelStyle.Render("vCPUs:"), valueStyle.Render(fmt.Sprintf("%d", vm.CPUCores))))
 		lines = append(lines, fmt.Sprintf("  %s %s", labelStyle.Render("CPU Usage:"), valueStyle.Render(fmt.Sprintf("%.1f%%", vm.CPUUsage))))

@@ -238,6 +238,15 @@ func (v *VM) GetDiskPercent() float64 {
 	return float64(v.UsedDisk) / float64(v.MaxDisk) * 100
 }
 
+// GetEffectiveDisk returns the actual disk usage (UsedDisk for thin provisioning)
+// Falls back to MaxDisk if UsedDisk is not available
+func (v *VM) GetEffectiveDisk() int64 {
+	if v.UsedDisk > 0 {
+		return v.UsedDisk
+	}
+	return v.MaxDisk
+}
+
 // FormatBytes converts bytes to human-readable format
 func FormatBytes(bytes int64) string {
 	const unit = 1024
