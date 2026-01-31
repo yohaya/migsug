@@ -2,6 +2,7 @@ package views
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -340,4 +341,183 @@ func getUsageColorCode(percent float64) string {
 		return "3" // yellow
 	}
 	return "2" // green
+}
+
+// RenderDashboardHostDetail renders the host detail view showing all VMs on the selected host
+// This is displayed when user selects a host from the dashboard, before migration mode selection
+func RenderDashboardHostDetail(node *proxmox.Node, cluster *proxmox.Cluster, version string, width, height, scrollPos, cursorPos int) string {
+	var sb strings.Builder
+
+	// Ensure minimum width
+	if width < 80 {
+		width = 100
+	}
+
+	// Styles
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5"))
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
+	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	valueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	selectedStyle := lipgloss.NewStyle().Background(lipgloss.Color("240")).Foreground(lipgloss.Color("15"))
+
+	// Title with version
+	versionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	title := "KVM Migration Suggester"
+	if version != "" {
+		title += " " + versionStyle.Render("v"+version)
+	}
+	sb.WriteString(titleStyle.Render(title) + "\n")
+	sb.WriteString(borderStyle.Render(strings.Repeat(boxDoubleLine, width)) + "\n\n")
+
+	// Host detail header
+	sb.WriteString(headerStyle.Render(fmt.Sprintf("Host Detail: %s", node.Name)) + "\n")
+
+	// Host info line
+	cpuPct := node.GetCPUPercent()
+	ramPct := node.GetMemPercent()
+	sb.WriteString(labelStyle.Render("CPU: ") + valueStyle.Render(node.CPUModel) + "\n")
+	sb.WriteString(labelStyle.Render(fmt.Sprintf("VMs: %d, vCPUs: %d, CPU: %.1f%%, RAM: %s (%s used), Storage: %s",
+		len(node.VMs),
+		node.GetRunningVCPUs(),
+		cpuPct,
+		components.FormatRAMShort(node.MaxMem),
+		components.FormatRAMShort(node.UsedMem),
+		components.FormatStorageG(node.MaxDisk))) + "\n\n")
+
+	// Build VM list (sorted by name like in results view)
+	type vmItem struct {
+		VMID     int
+		Name     string
+		Status   string
+		CPUUsage float64
+		VCPUs    int
+		RAM      int64
+		Storage  int64
+	}
+	var vmList []vmItem
+	for _, vm := range node.VMs {
+		storage := vm.MaxDisk
+		if storage == 0 {
+			storage = vm.UsedDisk
+		}
+		vmList = append(vmList, vmItem{
+			VMID:     vm.VMID,
+			Name:     vm.Name,
+			Status:   vm.Status,
+			CPUUsage: vm.CPUUsage,
+			VCPUs:    vm.CPUCores,
+			RAM:      vm.MaxMem,
+			Storage:  storage,
+		})
+	}
+
+	// Sort by name
+	sort.Slice(vmList, func(i, j int) bool {
+		return vmList[i].Name < vmList[j].Name
+	})
+
+	// Calculate visible rows
+	fixedOverhead := 12 // Title, border, blank, host header, cpu line, info line, blank, table header, separator, blank, scroll info, help
+	maxVisible := height - fixedOverhead
+	if maxVisible < 5 {
+		maxVisible = 5
+	}
+
+	// Table header
+	const (
+		colVMID    = 6
+		colName    = 28
+		colState   = 5
+		colHCPU    = 6
+		colVCPU    = 5
+		colRAM     = 8
+		colStorage = 10
+	)
+
+	header := fmt.Sprintf("  %-*s %-*s %-*s %*s %*s %*s %*s",
+		colVMID, "VMID",
+		colName, "Name",
+		colState, "State",
+		colHCPU, "HCPU%",
+		colVCPU, "vCPU",
+		colRAM, "RAM",
+		colStorage, "Storage")
+	sb.WriteString(headerStyle.Render(header) + "\n")
+	sb.WriteString(borderStyle.Render(strings.Repeat("─", width)) + "\n")
+
+	// Determine visible range
+	totalVMs := len(vmList)
+	startIdx := scrollPos
+	endIdx := startIdx + maxVisible
+	if endIdx > totalVMs {
+		endIdx = totalVMs
+	}
+
+	// Render visible VMs
+	for i := startIdx; i < endIdx; i++ {
+		vm := vmList[i]
+
+		// Status formatting
+		stateStr := vm.Status
+		if len(stateStr) > colState {
+			stateStr = stateStr[:colState]
+		}
+
+		// Format values
+		cpuStr := fmt.Sprintf("%5.1f", vm.CPUUsage)
+		vcpuStr := fmt.Sprintf("%d", vm.VCPUs)
+		ramStr := components.FormatRAMShort(vm.RAM)
+		storageStr := components.FormatStorageG(vm.Storage)
+
+		// Truncate name if needed
+		name := vm.Name
+		if len(name) > colName {
+			name = name[:colName-3] + "..."
+		}
+
+		row := fmt.Sprintf("%-*d %-*s %-*s %*s %*s %*s %*s",
+			colVMID, vm.VMID,
+			colName, name,
+			colState, stateStr,
+			colHCPU, cpuStr,
+			colVCPU, vcpuStr,
+			colRAM, ramStr,
+			colStorage, storageStr)
+
+		// Cursor indicator
+		if i == cursorPos {
+			sb.WriteString("→ ")
+			sb.WriteString(selectedStyle.Render(row) + "\n")
+		} else {
+			sb.WriteString("  ")
+			if vm.Status == "running" {
+				sb.WriteString(valueStyle.Render(row) + "\n")
+			} else {
+				sb.WriteString(dimStyle.Render(row) + "\n")
+			}
+		}
+	}
+
+	// Pad with empty lines if needed
+	for i := endIdx - startIdx; i < maxVisible; i++ {
+		sb.WriteString("\n")
+	}
+
+	// Scroll info
+	if totalVMs > maxVisible {
+		scrollInfo := fmt.Sprintf("Showing %d-%d of %d VMs", startIdx+1, endIdx, totalVMs)
+		sb.WriteString(dimStyle.Render(scrollInfo) + "\n")
+	} else {
+		sb.WriteString("\n")
+	}
+
+	sb.WriteString("\n")
+
+	// Help text
+	sb.WriteString(helpStyle.Render("↑/↓/PgUp/PgDn/Home/End: Navigate │ Enter: VM Details │ m: Migration Mode │ Esc: Back"))
+
+	return sb.String()
 }

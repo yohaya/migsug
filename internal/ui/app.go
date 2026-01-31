@@ -21,6 +21,7 @@ type ViewType int
 
 const (
 	ViewDashboard ViewType = iota
+	ViewDashboardHostDetail // Shows VMs on selected host before migration mode selection
 	ViewCriteria
 	ViewVMSelection
 	ViewAnalyzing
@@ -57,6 +58,10 @@ type Model struct {
 	sourceNode      string
 	sortColumn      SortColumn // Current sort column
 	sortAsc         bool       // Sort ascending (true) or descending (false)
+
+	// Dashboard host detail view state (shows VMs on selected host)
+	dashboardHostDetailScrollPos int // Scroll position for VM list
+	dashboardHostDetailCursorPos int // Cursor position in VM list
 
 	// Criteria state
 	criteriaState views.CriteriaState
@@ -290,6 +295,8 @@ func (m Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch m.currentView {
 	case ViewDashboard:
 		return m.handleDashboardKeys(msg)
+	case ViewDashboardHostDetail:
+		return m.handleDashboardHostDetailKeys(msg)
 	case ViewCriteria:
 		return m.handleCriteriaKeys(msg)
 	case ViewVMSelection:
@@ -333,13 +340,11 @@ func (m Model) handleDashboardKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.selectedNodeIdx = nodeCount - 1
 		}
 	case "enter":
-		// Select source node and move to criteria
+		// Select source node and show host detail view first
 		m.sourceNode = m.cluster.Nodes[m.selectedNodeIdx].Name
-		m.criteriaState = views.CriteriaState{
-			SelectedMode: analyzer.ModeAll, // Default to first mode in list
-			SelectedVMs:  make(map[int]bool),
-		}
-		m.currentView = ViewCriteria
+		m.dashboardHostDetailScrollPos = 0
+		m.dashboardHostDetailCursorPos = 0
+		m.currentView = ViewDashboardHostDetail
 		return m, tea.ClearScreen
 	case "1":
 		m.toggleSort(SortByName)
@@ -368,6 +373,128 @@ func (m Model) handleDashboardKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+// handleDashboardHostDetailKeys handles keyboard input for the dashboard host detail view
+func (m Model) handleDashboardHostDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Get the source node and its VMs
+	sourceNodeObj := proxmox.GetNodeByName(m.cluster, m.sourceNode)
+	if sourceNodeObj == nil {
+		m.currentView = ViewDashboard
+		return m, tea.ClearScreen
+	}
+
+	vmCount := len(sourceNodeObj.VMs)
+	pageSize := 10
+
+	// Calculate max visible rows (similar to host detail view)
+	fixedOverhead := 15 // Title, host info, table header, help, etc.
+	maxVisible := m.height - fixedOverhead
+	if maxVisible < 5 {
+		maxVisible = 5
+	}
+
+	switch msg.String() {
+	case "up", "k":
+		if m.dashboardHostDetailCursorPos > 0 {
+			m.dashboardHostDetailCursorPos--
+			// Adjust scroll if cursor goes above visible area
+			if m.dashboardHostDetailCursorPos < m.dashboardHostDetailScrollPos {
+				m.dashboardHostDetailScrollPos = m.dashboardHostDetailCursorPos
+			}
+		}
+	case "down", "j":
+		if m.dashboardHostDetailCursorPos < vmCount-1 {
+			m.dashboardHostDetailCursorPos++
+			// Adjust scroll if cursor goes below visible area
+			if m.dashboardHostDetailCursorPos >= m.dashboardHostDetailScrollPos+maxVisible {
+				m.dashboardHostDetailScrollPos = m.dashboardHostDetailCursorPos - maxVisible + 1
+			}
+		}
+	case "home":
+		m.dashboardHostDetailCursorPos = 0
+		m.dashboardHostDetailScrollPos = 0
+	case "end":
+		m.dashboardHostDetailCursorPos = vmCount - 1
+		if vmCount > maxVisible {
+			m.dashboardHostDetailScrollPos = vmCount - maxVisible
+		}
+	case "pgup":
+		m.dashboardHostDetailCursorPos -= pageSize
+		if m.dashboardHostDetailCursorPos < 0 {
+			m.dashboardHostDetailCursorPos = 0
+		}
+		m.dashboardHostDetailScrollPos -= pageSize
+		if m.dashboardHostDetailScrollPos < 0 {
+			m.dashboardHostDetailScrollPos = 0
+		}
+	case "pgdown":
+		m.dashboardHostDetailCursorPos += pageSize
+		if m.dashboardHostDetailCursorPos >= vmCount {
+			m.dashboardHostDetailCursorPos = vmCount - 1
+		}
+		m.dashboardHostDetailScrollPos += pageSize
+		maxScroll := vmCount - maxVisible
+		if maxScroll < 0 {
+			maxScroll = 0
+		}
+		if m.dashboardHostDetailScrollPos > maxScroll {
+			m.dashboardHostDetailScrollPos = maxScroll
+		}
+
+	case "enter":
+		// Show VM details for the selected VM
+		vmid, nodeName := m.getDashboardHostDetailVMAtCursor()
+		if vmid > 0 {
+			m.selectedVMID = vmid
+			m.selectedVMNode = nodeName
+			m.showVMDetails = true
+			m.vmDetailsScrollPos = 0
+			return m, tea.ClearScreen
+		}
+
+	case "m":
+		// Proceed to migration mode selection
+		m.criteriaState = views.CriteriaState{
+			SelectedMode: analyzer.ModeAll,
+			SelectedVMs:  make(map[int]bool),
+		}
+		m.currentView = ViewCriteria
+		return m, tea.ClearScreen
+
+	case "esc":
+		// Go back to dashboard
+		m.currentView = ViewDashboard
+		return m, tea.ClearScreen
+	}
+	return m, nil
+}
+
+// getDashboardHostDetailVMAtCursor returns the VMID and node name for the VM at the current cursor position
+func (m Model) getDashboardHostDetailVMAtCursor() (int, string) {
+	sourceNodeObj := proxmox.GetNodeByName(m.cluster, m.sourceNode)
+	if sourceNodeObj == nil {
+		return 0, ""
+	}
+
+	// Build sorted list matching view order (sorted by name)
+	type vmEntry struct {
+		VMID int
+		Name string
+	}
+	var vmList []vmEntry
+	for _, vm := range sourceNodeObj.VMs {
+		vmList = append(vmList, vmEntry{VMID: vm.VMID, Name: vm.Name})
+	}
+	// Sort by name to match view order
+	sort.Slice(vmList, func(i, j int) bool {
+		return vmList[i].Name < vmList[j].Name
+	})
+
+	if m.dashboardHostDetailCursorPos >= 0 && m.dashboardHostDetailCursorPos < len(vmList) {
+		return vmList[m.dashboardHostDetailCursorPos].VMID, m.sourceNode
+	}
+	return 0, ""
 }
 
 // toggleSort toggles the sort column and direction
@@ -1320,6 +1447,12 @@ func (m Model) View() string {
 			Ascending: m.sortAsc,
 		}
 		return views.RenderDashboardWithHeight(m.cluster, m.selectedNodeIdx, m.width, m.height, m.refreshCountdown, m.refreshing, m.version, progress, sortInfo)
+	case ViewDashboardHostDetail:
+		sourceNode := proxmox.GetNodeByName(m.cluster, m.sourceNode)
+		if sourceNode == nil {
+			return "Error: Source node not found"
+		}
+		return views.RenderDashboardHostDetail(sourceNode, m.cluster, m.version, m.width, m.height, m.dashboardHostDetailScrollPos, m.dashboardHostDetailCursorPos)
 	case ViewCriteria:
 		sourceNode := proxmox.GetNodeByName(m.cluster, m.sourceNode)
 		return views.RenderCriteriaFull(m.criteriaState, m.sourceNode, sourceNode, m.cluster, m.version, m.width)
