@@ -601,27 +601,40 @@ func canAcceptVM(receiver *simulatedNodeState, vm *proxmox.VM, metrics clusterMe
 	newVCPUPercent := float64(receiver.vcpus+vm.CPUCores) / float64(receiver.cpuCores) * 100
 	newStoragePercent := float64(receiver.storageUsed+vm.GetEffectiveDisk()) / float64(receiver.storageTotal) * 100
 
-	// HARD LIMITS: Never exceed 95% for any resource (regardless of average)
-	const hardCapPercent = 95.0
-	if newRAMPercent > hardCapPercent {
+	// HARD LIMITS: Never exceed 90% for RAM/vCPU, 85% for storage (regardless of average)
+	// These limits ensure hosts always have headroom for operations
+	const hardCapRAMPercent = 90.0
+	const hardCapVCPUPercent = 90.0
+	const hardCapStoragePercent = 85.0
+
+	if newRAMPercent > hardCapRAMPercent {
 		return false
 	}
-	if newVCPUPercent > hardCapPercent {
+	if newVCPUPercent > hardCapVCPUPercent {
 		return false
 	}
-	if newStoragePercent > hardCapPercent {
+	if newStoragePercent > hardCapStoragePercent {
 		return false
 	}
 
-	// SOFT LIMITS: Don't allow if it would push receiver above cluster average + 5%
-	const avgMargin = 5.0
-	if newRAMPercent > metrics.avgRAMPercent+avgMargin {
+	// SOFT LIMITS: Prefer not to overshoot the cluster average too much
+	// But allow it if the receiver is currently below average (to enable balancing)
+	// Only reject if:
+	// 1. Receiver is already at or above average, AND
+	// 2. Adding this VM would push it significantly above average (>10%)
+	const softMargin = 10.0
+	currentRAMPercent := receiver.getRAMPercent()
+	currentVCPUPercent := receiver.getVCPUPercent()
+	currentStoragePercent := float64(receiver.storageUsed) / float64(receiver.storageTotal) * 100
+
+	// Only apply soft limits if receiver is already near or above average
+	if currentRAMPercent >= metrics.avgRAMPercent-2 && newRAMPercent > metrics.avgRAMPercent+softMargin {
 		return false
 	}
-	if newVCPUPercent > metrics.avgVCPUPercent+avgMargin {
+	if currentVCPUPercent >= metrics.avgVCPUPercent-2 && newVCPUPercent > metrics.avgVCPUPercent+softMargin {
 		return false
 	}
-	if newStoragePercent > metrics.avgStoragePercent+avgMargin {
+	if currentStoragePercent >= metrics.avgStoragePercent-2 && newStoragePercent > metrics.avgStoragePercent+softMargin {
 		return false
 	}
 
