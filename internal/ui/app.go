@@ -20,8 +20,8 @@ const refreshInterval = 180 // seconds
 type ViewType int
 
 const (
-	ViewDashboard ViewType = iota
-	ViewDashboardHostDetail // Shows VMs on selected host before migration mode selection
+	ViewDashboard           ViewType = iota
+	ViewDashboardHostDetail          // Shows VMs on selected host before migration mode selection
 	ViewCriteria
 	ViewVMSelection
 	ViewAnalyzing
