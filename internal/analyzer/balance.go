@@ -464,10 +464,10 @@ func findBestMigrationParallel(donors, receivers []nodeBalance, states map[strin
 
 	// Collect all VM-receiver pairs to evaluate in parallel
 	type evalJob struct {
-		donor        nodeBalance
-		donorState   *simulatedNodeState
-		vm           proxmox.VM
-		receiver     nodeBalance
+		donor         nodeBalance
+		donorState    *simulatedNodeState
+		vm            proxmox.VM
+		receiver      nodeBalance
 		receiverState *simulatedNodeState
 	}
 
@@ -977,9 +977,9 @@ func findMultiVMSwapOpportunities(states map[string]*simulatedNodeState, metrics
 
 	// Find nodes that are imbalanced in VM count or vCPUs
 	type nodeImbalance struct {
-		state     *simulatedNodeState
-		vmDev     float64 // VM count deviation from average
-		vcpuDev   float64 // vCPU deviation from average
+		state   *simulatedNodeState
+		vmDev   float64 // VM count deviation from average
+		vcpuDev float64 // vCPU deviation from average
 	}
 
 	avgVMCount := float64(metrics.totalVMs) / float64(metrics.nodeCount)

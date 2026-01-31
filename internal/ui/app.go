@@ -120,10 +120,10 @@ type Model struct {
 	refreshTotal     int    // total items to refresh
 
 	// Cluster balance analysis state
-	balanceStartTime     time.Time // When balance analysis started (for timer display)
-	balanceReturnView    ViewType  // View to return to after Balance Cluster analysis (ESC)
-	isBalanceClusterRun  bool      // True if current results are from Balance Cluster mode
-	balanceMovementsTried int      // Number of migration candidates evaluated during balance analysis
+	balanceStartTime      time.Time // When balance analysis started (for timer display)
+	balanceReturnView     ViewType  // View to return to after Balance Cluster analysis (ESC)
+	isBalanceClusterRun   bool      // True if current results are from Balance Cluster mode
+	balanceMovementsTried int       // Number of migration candidates evaluated during balance analysis
 
 	// Results view return destination
 	resultsReturnView ViewType // View to return to when ESC is pressed in results view
