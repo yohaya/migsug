@@ -135,7 +135,7 @@ func RenderDashboardWithHeight(cluster *proxmox.Cluster, selectedIdx int, width,
 
 	// Help text
 	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	sb.WriteString(helpStyle.Render("↑/↓/PgUp/PgDn/Home/End: Navigate │ 1-8: Sort columns │ Enter: Select │ r: Refresh │ q: Quit"))
+	sb.WriteString(helpStyle.Render("↑/↓/PgUp/PgDn/Home/End: Navigate │ 1-8: Sort columns │ Enter: Select │ B: Balance Cluster │ r: Refresh │ q: Quit"))
 
 	return sb.String()
 }
@@ -227,7 +227,7 @@ func RenderDashboardWithSort(cluster *proxmox.Cluster, selectedIdx int, width in
 
 	// Help text
 	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	sb.WriteString(helpStyle.Render("↑/↓/PgUp/PgDn/Home/End: Navigate │ 1-8: Sort columns │ Enter: Select │ r: Refresh │ q: Quit"))
+	sb.WriteString(helpStyle.Render("↑/↓/PgUp/PgDn/Home/End: Navigate │ 1-8: Sort columns │ Enter: Select │ B: Balance Cluster │ r: Refresh │ q: Quit"))
 
 	return sb.String()
 }

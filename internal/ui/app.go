@@ -115,6 +115,9 @@ type Model struct {
 	refreshProgress  string // progress message during refresh
 	refreshCurrent   int    // current progress count
 	refreshTotal     int    // total items to refresh
+
+	// Cluster balance analysis state
+	balanceStartTime time.Time // When balance analysis started (for timer display)
 }
 
 // NewModel creates a new application model
@@ -234,6 +237,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.resultsScrollPos = 0
 		m.resultsCursorPos = 0
 		return m, nil
+
+	case clusterBalanceCompleteMsg:
+		m.result = msg.result
+		m.sourceNode = msg.sourceNode
+		m.currentView = ViewResults
+		m.loading = false
+		m.resultsScrollPos = 0
+		m.resultsCursorPos = 0
+		return m, tea.ClearScreen
 	}
 
 	return m, nil
@@ -371,6 +383,12 @@ func (m Model) handleDashboardKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.refreshCurrent = 0
 			return m, m.refreshClusterData()
 		}
+	case "b", "B":
+		// Balance cluster mode - cluster-wide balancing
+		m.loading = true
+		m.loadingMsg = "Analyzing cluster balance"
+		m.balanceStartTime = time.Now()
+		return m, m.startClusterBalanceAnalysis()
 	}
 	return m, nil
 }
@@ -1556,6 +1574,26 @@ func (m Model) startAnalysis() tea.Cmd {
 	}
 }
 
+// startClusterBalanceAnalysis creates cluster-wide balance analysis command
+func (m Model) startClusterBalanceAnalysis() tea.Cmd {
+	return func() tea.Msg {
+		// Run cluster-wide balance analysis
+		result, err := analyzer.AnalyzeClusterWideBalance(m.cluster, nil)
+		if err != nil {
+			return errMsg{err}
+		}
+
+		// For cluster balance, we don't have a single source node
+		// Use "CLUSTER" as a marker or the first node with migrations
+		sourceNode := "CLUSTER"
+		if len(result.Suggestions) > 0 {
+			sourceNode = result.Suggestions[0].SourceNode
+		}
+
+		return clusterBalanceCompleteMsg{result: result, sourceNode: sourceNode}
+	}
+}
+
 // Messages
 type errMsg struct {
 	err error
@@ -1563,4 +1601,9 @@ type errMsg struct {
 
 type analysisCompleteMsg struct {
 	result *analyzer.AnalysisResult
+}
+
+type clusterBalanceCompleteMsg struct {
+	result     *analyzer.AnalysisResult
+	sourceNode string
 }

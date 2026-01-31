@@ -109,7 +109,7 @@ func RenderCriteriaFull(state CriteriaState, sourceNode string, node *proxmox.No
 		desc string
 	}{
 		{analyzer.ModeAll, "Migrate All", "Migrate all VMs from host and spread them across cluster"},
-		{analyzer.ModeBalanceCluster, "Balance Cluster", "Reduce host load to cluster avg with min moves (prefers <500G VMs)"},
+		{analyzer.ModeBalanceCluster, "Balance Cluster", "Balance all hosts in the cluster with the same % usage"},
 		{analyzer.ModeVCPU, "vCPU", "Migrate VMs based on the count of vCPUs to migrate"},
 		{analyzer.ModeCPUUsage, "CPU Usage (%)", "Migrate VMs based on the CPU Usage Percentage to migrate from the Host"},
 		{analyzer.ModeRAM, "RAM (GiB)", "Migrate VMs based on the amount of GiB RAM to migrate from the Host"},
