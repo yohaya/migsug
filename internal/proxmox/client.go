@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -89,9 +90,9 @@ func (c *Client) Authenticate() error {
 
 // doRequest performs an HTTP request with authentication
 func (c *Client) doRequest(method, path string) (*http.Response, error) {
-	url := c.BaseURL + path
+	reqURL := c.BaseURL + path
 
-	req, err := http.NewRequest(method, url, nil)
+	req, err := http.NewRequest(method, reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -108,21 +109,31 @@ func (c *Client) doRequest(method, path string) (*http.Response, error) {
 		req.Header.Set("Authorization", "PVEAPIToken="+c.AuthToken)
 	}
 
+	// Log the query being executed
+	start := time.Now()
+	log.Printf("[QUERY] HTTP %s %s", method, path)
+
 	resp, err := c.HTTPClient.Do(req)
+	duration := time.Since(start)
+
 	if err != nil {
+		log.Printf("[QUERY] HTTP %s %s FAILED (%v): %v", method, path, duration, err)
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
 
 	if resp.StatusCode == http.StatusUnauthorized {
+		log.Printf("[QUERY] HTTP %s %s UNAUTHORIZED (%v)", method, path, duration)
 		return nil, fmt.Errorf("unauthorized: check credentials or token")
 	}
 
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
+		log.Printf("[QUERY] HTTP %s %s ERROR %d (%v): %s", method, path, resp.StatusCode, duration, string(body))
 		return nil, fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(body))
 	}
 
+	log.Printf("[QUERY] HTTP %s %s completed in %v (status %d)", method, path, duration, resp.StatusCode)
 	return resp, nil
 }
 

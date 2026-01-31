@@ -3,8 +3,10 @@ package proxmox
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 // ShellClient represents a Proxmox client using local shell commands (pvesh)
@@ -32,11 +34,19 @@ func (c *ShellClient) pvesh(args ...string) ([]byte, error) {
 	fullArgs := append(args, "--output-format", "json")
 	cmd := exec.Command("pvesh", fullArgs...)
 
+	// Log the query being executed
+	start := time.Now()
+	log.Printf("[QUERY] pvesh %s", strings.Join(fullArgs, " "))
+
 	output, err := cmd.CombinedOutput()
+	duration := time.Since(start)
+
 	if err != nil {
+		log.Printf("[QUERY] pvesh %s FAILED (%v): %v", strings.Join(args, " "), duration, err)
 		return nil, fmt.Errorf("pvesh command failed: %w\nOutput: %s", err, string(output))
 	}
 
+	log.Printf("[QUERY] pvesh %s completed in %v (%d bytes)", strings.Join(args, " "), duration, len(output))
 	return output, nil
 }
 
