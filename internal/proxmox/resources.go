@@ -100,16 +100,17 @@ func CollectClusterDataWithProgress(client ProxmoxClient, progress ProgressCallb
 		switch res.Type {
 		case "node":
 			node := Node{
-				Name:     res.Node,
-				Status:   res.Status,
-				CPUCores: res.MaxCPU,
-				CPUUsage: res.CPU,
-				MaxMem:   res.MaxMem,
-				UsedMem:  res.Mem,
-				MaxDisk:  res.MaxDisk, // This is just rootfs, will be updated
-				UsedDisk: res.Disk,    // This is just rootfs, will be updated
-				Uptime:   res.Uptime,
-				VMs:      []VM{},
+				Name:      res.Node,
+				Status:    res.Status,
+				CPUCores:  res.MaxCPU,
+				CPUUsage:  res.CPU,
+				MaxMem:    res.MaxMem,
+				UsedMem:   res.Mem,
+				MaxDisk:   res.MaxDisk, // This is just rootfs, will be updated
+				UsedDisk:  res.Disk,    // This is just rootfs, will be updated
+				Uptime:    res.Uptime,
+				VMs:       []VM{},
+				HostState: -1, // Default: not set (will be overwritten if found in config)
 			}
 			nodeMap[res.Node] = &node
 
@@ -384,7 +385,8 @@ func GetClusterSummary(cluster *Cluster) map[string]interface{} {
 }
 
 // GetAvailableTargets returns nodes that can accept migrations
-// Excludes: source node, offline nodes, explicitly excluded nodes, provisioning hosts (P flag), and migration-blocked hosts (hoststate=3)
+// Excludes: source node, offline nodes, explicitly excluded nodes, provisioning hosts (P flag),
+// and migration-blocked hosts (hoststate=0 maintenance or hoststate=3 blocked)
 func GetAvailableTargets(cluster *Cluster, sourceNode string, excludeNodes []string) []Node {
 	var targets []Node
 

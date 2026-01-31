@@ -15,7 +15,8 @@ import (
 // stage: current stage ("calculating", "optimizing", "generating")
 // current: current progress
 // total: total items to process
-type BalanceProgressCallback func(stage string, current, total int)
+// movementsTried: number of migration candidates evaluated so far
+type BalanceProgressCallback func(stage string, current, total, movementsTried int)
 
 // AnalyzeClusterWideBalance performs cluster-wide balancing analysis
 // This analyzes ALL nodes in the cluster and generates migrations to balance
@@ -39,7 +40,7 @@ func AnalyzeClusterWideBalance(cluster *proxmox.Cluster, progress BalanceProgres
 
 	// Report initial stage
 	if progress != nil {
-		progress("Calculating cluster metrics", 0, len(onlineNodes))
+		progress("Calculating cluster metrics", 0, len(onlineNodes), 0)
 	}
 
 	// Calculate cluster-wide metrics and targets
@@ -50,7 +51,7 @@ func AnalyzeClusterWideBalance(cluster *proxmox.Cluster, progress BalanceProgres
 
 	// Report progress
 	if progress != nil {
-		progress("Analyzing node imbalances", len(onlineNodes)/2, len(onlineNodes))
+		progress("Analyzing node imbalances", len(onlineNodes)/2, len(onlineNodes), 0)
 	}
 
 	// Identify overloaded (donors) and underloaded (receivers) nodes
@@ -64,7 +65,7 @@ func AnalyzeClusterWideBalance(cluster *proxmox.Cluster, progress BalanceProgres
 
 	// Report progress
 	if progress != nil {
-		progress("Finding optimal migrations", len(onlineNodes), len(onlineNodes))
+		progress("Finding optimal migrations", len(onlineNodes), len(onlineNodes), 0)
 	}
 
 	// Generate optimal migrations using greedy algorithm with optimization
@@ -76,7 +77,7 @@ func AnalyzeClusterWideBalance(cluster *proxmox.Cluster, progress BalanceProgres
 
 	// Report progress for vCPU optimization
 	if progress != nil {
-		progress("Optimizing vCPU distribution", len(onlineNodes), len(onlineNodes))
+		progress("Optimizing vCPU distribution", len(onlineNodes), len(onlineNodes), movementsTried)
 	}
 
 	// Build simulated states from the results for vCPU swap optimization
@@ -341,7 +342,7 @@ func generateBalancedMigrations(donors, receivers []nodeBalance, metrics cluster
 	for i := 0; i < maxIterations; i++ {
 		if progress != nil && i%10 == 0 {
 			currentProgress = i
-			progress("Optimizing migrations", currentProgress, totalProgress)
+			progress("Optimizing migrations", currentProgress, totalProgress, int(movementsTried))
 		}
 
 		bestMigration, tried := findBestMigrationParallel(donors, receivers, currentStates, migratedVMs, metrics, cluster)
@@ -366,7 +367,7 @@ func generateBalancedMigrations(donors, receivers []nodeBalance, metrics cluster
 
 	// Report final progress
 	if progress != nil {
-		progress("Finalizing results", totalProgress, totalProgress)
+		progress("Finalizing results", totalProgress, totalProgress, int(movementsTried))
 	}
 
 	// Update final after states
@@ -598,18 +599,29 @@ func canAcceptVM(receiver *simulatedNodeState, vm *proxmox.VM, metrics clusterMe
 	// Calculate projected utilization after adding VM
 	newRAMPercent := float64(receiver.ramUsed+vm.MaxMem) / float64(receiver.ramTotal) * 100
 	newVCPUPercent := float64(receiver.vcpus+vm.CPUCores) / float64(receiver.cpuCores) * 100
+	newStoragePercent := float64(receiver.storageUsed+vm.GetEffectiveDisk()) / float64(receiver.storageTotal) * 100
 
-	// Don't allow if it would push receiver above cluster average + margin
-	margin := 5.0
-	if newRAMPercent > metrics.avgRAMPercent+margin {
+	// HARD LIMITS: Never exceed 95% for any resource (regardless of average)
+	const hardCapPercent = 95.0
+	if newRAMPercent > hardCapPercent {
 		return false
 	}
-	if newVCPUPercent > metrics.avgVCPUPercent+margin {
+	if newVCPUPercent > hardCapPercent {
+		return false
+	}
+	if newStoragePercent > hardCapPercent {
 		return false
 	}
 
-	// Ensure minimum headroom (don't fill to capacity)
-	if newRAMPercent > 90 {
+	// SOFT LIMITS: Don't allow if it would push receiver above cluster average + 5%
+	const avgMargin = 5.0
+	if newRAMPercent > metrics.avgRAMPercent+avgMargin {
+		return false
+	}
+	if newVCPUPercent > metrics.avgVCPUPercent+avgMargin {
+		return false
+	}
+	if newStoragePercent > metrics.avgStoragePercent+avgMargin {
 		return false
 	}
 

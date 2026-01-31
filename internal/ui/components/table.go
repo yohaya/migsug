@@ -806,6 +806,38 @@ func RenderSuggestionTableWithCursor(suggestions []analyzer.MigrationSuggestion,
 	})
 	suggestions = sortedSuggestions
 
+	totalItems := len(suggestions)
+
+	// Clamp cursorPos to valid range
+	if cursorPos >= totalItems {
+		cursorPos = totalItems - 1
+	}
+	if cursorPos < 0 {
+		cursorPos = -1 // No cursor
+	}
+
+	// Ensure cursor stays within visible range by adjusting scrollPos
+	if cursorPos >= 0 {
+		if cursorPos < scrollPos {
+			scrollPos = cursorPos
+		}
+		if cursorPos >= scrollPos+maxVisible {
+			scrollPos = cursorPos - maxVisible + 1
+		}
+	}
+
+	// Clamp scrollPos to valid range
+	maxScroll := totalItems - maxVisible
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	if scrollPos > maxScroll {
+		scrollPos = maxScroll
+	}
+	if scrollPos < 0 {
+		scrollPos = 0
+	}
+
 	// Column widths
 	const (
 		colVMID     = 6
@@ -833,7 +865,6 @@ func RenderSuggestionTableWithCursor(suggestions []analyzer.MigrationSuggestion,
 	scrollTrackStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
 	scrollThumbStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 
-	totalItems := len(suggestions)
 	needsScrollbar := totalItems > maxVisible
 
 	// Calculate scrollbar thumb position

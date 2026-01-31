@@ -120,9 +120,10 @@ type Model struct {
 	refreshTotal     int    // total items to refresh
 
 	// Cluster balance analysis state
-	balanceStartTime    time.Time // When balance analysis started (for timer display)
-	balanceReturnView   ViewType  // View to return to after Balance Cluster analysis (ESC)
-	isBalanceClusterRun bool      // True if current results are from Balance Cluster mode
+	balanceStartTime     time.Time // When balance analysis started (for timer display)
+	balanceReturnView    ViewType  // View to return to after Balance Cluster analysis (ESC)
+	isBalanceClusterRun  bool      // True if current results are from Balance Cluster mode
+	balanceMovementsTried int      // Number of migration candidates evaluated during balance analysis
 
 	// Results view return destination
 	resultsReturnView ViewType // View to return to when ESC is pressed in results view
@@ -179,6 +180,12 @@ type refreshProgressMsg struct {
 	total   int
 }
 
+// balanceProgressMsg is sent to update balance analysis progress
+type balanceProgressMsg struct {
+	stage          string
+	movementsTried int
+}
+
 // Update handles messages and updates the model
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -210,6 +217,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.refreshProgress = msg.stage
 		m.refreshCurrent = msg.current
 		m.refreshTotal = msg.total
+		return m, nil
+
+	case balanceProgressMsg:
+		m.loadingMsg = msg.stage
+		m.balanceMovementsTried = msg.movementsTried
 		return m, nil
 
 	case refreshCompleteMsg:
@@ -1628,10 +1640,13 @@ func (m Model) View() string {
 	}
 
 	if m.loading {
-		// Show elapsed time for Balance Cluster analysis
+		// Show elapsed time and movements counter for Balance Cluster analysis
 		if m.isBalanceClusterRun && !m.balanceStartTime.IsZero() {
 			elapsed := time.Since(m.balanceStartTime)
 			seconds := int(elapsed.Seconds())
+			if m.balanceMovementsTried > 0 {
+				return fmt.Sprintf("\n  %s... (%d seconds, %d migrations evaluated)\n\n  ████████████████████░░░░░░░░░░\n\n", m.loadingMsg, seconds, m.balanceMovementsTried)
+			}
 			return fmt.Sprintf("\n  %s... (%d seconds)\n\n  ████████████████████░░░░░░░░░░\n\n", m.loadingMsg, seconds)
 		}
 		return fmt.Sprintf("\n  %s...\n\n", m.loadingMsg)

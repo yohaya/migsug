@@ -606,7 +606,10 @@ func RenderHostDetailWithReasoningScroll(result *analyzer.AnalysisResult, cluste
 					Details:     sug.Details,
 					SourceCores: sug.SourceCores,
 					TargetCores: sug.TargetCores,
-					SourceModel: sourceModel,
+				}
+				// Get actual source node CPU model for this specific migration
+				if actualSourceNode := proxmox.GetNodeByName(cluster, sug.SourceNode); actualSourceNode != nil {
+					item.SourceModel = actualSourceNode.CPUModel
 				}
 				// Get target node CPU model (this host)
 				if targetNode != nil {

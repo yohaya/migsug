@@ -26,13 +26,21 @@ type Node struct {
 	HasOSD            bool              // True if node has VMs with name matching osd*.cloudwm.com
 	AllowProvisioning bool              // True if node config has hostprovision=true
 	HasOldVMs         bool              // True if node has P flag and VMs older than 90 days (C flag)
-	HostState         int               // Host state from config (0-3). When hoststate=3, no migrations to/from this host
+	HostState         int               // Host state from config (0-3). -1 means not set. 0=maintenance, 3=blocked (no migrations)
 	ConfigMeta        map[string]string // All key=value pairs from node config comment line
 }
 
-// IsMigrationBlocked returns true if the host state blocks migrations (hoststate=3)
+// IsMigrationBlocked returns true if the host state blocks migrations
+// hoststate=0: maintenance mode - no migrations to/from
+// hoststate=3: blocked state - no migrations to/from
+// Note: -1 means not set (migrations allowed)
 func (n *Node) IsMigrationBlocked() bool {
-	return n.HostState == 3
+	return n.HostState == 0 || n.HostState == 3
+}
+
+// HasHostState returns true if hoststate is configured (not -1)
+func (n *Node) HasHostState() bool {
+	return n.HostState >= 0
 }
 
 // HasActiveSwap returns true if swap is configured and in use
@@ -40,7 +48,8 @@ func (n *Node) HasActiveSwap() bool {
 	return n.SwapTotal > 0 && n.SwapUsed > 0
 }
 
-// GetStatusIndicators returns status indicator letters (e.g., "OPC3" for OSD + Provisioning + old VMs + hoststate=3)
+// GetStatusIndicators returns status indicator letters (e.g., "OPC" for OSD + Provisioning + old VMs)
+// Note: hoststate is NOT included here - it's shown separately in GetStatusWithIndicators
 func (n *Node) GetStatusIndicators() string {
 	indicators := ""
 	if n.HasOSD {
@@ -52,19 +61,24 @@ func (n *Node) GetStatusIndicators() string {
 	if n.HasOldVMs {
 		indicators += "C"
 	}
-	if n.HostState > 0 {
-		indicators += fmt.Sprintf("%d", n.HostState)
-	}
 	return indicators
 }
 
-// GetStatusWithIndicators returns status with indicators (e.g., "online (OP)")
+// GetStatusWithIndicators returns status with hoststate and indicators
+// Format: "online/3 (OPC)" where hoststate is shown after slash, other flags in parentheses
 func (n *Node) GetStatusWithIndicators() string {
+	// Build status with hoststate (if set, i.e. >= 0)
+	status := n.Status
+	if n.HasHostState() {
+		status = fmt.Sprintf("%s/%d", n.Status, n.HostState)
+	}
+
+	// Add other indicators in parentheses
 	indicators := n.GetStatusIndicators()
 	if indicators == "" {
-		return n.Status
+		return status
 	}
-	return fmt.Sprintf("%s (%s)", n.Status, indicators)
+	return fmt.Sprintf("%s (%s)", status, indicators)
 }
 
 // VM represents a virtual machine
