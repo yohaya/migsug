@@ -59,9 +59,11 @@ type Model struct {
 	sortColumn      SortColumn // Current sort column
 	sortAsc         bool       // Sort ascending (true) or descending (false)
 
-	// Dashboard host detail view state (shows VMs on selected host)
-	dashboardHostDetailScrollPos int // Scroll position for VM list
-	dashboardHostDetailCursorPos int // Cursor position in VM list
+	// Dashboard host detail view state (shows VMs on selected host + migration modes)
+	dashboardHostDetailScrollPos    int // Scroll position for VM list
+	dashboardHostDetailCursorPos    int // Cursor position in VM list
+	dashboardHostDetailFocusSection int // 0 = VM list, 1 = migration modes
+	dashboardHostDetailModeIdx      int // Selected migration mode index
 
 	// Criteria state
 	criteriaState views.CriteriaState
@@ -404,81 +406,115 @@ func (m Model) handleDashboardHostDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd
 
 	vmCount := len(sourceNodeObj.VMs)
 	pageSize := 10
+	numModes := 8 // Number of migration modes
 
-	// Calculate max visible rows (similar to host detail view)
-	fixedOverhead := 15 // Title, host info, table header, help, etc.
-	maxVisible := m.height - fixedOverhead
-	if maxVisible < 5 {
-		maxVisible = 5
+	// Calculate max visible rows for VM list (split view - top 60%)
+	vmListHeight := (m.height * 60) / 100
+	fixedOverhead := 10 // Title, host info, table header, separator
+	maxVisible := vmListHeight - fixedOverhead
+	if maxVisible < 3 {
+		maxVisible = 3
 	}
 
 	switch msg.String() {
+	case "tab":
+		// Switch between VM list (0) and migration modes (1)
+		m.dashboardHostDetailFocusSection = 1 - m.dashboardHostDetailFocusSection
+		return m, nil
+
 	case "up", "k":
-		if m.dashboardHostDetailCursorPos > 0 {
-			m.dashboardHostDetailCursorPos--
-			// Adjust scroll if cursor goes above visible area
-			if m.dashboardHostDetailCursorPos < m.dashboardHostDetailScrollPos {
-				m.dashboardHostDetailScrollPos = m.dashboardHostDetailCursorPos
+		if m.dashboardHostDetailFocusSection == 0 {
+			// VM list navigation
+			if m.dashboardHostDetailCursorPos > 0 {
+				m.dashboardHostDetailCursorPos--
+				if m.dashboardHostDetailCursorPos < m.dashboardHostDetailScrollPos {
+					m.dashboardHostDetailScrollPos = m.dashboardHostDetailCursorPos
+				}
+			}
+		} else {
+			// Migration mode navigation
+			if m.dashboardHostDetailModeIdx > 0 {
+				m.dashboardHostDetailModeIdx--
 			}
 		}
+
 	case "down", "j":
-		if m.dashboardHostDetailCursorPos < vmCount-1 {
-			m.dashboardHostDetailCursorPos++
-			// Adjust scroll if cursor goes below visible area
-			if m.dashboardHostDetailCursorPos >= m.dashboardHostDetailScrollPos+maxVisible {
-				m.dashboardHostDetailScrollPos = m.dashboardHostDetailCursorPos - maxVisible + 1
+		if m.dashboardHostDetailFocusSection == 0 {
+			// VM list navigation
+			if m.dashboardHostDetailCursorPos < vmCount-1 {
+				m.dashboardHostDetailCursorPos++
+				if m.dashboardHostDetailCursorPos >= m.dashboardHostDetailScrollPos+maxVisible {
+					m.dashboardHostDetailScrollPos = m.dashboardHostDetailCursorPos - maxVisible + 1
+				}
+			}
+		} else {
+			// Migration mode navigation
+			if m.dashboardHostDetailModeIdx < numModes-1 {
+				m.dashboardHostDetailModeIdx++
 			}
 		}
+
 	case "home":
-		m.dashboardHostDetailCursorPos = 0
-		m.dashboardHostDetailScrollPos = 0
-	case "end":
-		m.dashboardHostDetailCursorPos = vmCount - 1
-		if vmCount > maxVisible {
-			m.dashboardHostDetailScrollPos = vmCount - maxVisible
-		}
-	case "pgup":
-		m.dashboardHostDetailCursorPos -= pageSize
-		if m.dashboardHostDetailCursorPos < 0 {
+		if m.dashboardHostDetailFocusSection == 0 {
 			m.dashboardHostDetailCursorPos = 0
-		}
-		m.dashboardHostDetailScrollPos -= pageSize
-		if m.dashboardHostDetailScrollPos < 0 {
 			m.dashboardHostDetailScrollPos = 0
+		} else {
+			m.dashboardHostDetailModeIdx = 0
 		}
-	case "pgdown":
-		m.dashboardHostDetailCursorPos += pageSize
-		if m.dashboardHostDetailCursorPos >= vmCount {
+
+	case "end":
+		if m.dashboardHostDetailFocusSection == 0 {
 			m.dashboardHostDetailCursorPos = vmCount - 1
+			if vmCount > maxVisible {
+				m.dashboardHostDetailScrollPos = vmCount - maxVisible
+			}
+		} else {
+			m.dashboardHostDetailModeIdx = numModes - 1
 		}
-		m.dashboardHostDetailScrollPos += pageSize
-		maxScroll := vmCount - maxVisible
-		if maxScroll < 0 {
-			maxScroll = 0
+
+	case "pgup":
+		if m.dashboardHostDetailFocusSection == 0 {
+			m.dashboardHostDetailCursorPos -= pageSize
+			if m.dashboardHostDetailCursorPos < 0 {
+				m.dashboardHostDetailCursorPos = 0
+			}
+			m.dashboardHostDetailScrollPos -= pageSize
+			if m.dashboardHostDetailScrollPos < 0 {
+				m.dashboardHostDetailScrollPos = 0
+			}
 		}
-		if m.dashboardHostDetailScrollPos > maxScroll {
-			m.dashboardHostDetailScrollPos = maxScroll
+
+	case "pgdown":
+		if m.dashboardHostDetailFocusSection == 0 {
+			m.dashboardHostDetailCursorPos += pageSize
+			if m.dashboardHostDetailCursorPos >= vmCount {
+				m.dashboardHostDetailCursorPos = vmCount - 1
+			}
+			m.dashboardHostDetailScrollPos += pageSize
+			maxScroll := vmCount - maxVisible
+			if maxScroll < 0 {
+				maxScroll = 0
+			}
+			if m.dashboardHostDetailScrollPos > maxScroll {
+				m.dashboardHostDetailScrollPos = maxScroll
+			}
 		}
 
 	case "enter":
-		// Show VM details for the selected VM
-		vmid, nodeName := m.getDashboardHostDetailVMAtCursor()
-		if vmid > 0 {
-			m.selectedVMID = vmid
-			m.selectedVMNode = nodeName
-			m.showVMDetails = true
-			m.vmDetailsScrollPos = 0
-			return m, tea.ClearScreen
+		if m.dashboardHostDetailFocusSection == 0 {
+			// Show VM details for the selected VM
+			vmid, nodeName := m.getDashboardHostDetailVMAtCursor()
+			if vmid > 0 {
+				m.selectedVMID = vmid
+				m.selectedVMNode = nodeName
+				m.showVMDetails = true
+				m.vmDetailsScrollPos = 0
+				return m, tea.ClearScreen
+			}
+		} else {
+			// Start migration analysis with selected mode
+			return m.startMigrationFromHostDetail()
 		}
-
-	case "m":
-		// Proceed to migration mode selection
-		m.criteriaState = views.CriteriaState{
-			SelectedMode: analyzer.ModeAll,
-			SelectedVMs:  make(map[int]bool),
-		}
-		m.currentView = ViewCriteria
-		return m, tea.ClearScreen
 
 	case "esc":
 		// Go back to dashboard
@@ -513,6 +549,72 @@ func (m Model) getDashboardHostDetailVMAtCursor() (int, string) {
 		return vmList[m.dashboardHostDetailCursorPos].VMID, m.sourceNode
 	}
 	return 0, ""
+}
+
+// getMigrationModeFromIndex returns the migration mode for a given index
+func getMigrationModeFromIndex(idx int) analyzer.MigrationMode {
+	modes := []analyzer.MigrationMode{
+		analyzer.ModeAll,
+		analyzer.ModeBalanceCluster,
+		analyzer.ModeVCPU,
+		analyzer.ModeCPUUsage,
+		analyzer.ModeRAM,
+		analyzer.ModeStorage,
+		analyzer.ModeCreationDate,
+		analyzer.ModeSpecific,
+	}
+	if idx >= 0 && idx < len(modes) {
+		return modes[idx]
+	}
+	return analyzer.ModeAll
+}
+
+// startMigrationFromHostDetail starts migration analysis from the host detail view
+func (m Model) startMigrationFromHostDetail() (tea.Model, tea.Cmd) {
+	selectedMode := getMigrationModeFromIndex(m.dashboardHostDetailModeIdx)
+
+	// For modes that need input, go to criteria view
+	switch selectedMode {
+	case analyzer.ModeVCPU, analyzer.ModeCPUUsage, analyzer.ModeRAM, analyzer.ModeStorage, analyzer.ModeCreationDate:
+		// These modes need user input, go to criteria view
+		m.criteriaState = views.CriteriaState{
+			SelectedMode:   selectedMode,
+			SelectedVMs:    make(map[int]bool),
+			CursorPosition: m.dashboardHostDetailModeIdx,
+			InputFocused:   true, // Start with input focused
+		}
+		m.currentView = ViewCriteria
+		return m, tea.ClearScreen
+
+	case analyzer.ModeSpecific:
+		// Go to VM selection view
+		m.criteriaState = views.CriteriaState{
+			SelectedMode: selectedMode,
+			SelectedVMs:  make(map[int]bool),
+		}
+		m.vmCursorIdx = 0
+		m.currentView = ViewVMSelection
+		return m, tea.ClearScreen
+
+	case analyzer.ModeAll:
+		// Start analysis immediately
+		m.criteriaState = views.CriteriaState{
+			SelectedMode: selectedMode,
+			SelectedVMs:  make(map[int]bool),
+		}
+		m.loading = true
+		m.loadingMsg = "Analyzing migrations"
+		return m, m.startAnalysis()
+
+	case analyzer.ModeBalanceCluster:
+		// Start cluster-wide balance analysis
+		m.loading = true
+		m.loadingMsg = "Analyzing cluster balance"
+		m.balanceStartTime = time.Now()
+		return m, m.startClusterBalanceAnalysis()
+	}
+
+	return m, nil
 }
 
 // toggleSort toggles the sort column and direction
@@ -1470,7 +1572,7 @@ func (m Model) View() string {
 		if sourceNode == nil {
 			return "Error: Source node not found"
 		}
-		return views.RenderDashboardHostDetail(sourceNode, m.cluster, m.version, m.width, m.height, m.dashboardHostDetailScrollPos, m.dashboardHostDetailCursorPos)
+		return views.RenderDashboardHostDetailFull(sourceNode, m.cluster, m.version, m.width, m.height, m.dashboardHostDetailScrollPos, m.dashboardHostDetailCursorPos, m.dashboardHostDetailFocusSection, m.dashboardHostDetailModeIdx)
 	case ViewCriteria:
 		sourceNode := proxmox.GetNodeByName(m.cluster, m.sourceNode)
 		return views.RenderCriteriaFull(m.criteriaState, m.sourceNode, sourceNode, m.cluster, m.version, m.width)

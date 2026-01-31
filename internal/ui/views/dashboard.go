@@ -343,9 +343,14 @@ func getUsageColorCode(percent float64) string {
 	return "2" // green
 }
 
-// RenderDashboardHostDetail renders the host detail view showing all VMs on the selected host
-// This is displayed when user selects a host from the dashboard, before migration mode selection
+// RenderDashboardHostDetail renders the host detail view showing VMs and migration modes in split view
+// focusSection: 0 = VM list, 1 = migration modes
 func RenderDashboardHostDetail(node *proxmox.Node, cluster *proxmox.Cluster, version string, width, height, scrollPos, cursorPos int) string {
+	return RenderDashboardHostDetailFull(node, cluster, version, width, height, scrollPos, cursorPos, 0, 0)
+}
+
+// RenderDashboardHostDetailFull renders the host detail view with focus section and mode selection
+func RenderDashboardHostDetailFull(node *proxmox.Node, cluster *proxmox.Cluster, version string, width, height, scrollPos, cursorPos, focusSection, modeIdx int) string {
 	var sb strings.Builder
 
 	// Ensure minimum width
@@ -362,6 +367,8 @@ func RenderDashboardHostDetail(node *proxmox.Node, cluster *proxmox.Cluster, ver
 	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	selectedStyle := lipgloss.NewStyle().Background(lipgloss.Color("240")).Foreground(lipgloss.Color("15"))
+	focusedHeaderStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5"))
+	unfocusedHeaderStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("8"))
 
 	// Title with version
 	versionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
@@ -370,24 +377,36 @@ func RenderDashboardHostDetail(node *proxmox.Node, cluster *proxmox.Cluster, ver
 		title += " " + versionStyle.Render("v"+version)
 	}
 	sb.WriteString(titleStyle.Render(title) + "\n")
-	sb.WriteString(borderStyle.Render(strings.Repeat(boxDoubleLine, width)) + "\n\n")
+	sb.WriteString(borderStyle.Render(strings.Repeat(boxDoubleLine, width)) + "\n")
 
 	// Host detail header
-	sb.WriteString(headerStyle.Render(fmt.Sprintf("Host Detail: %s", node.Name)) + "\n")
-
-	// Host info line
+	sb.WriteString(headerStyle.Render(fmt.Sprintf("Host: %s", node.Name)) + " ")
 	cpuPct := node.GetCPUPercent()
 	ramPct := node.GetMemPercent()
-	sb.WriteString(labelStyle.Render("CPU: ") + valueStyle.Render(node.CPUModel) + "\n")
-	sb.WriteString(labelStyle.Render(fmt.Sprintf("VMs: %d, vCPUs: %d, CPU: %.1f%%, RAM: %s (%.1f%%), Storage: %s",
+	sb.WriteString(dimStyle.Render(fmt.Sprintf("│ VMs: %d │ vCPUs: %d │ CPU: %.1f%% │ RAM: %.1f%% │ Storage: %s",
 		len(node.VMs),
 		node.GetRunningVCPUs(),
 		cpuPct,
-		components.FormatRAMShort(node.MaxMem),
 		ramPct,
-		components.FormatStorageG(node.MaxDisk))) + "\n\n")
+		components.FormatStorageG(node.MaxDisk))) + "\n")
 
-	// Build VM list (sorted by name like in results view)
+	// Calculate split heights - VM list gets top portion, modes get bottom
+	vmListHeight := (height - 10) * 55 / 100 // 55% for VM list
+	if vmListHeight < 5 {
+		vmListHeight = 5
+	}
+	modesHeight := (height - 10) - vmListHeight // Rest for modes
+
+	// === VM LIST SECTION ===
+	vmHeaderStyle := headerStyle
+	if focusSection == 0 {
+		vmHeaderStyle = focusedHeaderStyle
+	} else {
+		vmHeaderStyle = unfocusedHeaderStyle
+	}
+	sb.WriteString(vmHeaderStyle.Render("─── VM List ───") + "\n")
+
+	// Build VM list (sorted by name)
 	type vmItem struct {
 		VMID     int
 		Name     string
@@ -414,27 +433,19 @@ func RenderDashboardHostDetail(node *proxmox.Node, cluster *proxmox.Cluster, ver
 		})
 	}
 
-	// Sort by name
 	sort.Slice(vmList, func(i, j int) bool {
 		return vmList[i].Name < vmList[j].Name
 	})
 
-	// Calculate visible rows
-	fixedOverhead := 12 // Title, border, blank, host header, cpu line, info line, blank, table header, separator, blank, scroll info, help
-	maxVisible := height - fixedOverhead
-	if maxVisible < 5 {
-		maxVisible = 5
-	}
-
-	// Table header
+	// VM table header
 	const (
 		colVMID    = 6
-		colName    = 28
+		colName    = 26
 		colState   = 5
 		colHCPU    = 6
 		colVCPU    = 5
-		colRAM     = 8
-		colStorage = 10
+		colRAM     = 7
+		colStorage = 9
 	)
 
 	header := fmt.Sprintf("  %-*s %-*s %-*s %*s %*s %*s %*s",
@@ -445,13 +456,17 @@ func RenderDashboardHostDetail(node *proxmox.Node, cluster *proxmox.Cluster, ver
 		colVCPU, "vCPU",
 		colRAM, "RAM",
 		colStorage, "Storage")
-	sb.WriteString(headerStyle.Render(header) + "\n")
-	sb.WriteString(borderStyle.Render(strings.Repeat("─", width)) + "\n")
+	sb.WriteString(dimStyle.Render(header) + "\n")
 
-	// Determine visible range
+	// Calculate visible VM rows
+	maxVisibleVMs := vmListHeight - 2 // Minus header lines
+	if maxVisibleVMs < 3 {
+		maxVisibleVMs = 3
+	}
+
 	totalVMs := len(vmList)
 	startIdx := scrollPos
-	endIdx := startIdx + maxVisible
+	endIdx := startIdx + maxVisibleVMs
 	if endIdx > totalVMs {
 		endIdx = totalVMs
 	}
@@ -460,19 +475,16 @@ func RenderDashboardHostDetail(node *proxmox.Node, cluster *proxmox.Cluster, ver
 	for i := startIdx; i < endIdx; i++ {
 		vm := vmList[i]
 
-		// Status formatting
 		stateStr := vm.Status
 		if len(stateStr) > colState {
 			stateStr = stateStr[:colState]
 		}
 
-		// Format values
 		cpuStr := fmt.Sprintf("%5.1f", vm.CPUUsage)
 		vcpuStr := fmt.Sprintf("%d", vm.VCPUs)
 		ramStr := components.FormatRAMShort(vm.RAM)
 		storageStr := components.FormatStorageG(vm.Storage)
 
-		// Truncate name if needed
 		name := vm.Name
 		if len(name) > colName {
 			name = name[:colName-3] + "..."
@@ -487,8 +499,8 @@ func RenderDashboardHostDetail(node *proxmox.Node, cluster *proxmox.Cluster, ver
 			colRAM, ramStr,
 			colStorage, storageStr)
 
-		// Cursor indicator
-		if i == cursorPos {
+		// Only show cursor if VM list is focused
+		if i == cursorPos && focusSection == 0 {
 			sb.WriteString("→ ")
 			sb.WriteString(selectedStyle.Render(row) + "\n")
 		} else {
@@ -501,23 +513,90 @@ func RenderDashboardHostDetail(node *proxmox.Node, cluster *proxmox.Cluster, ver
 		}
 	}
 
-	// Pad with empty lines if needed
-	for i := endIdx - startIdx; i < maxVisible; i++ {
+	// Pad VM list if needed
+	for i := endIdx - startIdx; i < maxVisibleVMs; i++ {
 		sb.WriteString("\n")
 	}
 
-	// Scroll info
-	if totalVMs > maxVisible {
+	// VM scroll info
+	if totalVMs > maxVisibleVMs {
 		scrollInfo := fmt.Sprintf("Showing %d-%d of %d VMs", startIdx+1, endIdx, totalVMs)
 		sb.WriteString(dimStyle.Render(scrollInfo) + "\n")
 	} else {
 		sb.WriteString("\n")
 	}
 
+	// === MIGRATION MODES SECTION ===
+	modesHeaderStyle := headerStyle
+	if focusSection == 1 {
+		modesHeaderStyle = focusedHeaderStyle
+	} else {
+		modesHeaderStyle = unfocusedHeaderStyle
+	}
+	sb.WriteString(modesHeaderStyle.Render("─── Select Migration Mode ───") + "\n")
+
+	// Mode options
+	modes := []struct {
+		name string
+		desc string
+	}{
+		{"Migrate All", "Migrate all VMs from host, spread across cluster"},
+		{"Balance Cluster", "Balance all hosts to same % usage"},
+		{"vCPU", "Migrate by vCPU count"},
+		{"CPU Usage (%)", "Migrate by CPU usage percentage"},
+		{"RAM (GiB)", "Migrate by RAM amount"},
+		{"Storage (GiB)", "Migrate by storage amount"},
+		{"Create Date", "Migrate VMs older than N days"},
+		{"Specific VMs", "Manually select VMs"},
+	}
+
+	// Render modes in 2 columns
+	modesPerCol := (len(modes) + 1) / 2
+	colWidth := (width - 4) / 2
+
+	for row := 0; row < modesPerCol; row++ {
+		leftIdx := row
+		rightIdx := row + modesPerCol
+
+		// Left column
+		if leftIdx < len(modes) {
+			selector := "  "
+			if leftIdx == modeIdx && focusSection == 1 {
+				selector = "▶ "
+				modeLine := fmt.Sprintf("%-*s", colWidth-2, modes[leftIdx].name)
+				sb.WriteString(selector + selectedStyle.Render(modeLine))
+			} else {
+				modeLine := fmt.Sprintf("%-*s", colWidth-2, modes[leftIdx].name)
+				sb.WriteString(selector + labelStyle.Render(modeLine))
+			}
+		} else {
+			sb.WriteString(strings.Repeat(" ", colWidth))
+		}
+
+		// Right column
+		if rightIdx < len(modes) {
+			selector := "  "
+			if rightIdx == modeIdx && focusSection == 1 {
+				selector = "▶ "
+				modeLine := modes[rightIdx].name
+				sb.WriteString(selector + selectedStyle.Render(modeLine))
+			} else {
+				modeLine := modes[rightIdx].name
+				sb.WriteString(selector + labelStyle.Render(modeLine))
+			}
+		}
+		sb.WriteString("\n")
+	}
+
+	// Show selected mode description
+	if modeIdx >= 0 && modeIdx < len(modes) {
+		sb.WriteString(dimStyle.Render("  "+modes[modeIdx].desc) + "\n")
+	}
+
 	sb.WriteString("\n")
 
 	// Help text
-	sb.WriteString(helpStyle.Render("↑/↓/PgUp/PgDn/Home/End: Navigate │ Enter: VM Details │ m: Migration Mode │ Esc: Back"))
+	sb.WriteString(helpStyle.Render("Tab: Switch section │ ↑/↓: Navigate │ Enter: Select │ Esc: Back"))
 
 	return sb.String()
 }
