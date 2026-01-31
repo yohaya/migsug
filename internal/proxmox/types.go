@@ -26,7 +26,13 @@ type Node struct {
 	HasOSD            bool              // True if node has VMs with name matching osd*.cloudwm.com
 	AllowProvisioning bool              // True if node config has hostprovision=true
 	HasOldVMs         bool              // True if node has P flag and VMs older than 90 days (C flag)
+	HostState         int               // Host state from config (0-3). When hoststate=3, no migrations to/from this host
 	ConfigMeta        map[string]string // All key=value pairs from node config comment line
+}
+
+// IsMigrationBlocked returns true if the host state blocks migrations (hoststate=3)
+func (n *Node) IsMigrationBlocked() bool {
+	return n.HostState == 3
 }
 
 // HasActiveSwap returns true if swap is configured and in use
@@ -34,7 +40,7 @@ func (n *Node) HasActiveSwap() bool {
 	return n.SwapTotal > 0 && n.SwapUsed > 0
 }
 
-// GetStatusIndicators returns status indicator letters (e.g., "OPC" for OSD + Provisioning + old VMs needing migration)
+// GetStatusIndicators returns status indicator letters (e.g., "OPC3" for OSD + Provisioning + old VMs + hoststate=3)
 func (n *Node) GetStatusIndicators() string {
 	indicators := ""
 	if n.HasOSD {
@@ -45,6 +51,9 @@ func (n *Node) GetStatusIndicators() string {
 	}
 	if n.HasOldVMs {
 		indicators += "C"
+	}
+	if n.HostState > 0 {
+		indicators += fmt.Sprintf("%d", n.HostState)
 	}
 	return indicators
 }

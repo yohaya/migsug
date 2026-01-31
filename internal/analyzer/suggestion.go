@@ -119,6 +119,9 @@ type AnalysisResult struct {
 	TotalRAM        int64
 	TotalStorage    int64
 	ImprovementInfo string
+
+	// Balance cluster analysis statistics
+	MovementsTried int // Number of migration attempts evaluated during analysis
 }
 
 // NodeState represents the state of a node before or after migration

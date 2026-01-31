@@ -131,6 +131,11 @@ func RenderNodeSummary(node *proxmox.Node) string {
 
 // RenderMigrationSummary creates a summary for migration results (without box)
 func RenderMigrationSummary(totalVMs int, totalVCPUs int, totalRAM int64, totalStorage int64, improvement string) string {
+	return RenderMigrationSummaryWithMoves(totalVMs, totalVCPUs, totalRAM, totalStorage, improvement, 0)
+}
+
+// RenderMigrationSummaryWithMoves creates a summary for migration results with movements tried counter
+func RenderMigrationSummaryWithMoves(totalVMs int, totalVCPUs int, totalRAM int64, totalStorage int64, improvement string, movementsTried int) string {
 	// Use regular text color for labels
 	labelStyle := lipgloss.NewStyle()
 	valueStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
@@ -145,6 +150,11 @@ func RenderMigrationSummary(totalVMs int, totalVCPUs int, totalRAM int64, totalS
 	content += labelStyle.Render("vCPUs: ") + valueStyle.Render(fmt.Sprintf("%-10d", totalVCPUs))
 	content += labelStyle.Render("RAM: ") + valueStyle.Render(fmt.Sprintf("%-14s", FormatBytes(totalRAM)))
 	content += labelStyle.Render("Storage: ") + valueStyle.Render(FormatBytes(totalStorage))
+
+	// Show movements tried if available (for Balance Cluster mode)
+	if movementsTried > 0 {
+		content += "\n  " + labelStyle.Render("Movements analyzed: ") + valueStyle.Render(fmt.Sprintf("%d", movementsTried))
+	}
 
 	return content
 }

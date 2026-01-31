@@ -130,6 +130,14 @@ func CollectClusterDataWithProgress(client ProxmoxClient, progress ProgressCallb
 				continue
 			}
 
+			// Skip VMs without names (invalid VMs)
+			if res.Name == "" {
+				if storageLogger != nil {
+					storageLogger.Printf("Skipping VM %d on %s: no name", res.VMID, res.Node)
+				}
+				continue
+			}
+
 			vm := VM{
 				VMID:     res.VMID,
 				Name:     res.Name,
@@ -172,6 +180,9 @@ func CollectClusterDataWithProgress(client ProxmoxClient, progress ProgressCallb
 
 	// Fetch config metadata for all VMs (for nomigrate flag, etc.)
 	fetchVMConfigMeta(vmList, progress)
+
+	// Filter out VMs with empty config files (invalid VMs)
+	vmList = filterVMsWithValidConfig(vmList)
 
 	// Fetch actual disk usage from storage content API (thin provisioning actual size)
 	fetchVMDiskUsageFromStorage(client, vmList, progress)
@@ -373,7 +384,7 @@ func GetClusterSummary(cluster *Cluster) map[string]interface{} {
 }
 
 // GetAvailableTargets returns nodes that can accept migrations
-// Excludes: source node, offline nodes, explicitly excluded nodes, and provisioning hosts (P flag)
+// Excludes: source node, offline nodes, explicitly excluded nodes, provisioning hosts (P flag), and migration-blocked hosts (hoststate=3)
 func GetAvailableTargets(cluster *Cluster, sourceNode string, excludeNodes []string) []Node {
 	var targets []Node
 
@@ -392,6 +403,10 @@ func GetAvailableTargets(cluster *Cluster, sourceNode string, excludeNodes []str
 		}
 		// Skip provisioning hosts - they should not receive migrated VMs
 		if node.AllowProvisioning {
+			continue
+		}
+		// Skip hosts with hoststate=3 - no migrations to/from this host
+		if node.IsMigrationBlocked() {
 			continue
 		}
 		targets = append(targets, node)
@@ -1089,6 +1104,13 @@ func fetchNodeConfigMeta(nodeMap map[string]*Node, progress ProgressCallback) {
 				node.AllowProvisioning = strings.ToLower(hostProv) == "true"
 				log.Printf("Node %s: hostprovision=%s, AllowProvisioning=%v", nodeName, hostProv, node.AllowProvisioning)
 			}
+			// Check for hoststate flag (0-3, where 3 = no migrations)
+			if hostState, ok := meta["hoststate"]; ok {
+				if state, parseErr := strconv.Atoi(hostState); parseErr == nil && state >= 0 && state <= 3 {
+					node.HostState = state
+					log.Printf("Node %s: hoststate=%d", nodeName, state)
+				}
+			}
 		}
 		// Note: OSD check is done in updateNodeOSDStatus after VMs are assigned
 	}
@@ -1490,4 +1512,42 @@ func fetchVMDiskUsageFromStorage(client ProxmoxClient, vmList []VM, progress Pro
 		storageLogger.Printf("Updated UsedDisk for %d VMs (%d from cache, %d fresh)",
 			updatedCount, cacheHits, updatedCount-cacheHits)
 	}
+}
+
+// filterVMsWithValidConfig removes VMs that have empty config files
+// A VM is considered to have an empty config if:
+// - ConfigMeta is nil (config parsing failed or file doesn't exist)
+// - CreationTime is 0 AND TotalDiskSize is 0 (no meta or disk info parsed)
+func filterVMsWithValidConfig(vmList []VM) []VM {
+	initStorageLogger()
+	validVMs := make([]VM, 0, len(vmList))
+	skippedCount := 0
+
+	for _, vm := range vmList {
+		// Check if VM has valid config data
+		// A VM with empty config will have no ConfigMeta, no CreationTime, and no parsed disk size
+		hasConfigMeta := vm.ConfigMeta != nil && len(vm.ConfigMeta) > 0
+		hasCreationTime := vm.CreationTime > 0
+		hasDiskInfo := vm.MaxDisk > 0
+
+		// Consider VM valid if it has any of these:
+		// - Config metadata (comment line parsed)
+		// - Creation time (meta line parsed)
+		// - Disk info (disk lines parsed or from API)
+		if hasConfigMeta || hasCreationTime || hasDiskInfo {
+			validVMs = append(validVMs, vm)
+		} else {
+			skippedCount++
+			if storageLogger != nil {
+				storageLogger.Printf("Skipping VM %d (%s) on %s: empty config file (no metadata, no ctime, no disk info)",
+					vm.VMID, vm.Name, vm.Node)
+			}
+		}
+	}
+
+	if skippedCount > 0 && storageLogger != nil {
+		storageLogger.Printf("Filtered out %d VMs with empty config files", skippedCount)
+	}
+
+	return validVMs
 }

@@ -5,6 +5,8 @@ import (
 	"log"
 	"math"
 	"sort"
+	"sync"
+	"sync/atomic"
 
 	"github.com/yourusername/migsug/internal/proxmox"
 )
@@ -23,10 +25,10 @@ func AnalyzeClusterWideBalance(cluster *proxmox.Cluster, progress BalanceProgres
 		return nil, fmt.Errorf("no nodes in cluster")
 	}
 
-	// Get only online nodes
+	// Get only online nodes that are not migration-blocked (hoststate=3)
 	var onlineNodes []proxmox.Node
 	for _, node := range cluster.Nodes {
-		if node.Status == "online" {
+		if node.Status == "online" && !node.IsMigrationBlocked() {
 			onlineNodes = append(onlineNodes, node)
 		}
 	}
@@ -66,7 +68,7 @@ func AnalyzeClusterWideBalance(cluster *proxmox.Cluster, progress BalanceProgres
 	}
 
 	// Generate optimal migrations using greedy algorithm with optimization
-	suggestions, nodeStates := generateBalancedMigrations(donors, receivers, metrics, cluster, progress)
+	suggestions, nodeStates, movementsTried := generateBalancedMigrations(donors, receivers, metrics, cluster, progress)
 
 	if len(suggestions) == 0 {
 		return nil, fmt.Errorf("no beneficial migrations found")
@@ -166,8 +168,13 @@ func AnalyzeClusterWideBalance(cluster *proxmox.Cluster, progress BalanceProgres
 		result.TotalStorage += s.Storage
 	}
 
+	// Set movements tried counter
+	result.MovementsTried = movementsTried
+
 	// Calculate improvement info
 	result.ImprovementInfo = calculateImprovementInfo(nodeStates, metrics)
+
+	log.Printf("ClusterBalance: Analyzed %d potential movements, generated %d migrations", movementsTried, len(suggestions))
 
 	return result, nil
 }
@@ -293,9 +300,11 @@ type nodeStatesPair struct {
 }
 
 // generateBalancedMigrations generates optimal migrations to balance the cluster
-func generateBalancedMigrations(donors, receivers []nodeBalance, metrics clusterMetrics, cluster *proxmox.Cluster, progress BalanceProgressCallback) ([]MigrationSuggestion, map[string]nodeStatesPair) {
+// Returns suggestions, node states, and total movements tried
+func generateBalancedMigrations(donors, receivers []nodeBalance, metrics clusterMetrics, cluster *proxmox.Cluster, progress BalanceProgressCallback) ([]MigrationSuggestion, map[string]nodeStatesPair, int) {
 	var suggestions []MigrationSuggestion
 	nodeStates := make(map[string]nodeStatesPair)
+	var movementsTried int32
 
 	// Initialize node states for all nodes
 	for _, d := range donors {
@@ -324,6 +333,7 @@ func generateBalancedMigrations(donors, receivers []nodeBalance, metrics cluster
 	}
 
 	// Greedy algorithm: repeatedly find the best migration until balanced
+	// Use parallel evaluation of candidates for better performance
 	maxIterations := 500 // Safety limit
 	totalProgress := maxIterations
 	currentProgress := 0
@@ -334,7 +344,9 @@ func generateBalancedMigrations(donors, receivers []nodeBalance, metrics cluster
 			progress("Optimizing migrations", currentProgress, totalProgress)
 		}
 
-		bestMigration := findBestMigration(donors, receivers, currentStates, migratedVMs, metrics, cluster)
+		bestMigration, tried := findBestMigrationParallel(donors, receivers, currentStates, migratedVMs, metrics, cluster)
+		atomic.AddInt32(&movementsTried, int32(tried))
+
 		if bestMigration == nil {
 			break // No more beneficial migrations
 		}
@@ -365,7 +377,7 @@ func generateBalancedMigrations(donors, receivers []nodeBalance, metrics cluster
 		}
 	}
 
-	return suggestions, nodeStates
+	return suggestions, nodeStates, int(movementsTried)
 }
 
 // simulatedNodeState tracks node state during simulation
@@ -434,8 +446,31 @@ func (s *simulatedNodeState) toNodeState() NodeState {
 
 // findBestMigration finds the single best VM migration to improve balance
 func findBestMigration(donors, receivers []nodeBalance, states map[string]*simulatedNodeState, migratedVMs map[int]bool, metrics clusterMetrics, cluster *proxmox.Cluster) *MigrationSuggestion {
-	var bestMigration *MigrationSuggestion
-	bestScore := 0.0
+	result, _ := findBestMigrationParallel(donors, receivers, states, migratedVMs, metrics, cluster)
+	return result
+}
+
+// migrationCandidate holds a potential migration for parallel evaluation
+type migrationCandidate struct {
+	suggestion *MigrationSuggestion
+	score      float64
+}
+
+// findBestMigrationParallel finds the single best VM migration using parallel evaluation
+// Returns the best migration and the number of candidates evaluated
+func findBestMigrationParallel(donors, receivers []nodeBalance, states map[string]*simulatedNodeState, migratedVMs map[int]bool, metrics clusterMetrics, cluster *proxmox.Cluster) (*MigrationSuggestion, int) {
+	var candidateCount int32
+
+	// Collect all VM-receiver pairs to evaluate in parallel
+	type evalJob struct {
+		donor        nodeBalance
+		donorState   *simulatedNodeState
+		vm           proxmox.VM
+		receiver     nodeBalance
+		receiverState *simulatedNodeState
+	}
+
+	var jobs []evalJob
 
 	for _, donor := range donors {
 		donorState := states[donor.node.Name]
@@ -456,51 +491,106 @@ func findBestMigration(donors, receivers []nodeBalance, states map[string]*simul
 				continue
 			}
 
-			// Find the best receiver for this VM
+			// Add job for each receiver
 			for _, receiver := range receivers {
 				receiverState := states[receiver.node.Name]
 				if receiverState == nil {
 					continue
 				}
-
-				// Check if receiver can accept this VM
-				if !canAcceptVM(receiverState, &vm, metrics) {
-					continue
-				}
-
-				// Calculate improvement score
-				score := calculateMigrationScore(donorState, receiverState, &vm, metrics)
-				if score > bestScore {
-					bestScore = score
-					bestMigration = &MigrationSuggestion{
-						VMID:        vm.VMID,
-						VMName:      vm.Name,
-						SourceNode:  donor.node.Name,
-						TargetNode:  receiver.node.Name,
-						Reason:      "Balance cluster",
-						Score:       score,
-						Status:      vm.Status,
-						VCPUs:       vm.CPUCores,
-						CPUUsage:    vm.CPUUsage,
-						RAM:         vm.MaxMem,
-						Storage:     vm.GetEffectiveDisk(),
-						UsedDisk:    vm.UsedDisk,
-						MaxDisk:     vm.MaxDisk,
-						SourceCores: donorState.cpuCores,
-						TargetCores: receiverState.cpuCores,
-						Details: &MigrationDetails{
-							SelectionMode:   "balance_cluster",
-							SelectionReason: "Cluster-wide balancing",
-							ClusterAvgCPU:   metrics.avgVCPUPercent,
-							ClusterAvgRAM:   metrics.avgRAMPercent,
-						},
-					}
-				}
+				jobs = append(jobs, evalJob{
+					donor:         donor,
+					donorState:    donorState,
+					vm:            vm,
+					receiver:      receiver,
+					receiverState: receiverState,
+				})
 			}
 		}
 	}
 
-	return bestMigration
+	if len(jobs) == 0 {
+		return nil, 0
+	}
+
+	// Use parallel evaluation with goroutines
+	results := make(chan migrationCandidate, len(jobs))
+	var wg sync.WaitGroup
+
+	// Limit concurrency to avoid excessive goroutines
+	numWorkers := 32
+	if len(jobs) < numWorkers {
+		numWorkers = len(jobs)
+	}
+
+	jobsChan := make(chan evalJob, len(jobs))
+	for _, job := range jobs {
+		jobsChan <- job
+	}
+	close(jobsChan)
+
+	for i := 0; i < numWorkers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for job := range jobsChan {
+				atomic.AddInt32(&candidateCount, 1)
+
+				// Check if receiver can accept this VM
+				if !canAcceptVM(job.receiverState, &job.vm, metrics) {
+					continue
+				}
+
+				// Calculate improvement score
+				score := calculateMigrationScore(job.donorState, job.receiverState, &job.vm, metrics)
+				if score > 0 {
+					results <- migrationCandidate{
+						score: score,
+						suggestion: &MigrationSuggestion{
+							VMID:        job.vm.VMID,
+							VMName:      job.vm.Name,
+							SourceNode:  job.donor.node.Name,
+							TargetNode:  job.receiver.node.Name,
+							Reason:      "Balance cluster",
+							Score:       score,
+							Status:      job.vm.Status,
+							VCPUs:       job.vm.CPUCores,
+							CPUUsage:    job.vm.CPUUsage,
+							RAM:         job.vm.MaxMem,
+							Storage:     job.vm.GetEffectiveDisk(),
+							UsedDisk:    job.vm.UsedDisk,
+							MaxDisk:     job.vm.MaxDisk,
+							SourceCores: job.donorState.cpuCores,
+							TargetCores: job.receiverState.cpuCores,
+							Details: &MigrationDetails{
+								SelectionMode:   "balance_cluster",
+								SelectionReason: "Cluster-wide balancing",
+								ClusterAvgCPU:   metrics.avgVCPUPercent,
+								ClusterAvgRAM:   metrics.avgRAMPercent,
+							},
+						},
+					}
+				}
+			}
+		}()
+	}
+
+	// Close results channel when all workers done
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	// Find best result
+	var bestMigration *MigrationSuggestion
+	bestScore := 0.0
+	for candidate := range results {
+		if candidate.score > bestScore {
+			bestScore = candidate.score
+			bestMigration = candidate.suggestion
+		}
+	}
+
+	return bestMigration, int(candidateCount)
 }
 
 // canAcceptVM checks if a receiver can accept a VM without becoming overloaded
@@ -846,5 +936,270 @@ func findVCPUSwapOpportunities(states map[string]*simulatedNodeState, metrics cl
 		}
 	}
 
+	// Try multi-VM swaps (2-for-1 or 3-for-1) if 1-for-1 swaps didn't fully balance
+	if swapCount < maxSwaps {
+		multiSwapSuggestions := findMultiVMSwapOpportunities(states, metrics, maxSwaps-swapCount, usedVMs)
+		suggestions = append(suggestions, multiSwapSuggestions...)
+	}
+
 	return suggestions
+}
+
+// findMultiVMSwapOpportunities finds 2-for-1 or 3-for-1 VM swaps to balance vCPUs/VM count
+// For example: swap 1 large VM for 2 smaller VMs with similar total RAM but fewer vCPUs
+func findMultiVMSwapOpportunities(states map[string]*simulatedNodeState, metrics clusterMetrics, maxSwaps int, usedVMs map[int]bool) []MigrationSuggestion {
+	var suggestions []MigrationSuggestion
+
+	// Find nodes that are imbalanced in VM count or vCPUs
+	type nodeImbalance struct {
+		state     *simulatedNodeState
+		vmDev     float64 // VM count deviation from average
+		vcpuDev   float64 // vCPU deviation from average
+	}
+
+	avgVMCount := float64(metrics.totalVMs) / float64(metrics.nodeCount)
+	var imbalanced []nodeImbalance
+
+	for _, state := range states {
+		vmDev := float64(state.vmCount) - avgVMCount
+		vcpuDev := state.getVCPUPercent() - metrics.avgVCPUPercent
+		if math.Abs(vmDev) > 2 || math.Abs(vcpuDev) > 5 {
+			imbalanced = append(imbalanced, nodeImbalance{
+				state:   state,
+				vmDev:   vmDev,
+				vcpuDev: vcpuDev,
+			})
+		}
+	}
+
+	if len(imbalanced) < 2 {
+		return suggestions
+	}
+
+	// Sort: nodes with high VM count first (donors), low VM count last (receivers)
+	sort.Slice(imbalanced, func(i, j int) bool {
+		return imbalanced[i].vmDev > imbalanced[j].vmDev
+	})
+
+	swapCount := 0
+
+	// For each high-VM-count node, try to swap 1 large VM for 2-3 smaller VMs
+	for i := 0; i < len(imbalanced) && imbalanced[i].vmDev > 2 && swapCount < maxSwaps; i++ {
+		highVMNode := imbalanced[i].state
+
+		// Get large VMs from this node (sorted by RAM descending)
+		var largeVMs []proxmox.VM
+		for _, vm := range highVMNode.vms {
+			if vm.NoMigrate || vm.Status != "running" || usedVMs[vm.VMID] {
+				continue
+			}
+			if vm.MaxMem >= 8*1024*1024*1024 { // Only consider VMs with 8+ GB RAM
+				largeVMs = append(largeVMs, vm)
+			}
+		}
+		sort.Slice(largeVMs, func(a, b int) bool {
+			return largeVMs[a].MaxMem > largeVMs[b].MaxMem
+		})
+
+		// Search for matching 2-3 smaller VMs from low-VM-count nodes
+		for j := len(imbalanced) - 1; j > i && imbalanced[j].vmDev < -1 && swapCount < maxSwaps; j-- {
+			lowVMNode := imbalanced[j].state
+
+			// Get small VMs from this node
+			var smallVMs []proxmox.VM
+			for _, vm := range lowVMNode.vms {
+				if vm.NoMigrate || vm.Status != "running" || usedVMs[vm.VMID] {
+					continue
+				}
+				smallVMs = append(smallVMs, vm)
+			}
+			sort.Slice(smallVMs, func(a, b int) bool {
+				return smallVMs[a].MaxMem < smallVMs[b].MaxMem
+			})
+
+			// Try to find a 2-for-1 or 3-for-1 swap
+			for _, largeVM := range largeVMs {
+				if usedVMs[largeVM.VMID] || swapCount >= maxSwaps {
+					continue
+				}
+
+				// Try 2-for-1 swap
+				match2 := findMatchingSmallVMs(largeVM, smallVMs, 2, usedVMs)
+				if match2 != nil {
+					log.Printf("Multi-swap 2-for-1: VM %d (%s, %d vCPU, %d GB) on %s <-> VMs %v on %s",
+						largeVM.VMID, largeVM.Name, largeVM.CPUCores, largeVM.MaxMem/(1024*1024*1024), highVMNode.name,
+						getVMIDs(match2), lowVMNode.name)
+
+					// Large VM goes from high-VM-count to low-VM-count node
+					suggestions = append(suggestions, MigrationSuggestion{
+						VMID:        largeVM.VMID,
+						VMName:      largeVM.Name,
+						SourceNode:  highVMNode.name,
+						TargetNode:  lowVMNode.name,
+						Reason:      fmt.Sprintf("Multi-swap 2-for-1 (balance VM count: %d→%d)", highVMNode.vmCount, highVMNode.vmCount-1+len(match2)),
+						Score:       100,
+						Status:      largeVM.Status,
+						VCPUs:       largeVM.CPUCores,
+						CPUUsage:    largeVM.CPUUsage,
+						RAM:         largeVM.MaxMem,
+						Storage:     largeVM.GetEffectiveDisk(),
+						UsedDisk:    largeVM.UsedDisk,
+						MaxDisk:     largeVM.MaxDisk,
+						SourceCores: highVMNode.cpuCores,
+						TargetCores: lowVMNode.cpuCores,
+						Details: &MigrationDetails{
+							SelectionMode:   "multi_swap",
+							SelectionReason: "VM count/vCPU balancing via 2-for-1 swap",
+						},
+					})
+
+					// Small VMs go from low-VM-count to high-VM-count node
+					for _, smallVM := range match2 {
+						suggestions = append(suggestions, MigrationSuggestion{
+							VMID:        smallVM.VMID,
+							VMName:      smallVM.Name,
+							SourceNode:  lowVMNode.name,
+							TargetNode:  highVMNode.name,
+							Reason:      "Multi-swap 2-for-1 (part of swap group)",
+							Score:       100,
+							Status:      smallVM.Status,
+							VCPUs:       smallVM.CPUCores,
+							CPUUsage:    smallVM.CPUUsage,
+							RAM:         smallVM.MaxMem,
+							Storage:     smallVM.GetEffectiveDisk(),
+							UsedDisk:    smallVM.UsedDisk,
+							MaxDisk:     smallVM.MaxDisk,
+							SourceCores: lowVMNode.cpuCores,
+							TargetCores: highVMNode.cpuCores,
+							Details: &MigrationDetails{
+								SelectionMode:   "multi_swap",
+								SelectionReason: "VM count/vCPU balancing via 2-for-1 swap",
+							},
+						})
+						usedVMs[smallVM.VMID] = true
+					}
+					usedVMs[largeVM.VMID] = true
+					swapCount++
+					break
+				}
+
+				// Try 3-for-1 swap
+				match3 := findMatchingSmallVMs(largeVM, smallVMs, 3, usedVMs)
+				if match3 != nil {
+					log.Printf("Multi-swap 3-for-1: VM %d (%s, %d vCPU, %d GB) on %s <-> VMs %v on %s",
+						largeVM.VMID, largeVM.Name, largeVM.CPUCores, largeVM.MaxMem/(1024*1024*1024), highVMNode.name,
+						getVMIDs(match3), lowVMNode.name)
+
+					// Large VM goes from high-VM-count to low-VM-count node
+					suggestions = append(suggestions, MigrationSuggestion{
+						VMID:        largeVM.VMID,
+						VMName:      largeVM.Name,
+						SourceNode:  highVMNode.name,
+						TargetNode:  lowVMNode.name,
+						Reason:      fmt.Sprintf("Multi-swap 3-for-1 (balance VM count: %d→%d)", highVMNode.vmCount, highVMNode.vmCount-1+len(match3)),
+						Score:       100,
+						Status:      largeVM.Status,
+						VCPUs:       largeVM.CPUCores,
+						CPUUsage:    largeVM.CPUUsage,
+						RAM:         largeVM.MaxMem,
+						Storage:     largeVM.GetEffectiveDisk(),
+						UsedDisk:    largeVM.UsedDisk,
+						MaxDisk:     largeVM.MaxDisk,
+						SourceCores: highVMNode.cpuCores,
+						TargetCores: lowVMNode.cpuCores,
+						Details: &MigrationDetails{
+							SelectionMode:   "multi_swap",
+							SelectionReason: "VM count/vCPU balancing via 3-for-1 swap",
+						},
+					})
+
+					// Small VMs go from low-VM-count to high-VM-count node
+					for _, smallVM := range match3 {
+						suggestions = append(suggestions, MigrationSuggestion{
+							VMID:        smallVM.VMID,
+							VMName:      smallVM.Name,
+							SourceNode:  lowVMNode.name,
+							TargetNode:  highVMNode.name,
+							Reason:      "Multi-swap 3-for-1 (part of swap group)",
+							Score:       100,
+							Status:      smallVM.Status,
+							VCPUs:       smallVM.CPUCores,
+							CPUUsage:    smallVM.CPUUsage,
+							RAM:         smallVM.MaxMem,
+							Storage:     smallVM.GetEffectiveDisk(),
+							UsedDisk:    smallVM.UsedDisk,
+							MaxDisk:     smallVM.MaxDisk,
+							SourceCores: lowVMNode.cpuCores,
+							TargetCores: highVMNode.cpuCores,
+							Details: &MigrationDetails{
+								SelectionMode:   "multi_swap",
+								SelectionReason: "VM count/vCPU balancing via 3-for-1 swap",
+							},
+						})
+						usedVMs[smallVM.VMID] = true
+					}
+					usedVMs[largeVM.VMID] = true
+					swapCount++
+					break
+				}
+			}
+		}
+	}
+
+	return suggestions
+}
+
+// findMatchingSmallVMs finds n small VMs that together match the large VM's RAM (within 30%)
+// and have fewer total vCPUs
+func findMatchingSmallVMs(largeVM proxmox.VM, smallVMs []proxmox.VM, n int, usedVMs map[int]bool) []proxmox.VM {
+	if len(smallVMs) < n {
+		return nil
+	}
+
+	targetRAM := largeVM.MaxMem
+	tolerance := int64(float64(targetRAM) * 0.3) // 30% tolerance
+
+	// Try all combinations of n VMs
+	var result []proxmox.VM
+	var findCombination func(start int, current []proxmox.VM, currentRAM int64, currentVCPU int)
+	found := false
+
+	findCombination = func(start int, current []proxmox.VM, currentRAM int64, currentVCPU int) {
+		if found {
+			return
+		}
+		if len(current) == n {
+			// Check if RAM is within tolerance and vCPUs are fewer
+			ramDiff := currentRAM - targetRAM
+			if ramDiff < 0 {
+				ramDiff = -ramDiff
+			}
+			if ramDiff <= tolerance && currentVCPU < largeVM.CPUCores {
+				result = make([]proxmox.VM, n)
+				copy(result, current)
+				found = true
+			}
+			return
+		}
+
+		for i := start; i < len(smallVMs) && !found; i++ {
+			vm := smallVMs[i]
+			if usedVMs[vm.VMID] {
+				continue
+			}
+			findCombination(i+1, append(current, vm), currentRAM+vm.MaxMem, currentVCPU+vm.CPUCores)
+		}
+	}
+
+	findCombination(0, nil, 0, 0)
+	return result
+}
+
+// getVMIDs returns a slice of VMID integers from a slice of VMs
+func getVMIDs(vms []proxmox.VM) []int {
+	ids := make([]int, len(vms))
+	for i, vm := range vms {
+		ids[i] = vm.VMID
+	}
+	return ids
 }

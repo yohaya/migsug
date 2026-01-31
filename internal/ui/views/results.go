@@ -90,12 +90,13 @@ func RenderResultsWithSource(result *analyzer.AnalysisResult, cluster *proxmox.C
 	}
 
 	// Migration summary (displayed above the table)
-	sb.WriteString(components.RenderMigrationSummary(
+	sb.WriteString(components.RenderMigrationSummaryWithMoves(
 		result.TotalVMs,
 		result.TotalVCPUs,
 		result.TotalRAM,
 		result.TotalStorage,
 		result.ImprovementInfo,
+		result.MovementsTried,
 	))
 	sb.WriteString("\n\n")
 
