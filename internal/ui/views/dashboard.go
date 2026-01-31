@@ -599,7 +599,7 @@ func RenderDashboardHostDetailFull(node *proxmox.Node, cluster *proxmox.Cluster,
 	}
 
 	// === MIGRATION MODES SECTION ===
-	sb.WriteString(dimStyle.Render("─── Select Migration Mode: ───") + "\n")
+	sb.WriteString(dimStyle.Render(" ▶ Select migration mode:") + "\n")
 
 	// Mode table column widths
 	const (
