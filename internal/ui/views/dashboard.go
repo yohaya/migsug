@@ -361,13 +361,10 @@ func RenderDashboardHostDetailFull(node *proxmox.Node, cluster *proxmox.Cluster,
 	// Styles
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5"))
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
-	valueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	selectedStyle := lipgloss.NewStyle().Background(lipgloss.Color("236")).Foreground(lipgloss.Color("15")).Bold(true)
-	focusedHeaderStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5"))
-	unfocusedHeaderStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("8"))
 
 	// Title with version
 	versionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
