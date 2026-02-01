@@ -121,17 +121,19 @@ type AnalysisResult struct {
 	ImprovementInfo string
 
 	// Balance cluster analysis statistics
-	MovementsTried int // Number of migration attempts evaluated during analysis
+	MovementsTried   int  // Number of migration attempts evaluated during analysis
+	IsBalanceCluster bool // True if this is a cluster-wide balance result (no single source)
 }
 
 // NodeState represents the state of a node before or after migration
 type NodeState struct {
 	Name           string
 	VMCount        int
-	VCPUs          int // Total vCPUs allocated to VMs
-	CPUCores       int
+	VCPUs          int     // Total vCPUs allocated to VMs
+	CPUCores       int     // Physical CPU cores/threads
 	CPUUsageTotal  float64 // Total CPU usage value
-	CPUPercent     float64 // CPU usage as percentage
+	CPUPercent     float64 // vCPU allocation as percentage of cores (can exceed 100% due to oversubscription)
+	HostCPUPercent float64 // Actual host CPU usage percentage (0-100)
 	RAMUsed        int64
 	RAMTotal       int64
 	RAMPercent     float64

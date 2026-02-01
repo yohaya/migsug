@@ -83,9 +83,13 @@ func AnalyzeClusterWideBalance(cluster *proxmox.Cluster, progress BalanceProgres
 	// Build simulated states from the results for vCPU swap optimization
 	// This represents the cluster state AFTER the initial balancing pass
 	swapStates := make(map[string]*simulatedNodeState)
+	// Also capture BEFORE state for all nodes (for the impact table)
+	beforeStates := make(map[string]NodeState)
 	for _, node := range onlineNodes {
 		state := newSimulatedNodeState(&node)
 		swapStates[node.Name] = state
+		// Capture before state (before any migrations)
+		beforeStates[node.Name] = state.toNodeState()
 	}
 
 	// Apply the initial migrations to the simulated states
@@ -139,25 +143,23 @@ func AnalyzeClusterWideBalance(cluster *proxmox.Cluster, progress BalanceProgres
 
 	// Build result
 	result := &AnalysisResult{
-		Suggestions:   suggestions,
-		TargetsBefore: make(map[string]NodeState),
-		TargetsAfter:  make(map[string]NodeState),
+		Suggestions:      suggestions,
+		TargetsBefore:    make(map[string]NodeState),
+		TargetsAfter:     make(map[string]NodeState),
+		IsBalanceCluster: true, // This is a cluster-wide balance, no single source
 	}
 
-	// Set source as the first donor (for UI compatibility)
-	if len(donors) > 0 {
-		result.SourceBefore = nodeStates[donors[0].node.Name].before
-		result.SourceAfter = nodeStates[donors[0].node.Name].after
-	}
+	// For Balance Cluster, don't set a source (all nodes are being balanced)
+	// SourceBefore/After remain zero-valued
 
-	// Populate target states (use updated states after swaps)
-	for name, states := range nodeStates {
-		result.TargetsBefore[name] = states.before
-		// Update after state if we have swap data
+	// Populate target states for ALL online nodes (use beforeStates and swapStates)
+	for name, beforeState := range beforeStates {
+		result.TargetsBefore[name] = beforeState
+		// After state from swapStates (which has migrations applied)
 		if swapState := swapStates[name]; swapState != nil {
 			result.TargetsAfter[name] = swapState.toNodeState()
 		} else {
-			result.TargetsAfter[name] = states.after
+			result.TargetsAfter[name] = beforeState // No changes
 		}
 	}
 
@@ -453,6 +455,7 @@ func (s *simulatedNodeState) toNodeState() NodeState {
 		VCPUs:          s.vcpus,
 		CPUCores:       s.cpuCores,
 		CPUPercent:     s.getVCPUPercent(),
+		HostCPUPercent: s.getEstimatedHostCPU(), // Actual/estimated host CPU usage
 		RAMUsed:        s.ramUsed,
 		RAMTotal:       s.ramTotal,
 		RAMPercent:     s.getRAMPercent(),
@@ -796,6 +799,7 @@ func buildNodeState(node *proxmox.Node) NodeState {
 		VCPUs:          vcpus,
 		CPUCores:       node.CPUCores,
 		CPUPercent:     float64(vcpus) / float64(node.CPUCores) * 100,
+		HostCPUPercent: node.CPUUsage, // Actual host CPU usage (0-100%)
 		RAMUsed:        ramUsed,
 		RAMTotal:       node.MaxMem,
 		RAMPercent:     float64(ramUsed) / float64(node.MaxMem) * 100,

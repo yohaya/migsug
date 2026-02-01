@@ -124,13 +124,14 @@ func RenderResultsWithSource(result *analyzer.AnalysisResult, cluster *proxmox.C
 	sb.WriteString("\n")
 
 	// Combined impact table (source + targets) - title in regular white
-	sb.WriteString("Migration Impact:\n\n")
-	sb.WriteString(components.RenderImpactTable(
+	sb.WriteString("▶ Migration Impact:\n\n")
+	sb.WriteString(components.RenderImpactTableBalanced(
 		result.SourceBefore,
 		result.SourceAfter,
 		result.TargetsBefore,
 		result.TargetsAfter,
 		cluster,
+		result.IsBalanceCluster,
 	))
 
 	// Help text
@@ -232,21 +233,23 @@ func RenderResultsInteractive(result *analyzer.AnalysisResult, cluster *proxmox.
 	sb.WriteString(impactTitle + "\n\n")
 
 	if focusedSection == 1 {
-		sb.WriteString(components.RenderImpactTableWithCursor(
+		sb.WriteString(components.RenderImpactTableWithCursorBalanced(
 			result.SourceBefore,
 			result.SourceAfter,
 			result.TargetsBefore,
 			result.TargetsAfter,
 			impactCursor,
 			cluster,
+			result.IsBalanceCluster,
 		))
 	} else {
-		sb.WriteString(components.RenderImpactTable(
+		sb.WriteString(components.RenderImpactTableBalanced(
 			result.SourceBefore,
 			result.SourceAfter,
 			result.TargetsBefore,
 			result.TargetsAfter,
 			cluster,
+			result.IsBalanceCluster,
 		))
 	}
 

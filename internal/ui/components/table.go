@@ -1013,6 +1013,11 @@ func max(a, b int) int {
 
 // RenderImpactTable renders a combined table showing before/after for all nodes
 func RenderImpactTable(sourceBefore, sourceAfter analyzer.NodeState, targetsBefore, targetsAfter map[string]analyzer.NodeState, cluster *proxmox.Cluster) string {
+	return RenderImpactTableBalanced(sourceBefore, sourceAfter, targetsBefore, targetsAfter, cluster, false)
+}
+
+// RenderImpactTableBalanced renders the impact table with balance cluster mode support
+func RenderImpactTableBalanced(sourceBefore, sourceAfter analyzer.NodeState, targetsBefore, targetsAfter map[string]analyzer.NodeState, cluster *proxmox.Cluster, isBalanceCluster bool) string {
 	var sb strings.Builder
 
 	// Column widths - increased for used/total (percent) display
@@ -1083,7 +1088,8 @@ func RenderImpactTable(sourceBefore, sourceAfter analyzer.NodeState, targetsBefo
 			beforeVCPUPct = float64(before.VCPUs) / float64(before.CPUCores) * 100
 		}
 		beforeVCPUs := fmt.Sprintf("%*s", colVCPUs, fmt.Sprintf("%d (%.0f%%)", before.VCPUs, beforeVCPUPct))
-		beforeCPU := fmt.Sprintf("%*.1f", colCPU-1, before.CPUPercent) + "%"
+		// Use HostCPUPercent (actual host CPU usage, 0-100%) instead of CPUPercent (vCPU allocation %)
+		beforeCPU := fmt.Sprintf("%*.1f", colCPU-1, before.HostCPUPercent) + "%"
 		beforeRAMStr := FormatUsedTotalPercent(before.RAMUsed, before.RAMTotal, before.RAMPercent)
 		beforeRAM := fmt.Sprintf("%*s", colRAM, beforeRAMStr)
 		beforeStorageStr := FormatUsedTotalPercentStorage(before.StorageUsed, before.StorageTotal, before.StoragePercent)
@@ -1097,7 +1103,8 @@ func RenderImpactTable(sourceBefore, sourceAfter analyzer.NodeState, targetsBefo
 			afterVCPUPct = float64(after.VCPUs) / float64(after.CPUCores) * 100
 		}
 		afterVCPUs := fmt.Sprintf("%*s", colVCPUs, fmt.Sprintf("%d (%.0f%%)", after.VCPUs, afterVCPUPct))
-		afterCPU := fmt.Sprintf("%*.1f", colCPU-1, after.CPUPercent) + "%"
+		// Use HostCPUPercent (actual host CPU usage, 0-100%) instead of CPUPercent (vCPU allocation %)
+		afterCPU := fmt.Sprintf("%*.1f", colCPU-1, after.HostCPUPercent) + "%"
 		afterRAMStr := FormatUsedTotalPercent(after.RAMUsed, after.RAMTotal, after.RAMPercent)
 		afterRAM := fmt.Sprintf("%*s", colRAM, afterRAMStr)
 		afterStorageStr := FormatUsedTotalPercentStorage(after.StorageUsed, after.StorageTotal, after.StoragePercent)
@@ -1105,7 +1112,7 @@ func RenderImpactTable(sourceBefore, sourceAfter analyzer.NodeState, targetsBefo
 
 		// Determine color based on improvement (green = better, yellow = worse)
 		vmsDiff := after.VMCount - before.VMCount
-		cpuDiff := after.CPUPercent - before.CPUPercent
+		cpuDiff := after.HostCPUPercent - before.HostCPUPercent
 
 		// For source node: decrease is good (green), for target: increase is expected (yellow)
 		var afterVMsStyle, afterCPUStyle lipgloss.Style
@@ -1150,32 +1157,47 @@ func RenderImpactTable(sourceBefore, sourceAfter analyzer.NodeState, targetsBefo
 		sb.WriteString(row + "\n")
 	}
 
-	// Render source node first
-	sourceFlags := getStatusIndicators(sourceBefore.Name)
-	sourceLabel := sourceBefore.Name + " (src)"
-	if sourceFlags != "" {
-		sourceLabel = sourceBefore.Name + " (" + sourceFlags + ",src)"
-	}
-	renderRow(sourceLabel, sourceBefore, sourceAfter, true)
-
-	// Render target nodes (sorted)
+	// Render nodes
 	var targetNames []string
 	for name := range targetsAfter {
 		targetNames = append(targetNames, name)
 	}
 	sort.Strings(targetNames)
 
-	for _, name := range targetNames {
-		afterState := targetsAfter[name]
-		beforeState := targetsBefore[name]
-		// Only show targets that receive VMs
-		if afterState.VMCount != beforeState.VMCount {
+	if isBalanceCluster {
+		// Balance Cluster mode: show ALL nodes (no source, all are being balanced)
+		for _, name := range targetNames {
+			afterState := targetsAfter[name]
+			beforeState := targetsBefore[name]
 			targetFlags := getStatusIndicators(name)
 			targetLabel := name
 			if targetFlags != "" {
 				targetLabel = name + " (" + targetFlags + ")"
 			}
+			// In balance mode, all nodes are equal - use isSource=false for coloring
 			renderRow(targetLabel, beforeState, afterState, false)
+		}
+	} else {
+		// Regular migration mode: show source node first, then targets with VM count changes
+		sourceFlags := getStatusIndicators(sourceBefore.Name)
+		sourceLabel := sourceBefore.Name + " (src)"
+		if sourceFlags != "" {
+			sourceLabel = sourceBefore.Name + " (" + sourceFlags + ",src)"
+		}
+		renderRow(sourceLabel, sourceBefore, sourceAfter, true)
+
+		for _, name := range targetNames {
+			afterState := targetsAfter[name]
+			beforeState := targetsBefore[name]
+			// Only show targets that receive VMs
+			if afterState.VMCount != beforeState.VMCount {
+				targetFlags := getStatusIndicators(name)
+				targetLabel := name
+				if targetFlags != "" {
+					targetLabel = name + " (" + targetFlags + ")"
+				}
+				renderRow(targetLabel, beforeState, afterState, false)
+			}
 		}
 	}
 
@@ -1187,6 +1209,11 @@ func RenderImpactTable(sourceBefore, sourceAfter analyzer.NodeState, targetsBefo
 
 // RenderImpactTableWithCursor renders the impact table with cursor highlighting
 func RenderImpactTableWithCursor(sourceBefore, sourceAfter analyzer.NodeState, targetsBefore, targetsAfter map[string]analyzer.NodeState, cursorPos int, cluster *proxmox.Cluster) string {
+	return RenderImpactTableWithCursorBalanced(sourceBefore, sourceAfter, targetsBefore, targetsAfter, cursorPos, cluster, false)
+}
+
+// RenderImpactTableWithCursorBalanced renders the impact table with cursor and balance mode support
+func RenderImpactTableWithCursorBalanced(sourceBefore, sourceAfter analyzer.NodeState, targetsBefore, targetsAfter map[string]analyzer.NodeState, cursorPos int, cluster *proxmox.Cluster, isBalanceCluster bool) string {
 	var sb strings.Builder
 
 	// Column widths - increased for used/total (percent) display
@@ -1262,7 +1289,8 @@ func RenderImpactTableWithCursor(sourceBefore, sourceAfter analyzer.NodeState, t
 			beforeVCPUPct = float64(before.VCPUs) / float64(before.CPUCores) * 100
 		}
 		beforeVCPUs := fmt.Sprintf("%*s", colVCPUs, fmt.Sprintf("%d (%.0f%%)", before.VCPUs, beforeVCPUPct))
-		beforeCPU := fmt.Sprintf("%*.1f", colCPU-1, before.CPUPercent) + "%"
+		// Use HostCPUPercent (actual host CPU usage, 0-100%)
+		beforeCPU := fmt.Sprintf("%*.1f", colCPU-1, before.HostCPUPercent) + "%"
 		beforeRAMStr := FormatUsedTotalPercent(before.RAMUsed, before.RAMTotal, before.RAMPercent)
 		beforeRAM := fmt.Sprintf("%*s", colRAM, beforeRAMStr)
 		beforeStorageStr := FormatUsedTotalPercentStorage(before.StorageUsed, before.StorageTotal, before.StoragePercent)
@@ -1275,7 +1303,8 @@ func RenderImpactTableWithCursor(sourceBefore, sourceAfter analyzer.NodeState, t
 			afterVCPUPct = float64(after.VCPUs) / float64(after.CPUCores) * 100
 		}
 		afterVCPUs := fmt.Sprintf("%*s", colVCPUs, fmt.Sprintf("%d (%.0f%%)", after.VCPUs, afterVCPUPct))
-		afterCPU := fmt.Sprintf("%*.1f", colCPU-1, after.CPUPercent) + "%"
+		// Use HostCPUPercent (actual host CPU usage, 0-100%)
+		afterCPU := fmt.Sprintf("%*.1f", colCPU-1, after.HostCPUPercent) + "%"
 		afterRAMStr := FormatUsedTotalPercent(after.RAMUsed, after.RAMTotal, after.RAMPercent)
 		afterRAM := fmt.Sprintf("%*s", colRAM, afterRAMStr)
 		afterStorageStr := FormatUsedTotalPercentStorage(after.StorageUsed, after.StorageTotal, after.StoragePercent)
@@ -1304,7 +1333,7 @@ func RenderImpactTableWithCursor(sourceBefore, sourceAfter analyzer.NodeState, t
 		} else {
 			// Normal rendering with colors
 			vmsDiff := after.VMCount - before.VMCount
-			cpuDiff := after.CPUPercent - before.CPUPercent
+			cpuDiff := after.HostCPUPercent - before.HostCPUPercent
 
 			var afterVMsStyle, afterCPUStyle lipgloss.Style
 			if isSource {
@@ -1348,31 +1377,45 @@ func RenderImpactTableWithCursor(sourceBefore, sourceAfter analyzer.NodeState, t
 		rowIndex++
 	}
 
-	// Render source node first
-	sourceFlags := getStatusIndicators(sourceBefore.Name)
-	sourceLabel := sourceBefore.Name + " (src)"
-	if sourceFlags != "" {
-		sourceLabel = sourceBefore.Name + " (" + sourceFlags + ",src)"
-	}
-	renderRowWithCursor(sourceLabel, sourceBefore, sourceAfter, true)
-
-	// Render target nodes (sorted)
+	// Render nodes
 	var targetNames []string
 	for name := range targetsAfter {
 		targetNames = append(targetNames, name)
 	}
 	sort.Strings(targetNames)
 
-	for _, name := range targetNames {
-		afterState := targetsAfter[name]
-		beforeState := targetsBefore[name]
-		if afterState.VMCount != beforeState.VMCount {
+	if isBalanceCluster {
+		// Balance Cluster mode: show ALL nodes (no source, all are being balanced)
+		for _, name := range targetNames {
+			afterState := targetsAfter[name]
+			beforeState := targetsBefore[name]
 			targetFlags := getStatusIndicators(name)
 			targetLabel := name
 			if targetFlags != "" {
 				targetLabel = name + " (" + targetFlags + ")"
 			}
 			renderRowWithCursor(targetLabel, beforeState, afterState, false)
+		}
+	} else {
+		// Regular migration mode: show source first
+		sourceFlags := getStatusIndicators(sourceBefore.Name)
+		sourceLabel := sourceBefore.Name + " (src)"
+		if sourceFlags != "" {
+			sourceLabel = sourceBefore.Name + " (" + sourceFlags + ",src)"
+		}
+		renderRowWithCursor(sourceLabel, sourceBefore, sourceAfter, true)
+
+		for _, name := range targetNames {
+			afterState := targetsAfter[name]
+			beforeState := targetsBefore[name]
+			if afterState.VMCount != beforeState.VMCount {
+				targetFlags := getStatusIndicators(name)
+				targetLabel := name
+				if targetFlags != "" {
+					targetLabel = name + " (" + targetFlags + ")"
+				}
+				renderRowWithCursor(targetLabel, beforeState, afterState, false)
+			}
 		}
 	}
 
