@@ -332,10 +332,16 @@ func RenderNodeTableWideWithScroll(nodes []proxmox.Node, selectedIdx int, width 
 			nodeName := truncate(node.Name, colName)
 			coloredRow.WriteString(fmt.Sprintf("%-*s ", colName, nodeName))
 
-			// Status with indicators and color
+			// Status with indicators and color based on hoststate
 			statusColor := "2" // green for online
 			if node.Status != "online" {
 				statusColor = "9" // bright red for offline
+			} else if node.HostState == 1 {
+				// Maintenance mode: grey
+				statusColor = "#808080"
+			} else if node.HostState == 3 {
+				// Blocked: dark green
+				statusColor = "#006400"
 			}
 			statusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(statusColor))
 			coloredRow.WriteString(statusStyle.Render(fmt.Sprintf("%-*s", colStatus, statusWithIndicators)) + " ")

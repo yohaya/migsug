@@ -66,11 +66,17 @@ func (n *Node) GetStatusIndicators() string {
 
 // GetStatusWithIndicators returns status with hoststate and indicators
 // Format: "online/3 (OPC)" where hoststate is shown after slash, other flags in parentheses
+// Special: hoststate=1 shows "maint" instead of "online/1"
 func (n *Node) GetStatusWithIndicators() string {
 	// Build status with hoststate (if set, i.e. >= 0)
 	status := n.Status
 	if n.HasHostState() {
-		status = fmt.Sprintf("%s/%d", n.Status, n.HostState)
+		if n.HostState == 1 {
+			// Maintenance mode - show "maint" instead of "online/1"
+			status = "maint"
+		} else {
+			status = fmt.Sprintf("%s/%d", n.Status, n.HostState)
+		}
 	}
 
 	// Add other indicators in parentheses
