@@ -435,18 +435,16 @@ func (m Model) handleDashboardHostDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd
 	numModes := 8 // Number of migration modes
 
 	// Calculate max visible rows for VM list - MUST match RenderDashboardHostDetailWithInput calculation
-	// Reserve: title(2) + border(1) + cluster summary(2) + source node(2) + blank(1)
+	// Reserve: title(2) + border(1) + cluster summary(2) + source node header(1) + host info(2) + blank(1)
 	//          + VM header+sep(2) + VM closing(1) + modes header+sep(2) + modes(8) + modes closing(1)
 	//          + input area(3) + help(1) + buffer(2)
-	fixedOverhead := 2 + 1 + 2 + 2 + 1 + 2 + 1 + 2 + numModes + 1 + 3 + 1 + 2
+	fixedOverhead := 2 + 1 + 2 + 1 + 2 + 1 + 2 + 1 + 2 + numModes + 1 + 3 + 1 + 2
 	availableHeight := m.height - fixedOverhead
 	maxVisible := availableHeight
 	if maxVisible < 5 {
 		maxVisible = 5
 	}
-	if maxVisible > 15 {
-		maxVisible = 15 // Cap to leave room for modes and input - must match render function
-	}
+	// No cap - use all available rows for VM list
 
 	switch msg.String() {
 	case "tab":

@@ -389,15 +389,85 @@ func RenderDashboardHostDetailWithInput(node *proxmox.Node, cluster *proxmox.Clu
 	nodeNameStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
 	sb.WriteString(dimStyle.Render("Selected source node: ") + nodeNameStyle.Render(node.Name) + "\n")
 
-	// Host stats line
+	// Host stats - similar format to cluster summary
+	labelStyle := lipgloss.NewStyle()
+	valueStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
+	runningStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
+	stoppedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#C0C0C0"))
+
+	// Count running/stopped VMs
+	runningVMs := 0
+	stoppedVMs := 0
+	totalVCPUs := 0
+	for _, vm := range node.VMs {
+		if vm.Status == "running" {
+			runningVMs++
+			totalVCPUs += vm.CPUCores
+		} else {
+			stoppedVMs++
+		}
+	}
+
+	// Calculate usage percentages
 	cpuPct := node.GetCPUPercent()
 	ramPct := node.GetMemPercent()
-	sb.WriteString(dimStyle.Render(fmt.Sprintf("  VMs: %d │ vCPUs: %d │ CPU: %.1f%% │ RAM: %.1f%% │ Storage: %s",
-		len(node.VMs),
-		node.GetRunningVCPUs(),
-		cpuPct,
-		ramPct,
-		components.FormatStorageG(node.MaxDisk))) + "\n")
+	storagePct := node.GetDiskPercent()
+
+	// vCPU overcommit percentage
+	vcpuPct := 0.0
+	if node.CPUCores > 0 {
+		vcpuPct = float64(totalVCPUs) / float64(node.CPUCores) * 100
+	}
+
+	// RAM in GiB
+	usedRAMGiB := float64(node.UsedMem) / (1024 * 1024 * 1024)
+	totalRAMGiB := float64(node.MaxMem) / (1024 * 1024 * 1024)
+
+	// Storage in GiB
+	usedStorageGiB := float64(node.UsedDisk) / (1024 * 1024 * 1024)
+	totalStorageGiB := float64(node.MaxDisk) / (1024 * 1024 * 1024)
+
+	// Color codes for usage
+	cpuColor := getUsageColorCode(cpuPct)
+	ramColor := getUsageColorCode(ramPct)
+	storageColor := getUsageColorCode(storagePct)
+
+	// Fixed column widths for alignment
+	col1Width := 34
+	col2Width := 30
+
+	// Row 1: VMs, CPU, vCPUs
+	col1Row1 := fmt.Sprintf("VMs:   %d ", len(node.VMs)) + fmt.Sprintf("(On: %d, Off: %d)", runningVMs, stoppedVMs)
+	sb.WriteString(labelStyle.Render("  VMs:   ") + valueStyle.Render(fmt.Sprintf("%d ", len(node.VMs))))
+	sb.WriteString(dimStyle.Render("(") + runningStyle.Render(fmt.Sprintf("On: %d", runningVMs)) + dimStyle.Render(", "))
+	sb.WriteString(stoppedStyle.Render(fmt.Sprintf("Off: %d", stoppedVMs)) + dimStyle.Render(")"))
+	if len(col1Row1) < col1Width {
+		sb.WriteString(strings.Repeat(" ", col1Width-len(col1Row1)))
+	}
+
+	cpuStr := fmt.Sprintf("%.1f%%", cpuPct)
+	col2Row1 := fmt.Sprintf("CPU: %s", cpuStr)
+	sb.WriteString(labelStyle.Render("CPU: ") + lipgloss.NewStyle().Foreground(lipgloss.Color(cpuColor)).Render(cpuStr))
+	if len(col2Row1) < col2Width {
+		sb.WriteString(strings.Repeat(" ", col2Width-len(col2Row1)))
+	}
+
+	sb.WriteString(labelStyle.Render("vCPUs: ") + valueStyle.Render(fmt.Sprintf("%d/%d", totalVCPUs, node.CPUCores)) + " " + valueStyle.Render(fmt.Sprintf("(%.0f%%)", vcpuPct)))
+	sb.WriteString("\n")
+
+	// Row 2: RAM, Storage
+	ramValStr := fmt.Sprintf("%.0f/%.0f GiB", usedRAMGiB, totalRAMGiB)
+	ramPctStr := fmt.Sprintf("(%.1f%%)", ramPct)
+	ramFull := fmt.Sprintf("RAM: %s %s", ramValStr, ramPctStr)
+	sb.WriteString(labelStyle.Render("  RAM: ") + valueStyle.Render(ramValStr) + " " + lipgloss.NewStyle().Foreground(lipgloss.Color(ramColor)).Render(ramPctStr))
+	if len(ramFull)+2 < col1Width {
+		sb.WriteString(strings.Repeat(" ", col1Width-len(ramFull)-2))
+	}
+
+	storageValStr := fmt.Sprintf("%.0f/%.0f GiB", usedStorageGiB, totalStorageGiB)
+	storagePctStr := fmt.Sprintf("(%.1f%%)", storagePct)
+	sb.WriteString(labelStyle.Render("Storage: ") + valueStyle.Render(storageValStr) + " " + lipgloss.NewStyle().Foreground(lipgloss.Color(storageColor)).Render(storagePctStr))
+	sb.WriteString("\n")
 
 	// Mode options - "Balance Cluster" is last
 	modes := []struct {
@@ -415,19 +485,16 @@ func RenderDashboardHostDetailWithInput(node *proxmox.Node, cluster *proxmox.Clu
 	}
 
 	// Calculate split heights - VM list height adjusted for all elements
-	// Reserve: title(2) + border(1) + cluster summary(2) + source node(2) + blank(1)
+	// Reserve: title(2) + border(1) + cluster summary(2) + source node header(1) + host info(2) + blank(1)
 	//          + VM header+sep(2) + VM closing(1) + modes header+sep(2) + modes(len) + modes closing(1)
 	//          + input area(3) + help(1) + buffer(2)
-	fixedOverhead := 2 + 1 + 2 + 2 + 1 + 2 + 1 + 2 + len(modes) + 1 + 3 + 1 + 2
+	fixedOverhead := 2 + 1 + 2 + 1 + 2 + 1 + 2 + 1 + 2 + len(modes) + 1 + 3 + 1 + 2
 	availableHeight := height - fixedOverhead
 
-	// VM list height - reduced to make room for input area
+	// VM list height - use all available space (no cap)
 	vmListHeight := availableHeight
 	if vmListHeight < 5 {
 		vmListHeight = 5
-	}
-	if vmListHeight > 15 {
-		vmListHeight = 15 // Cap to leave room for modes and input
 	}
 
 	// === VM LIST SECTION ===
